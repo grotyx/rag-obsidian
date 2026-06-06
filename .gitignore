@@ -1,0 +1,15 @@
+node_modules/
+main.js
+*.js.map
+data.json
+.env
+.env.local
+.DS_Store
+.obsidian/
+
+# test artifacts
+_test.cjs
+_testvault/
+
+# runtime-fetched CSL styles (bundled ones are committed)
+styles/cache/

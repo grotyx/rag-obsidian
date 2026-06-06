@@ -1,0 +1,202 @@
+.rag-obsidian-library .srag-header {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.rag-obsidian-library .srag-header input {
+  flex: 1;
+}
+.rag-obsidian-library .srag-count {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin: 4px 0;
+}
+.rag-obsidian-library .srag-row {
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.rag-obsidian-library .srag-row:hover {
+  background: var(--background-modifier-hover);
+}
+.rag-obsidian-library .srag-title {
+  font-weight: 600;
+  font-size: 0.92em;
+}
+.rag-obsidian-library .srag-meta {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+/* Search pane */
+.rag-obsidian-search .srag-header {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.rag-obsidian-search .srag-header input {
+  flex: 1;
+}
+.rag-obsidian-search .srag-tools {
+  margin-bottom: 6px;
+}
+.rag-obsidian-search .srag-count {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin: 4px 0;
+}
+.rag-obsidian-search .srag-hit {
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  margin-bottom: 6px;
+}
+.rag-obsidian-search .srag-hit:hover {
+  background: var(--background-modifier-hover);
+}
+.rag-obsidian-search .srag-hit-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.rag-obsidian-search .srag-title {
+  font-weight: 600;
+  font-size: 0.9em;
+}
+.rag-obsidian-search .srag-badge {
+  font-size: 0.72em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.rag-obsidian-search .srag-snippet {
+  font-size: 0.82em;
+  color: var(--text-normal);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* Chat pane */
+.rag-obsidian-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.rag-obsidian-chat .srag-chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+.rag-obsidian-chat .srag-bubble {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.86em;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.rag-obsidian-chat .srag-user {
+  background: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border);
+}
+.rag-obsidian-chat .srag-assistant {
+  background: var(--background-secondary);
+}
+.rag-obsidian-chat .srag-system {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  font-style: italic;
+  background: transparent;
+}
+.rag-obsidian-chat .srag-answer {
+  white-space: normal;
+}
+.rag-obsidian-chat .srag-sources {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--background-modifier-border);
+}
+.rag-obsidian-chat .srag-sources-head {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.rag-obsidian-chat .srag-source {
+  font-size: 0.78em;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.rag-obsidian-chat .srag-source:hover {
+  color: var(--text-accent);
+}
+.rag-obsidian-chat .srag-source-n {
+  font-weight: 600;
+  color: var(--text-accent);
+}
+.rag-obsidian-chat .srag-chat-composer {
+  display: flex;
+  gap: 6px;
+  padding: 6px 4px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.rag-obsidian-chat .srag-chat-input {
+  flex: 1;
+  resize: vertical;
+  font-family: inherit;
+}
+
+/* Related (citation graph) pane */
+.rag-obsidian-related .srag-header {
+  margin-bottom: 8px;
+}
+.rag-obsidian-related .srag-count {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin: 4px 0;
+}
+.rag-obsidian-related .srag-rel-section {
+  margin-top: 10px;
+}
+.rag-obsidian-related .srag-rel-head {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 2px;
+  margin-bottom: 4px;
+}
+.rag-obsidian-related .srag-rel-row {
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82em;
+}
+.rag-obsidian-related .srag-rel-row:hover {
+  background: var(--background-modifier-hover);
+}
+.rag-obsidian-related .srag-rel-badge {
+  color: var(--text-accent);
+  font-weight: 600;
+}
+
+/* Citation autocomplete suggestion */
+.srag-suggestion .srag-sug-key {
+  font-weight: 600;
+}
+.srag-suggestion .srag-sug-meta {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+/* Rendered in-text citation */
+.srag-cite {
+  color: var(--text-accent);
+  cursor: pointer;
+}
+.srag-cite:hover {
+  text-decoration: underline;
+}
