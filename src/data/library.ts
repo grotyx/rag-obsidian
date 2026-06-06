@@ -124,6 +124,28 @@ export class Library {
     out.sort((a, b) => b.year.localeCompare(a.year) || a.title.localeCompare(b.title));
     return out;
   }
+
+  /** Single-pass scan returning each note's citekey, CSL item, and file together —
+   *  avoids the O(n²) of calling getItem()/getFile() per citekey over the whole library. */
+  entries(): { citekey: string; item: CSLItem; file: TFile; year: string; authors: string; title: string }[] {
+    const prefix = this.folder() + "/";
+    const out: { citekey: string; item: CSLItem; file: TFile; year: string; authors: string; title: string }[] = [];
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      if (!file.path.startsWith(prefix)) continue;
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (!fm || !fm.citekey) continue;
+      out.push({
+        citekey: String(fm.citekey),
+        item: fm as unknown as CSLItem,
+        file,
+        year: extractYear(fm.issued),
+        authors: formatAuthors(fm.author),
+        title: String(fm.title ?? file.basename),
+      });
+    }
+    out.sort((a, b) => b.year.localeCompare(a.year) || a.title.localeCompare(b.title));
+    return out;
+  }
 }
 
 function normTitle(t: unknown): string {

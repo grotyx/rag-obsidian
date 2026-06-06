@@ -541,17 +541,14 @@ export default class ScholarRagPlugin extends Plugin {
         "```\n\n" +
         '> Edit the query to filter (e.g. add `WHERE status = "reading"`) or change `SORT`.\n';
     } else {
-      const rows = this.library
-        .list()
-        .map((e) => ({ e, it: this.library.getItem(e.citekey), file: this.library.getFile(e.citekey) }))
-        .filter((r) => r.it && r.file);
+      const rows = this.library.entries();
       const header = "| Year | Authors | Title | Status | Cited | Tags |\n|---|---|---|---|---|---|";
       const body = rows
         .map((r) => {
-          const it = r.it as Record<string, unknown>;
+          const it = r.item as Record<string, unknown>;
           const tags = Array.isArray(it.tags) ? (it.tags as string[]).slice(0, 4).join(", ") : "";
-          const link = `[[${(r.file as TFile).basename}\\|${r.e.title.replace(/\|/g, "/")}]]`;
-          return `| ${r.e.year} | ${r.e.authors} | ${link} | ${it.status ?? ""} | ${it.cited_by_count ?? ""} | ${tags} |`;
+          const link = `[[${r.file.basename}\\|${r.title.replace(/\|/g, "/")}]]`;
+          return `| ${r.year} | ${r.authors} | ${link} | ${it.status ?? ""} | ${it.cited_by_count ?? ""} | ${tags} |`;
         })
         .join("\n");
       out = `# Library Dashboard\n\n${rows.length} references. (Install Dataview for a live, sortable table.)\n\n${header}\n${body}\n`;
@@ -565,14 +562,13 @@ export default class ScholarRagPlugin extends Plugin {
   /** Group library notes by DOI / PMID / normalized title and report duplicate clusters. */
   async findDuplicates(): Promise<void> {
     const groups = new Map<string, string[]>();
-    for (const e of this.library.list()) {
-      const it = this.library.getItem(e.citekey);
-      if (!it) continue;
+    for (const e of this.library.entries()) {
+      const it = e.item;
       const sig =
         (it.DOI && `doi:${String(it.DOI).toLowerCase()}`) ||
         (it.PMID && `pmid:${it.PMID}`) ||
         `title:${String(it.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`;
-      (groups.get(sig) ?? groups.set(sig, []).get(sig)!).push(e.citekey);
+      (groups.get(sig) ?? groups.set(sig, []).get(sig)!).push(e.file.basename);
     }
     const dups = [...groups.values()].filter((g) => g.length > 1);
     if (!dups.length) {
@@ -581,7 +577,7 @@ export default class ScholarRagPlugin extends Plugin {
     }
     const report =
       `# Duplicate references\n\n${dups.length} group(s):\n\n` +
-      dups.map((g) => "- " + g.map((k) => `[[${this.library.getFile(k)?.basename ?? k}]]`).join(" · ")).join("\n") +
+      dups.map((g) => "- " + g.map((name) => `[[${name}]]`).join(" · ")).join("\n") +
       "\n";
     const path = normalizePath("Duplicate references.md");
     await this.app.vault.adapter.write(path, report);
@@ -798,20 +794,19 @@ export default class ScholarRagPlugin extends Plugin {
   /** Open a note listing references still to read (status reading first, then unread), by citations. */
   async readingQueue(): Promise<void> {
     const rows = this.library
-      .list()
-      .map((e) => ({ e, it: this.library.getItem(e.citekey), file: this.library.getFile(e.citekey) }))
-      .filter((r) => r.it && (r.it.status === "reading" || r.it.status === "unread" || !r.it.status));
+      .entries()
+      .filter((r) => r.item.status === "reading" || r.item.status === "unread" || !r.item.status);
     const rank = (s: unknown) => (s === "reading" ? 0 : 1);
     rows.sort(
       (a, b) =>
-        rank(a.it?.status) - rank(b.it?.status) ||
-        Number(b.it?.cited_by_count ?? 0) - Number(a.it?.cited_by_count ?? 0)
+        rank(a.item.status) - rank(b.item.status) ||
+        Number(b.item.cited_by_count ?? 0) - Number(a.item.cited_by_count ?? 0)
     );
     const body = rows
       .map(
         (r) =>
-          `- [[${(r.file as TFile).basename}]] — ${r.e.authors} ${r.e.year} · _${r.it?.status ?? "unread"}_${
-            r.it?.cited_by_count != null ? ` · ${r.it.cited_by_count} cites` : ""
+          `- [[${r.file.basename}]] — ${r.authors} ${r.year} · _${r.item.status ?? "unread"}_${
+            r.item.cited_by_count != null ? ` · ${r.item.cited_by_count} cites` : ""
           }`
       )
       .join("\n");
@@ -844,16 +839,15 @@ export default class ScholarRagPlugin extends Plugin {
 
   /** Re-fetch metadata for notes missing abstract / journal / authors and fill the gaps. */
   async enrichMetadata(): Promise<void> {
-    const entries = this.library.list();
+    const entries = this.library.entries();
     const notice = new Notice(`Enriching 0/${entries.length}…`, 0);
     let done = 0;
     let filled = 0;
     for (const e of entries) {
-      const item = this.library.getItem(e.citekey);
-      const file = this.library.getFile(e.citekey);
+      const item = e.item;
+      const file = e.file;
       done++;
       notice.setMessage(`Enriching ${done}/${entries.length}…`);
-      if (!item || !file) continue;
       const needs = !item.abstract || !item["container-title"] || !item.author || !item.author.length;
       const idStr = item.DOI || (item.PMID ? `pmid:${item.PMID}` : "");
       if (!needs || !idStr) continue;

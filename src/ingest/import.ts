@@ -4,7 +4,13 @@ import { CSLItem, CSLName } from "../types";
 export function parseLibrary(text: string): CSLItem[] {
   const t = text.trim();
   if (!t) return [];
-  if (t.startsWith("[") || t.startsWith("{")) return parseCslJson(t);
+  if (t.startsWith("[") || t.startsWith("{")) {
+    try {
+      return parseCslJson(t);
+    } catch {
+      return []; // malformed JSON → caller shows "could not parse"
+    }
+  }
   if (/^PMID-\s/m.test(t) || (/^(TI|FAU|AB)\s*-\s/m.test(t) && !/^TY\s+-/m.test(t)))
     return parseNbib(t); // PubMed .nbib / MEDLINE
   if (/^TY\s+-\s+/m.test(t)) return parseRis(t);
