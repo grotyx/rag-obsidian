@@ -3,6 +3,68 @@
 All notable changes to Academic Paper Obsidian Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [0.4.0] — 2026-06-10
+
+Stability & security release: a deep code review pass (bug fixes), key storage migration,
+and a security audit with hardening. No breaking changes; the index format gains a
+path→citekey map (older indexes load fine).
+
+### Added
+
+- **secretStorage for API keys** — Anthropic / OpenAI / PubMed keys migrate automatically
+  into Obsidian's `secretStorage` (OS keychain); `data.json` keeps them blanked. Older
+  Obsidian versions fall back to the previous `data.json` behavior.
+- **Add-time dedup hardening** — a session registry of normalized DOI / PMID / title
+  catches double-adds that the metadata cache is too stale to see (including the same
+  paper added once by DOI and once by PMID).
+- **PMID confirmation** — typing bare digits into the Add modal now previews the fetched
+  title / author / year and asks for a confirm click before creating the note (a pasted
+  year like `2024` no longer silently adds an unrelated 1970s paper).
+- **Multi-turn chat citations** — assistant turns remember their source order; earlier
+  `[n]` anchors are rewritten to `[@citekey]` for the model, so follow-up answers can no
+  longer mis-attribute claims to the wrong paper.
+
+### Fixed
+
+- **"Update bibliography" / "Compile manuscript" no longer delete content after the
+  `## References` section** (e.g. an `## Appendix`) — only the References section itself
+  is replaced.
+- **"Rename tag" only touches library notes**, not the entire vault.
+- **Index integrity**: an empty-library rebuild no longer poisons the index (which made
+  all later indexing silently no-op); switching embedding models then editing a note no
+  longer drops that note from the index; deleting a note whose filename differs from its
+  citekey no longer leaves stale chunks behind; index writes are atomic (crash-safe) and
+  validated on restore; duplicate citekeys can't abort a rebuild halfway.
+- **Citation graph**: DOIs are normalized/encoded for OpenAlex (https://doi.org/-prefixed
+  and SICI DOIs resolve now); titles with commas no longer 403 the title-search fallback;
+  a wrong title match can no longer permanently backfill a bad `openalex_id`; transient
+  failures keep the previous graph nodes instead of dropping them; "missing papers"
+  counts deduplicate per-paper references (the sample-library count corrects 10 → 9).
+- **Metadata**: trailing punctuation stripped from pasted DOIs; PubMed abstracts parsed
+  from XML instead of storing the whole formatted citation blob; non-Latin first authors
+  get an `anon` citekey fallback instead of colliding bare-year keys.
+- **Citations & writing**: `[@key, p. 23]` locators and `[-@key]` parse correctly and
+  code blocks are ignored; author-less references format without a leading orphan period;
+  `@`-autocomplete no longer doubles brackets after a typed `[`.
+- **Ontology**: cyclic packs can't hang `descendants()`; aliases containing punctuation
+  ("Diabetes Mellitus, Type 2") now match; invalid pack files surface a Notice instead of
+  a silent sample-pack fallback.
+- **UI**: Add modal guards against double-submits; library pane only re-renders for
+  reference-folder changes (debounced); PubMed key field is masked; progress notices
+  always close on errors; export/report commands reliably open the file they create.
+
+### Security
+
+- `window.open` is restricted to http(s) URLs — a poisoned metadata record can no longer
+  supply a `javascript:` URL.
+- Open-access PDF downloads sanitize the citekey before building the save path and
+  require an http(s) source URL.
+- Rendered chat answers strip image/embed syntax (no auto-loading external beacons or
+  note transclusions from model output); retrieved passages are delimited as quoted data
+  with an explicit instruction that they are not instructions.
+- CSL style ids from frontmatter are validated (no path traversal into vault reads or the
+  styles CDN); PubMed API key is URL-encoded and kept out of thrown error messages.
+
 ## [0.3.0] — 2026-06-06
 
 Rounds the tool into a full Zotero / EndNote replacement: journal-accurate citations

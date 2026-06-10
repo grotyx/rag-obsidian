@@ -1,6 +1,6 @@
 # Academic Paper Obsidian Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.3.0-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.4.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
 

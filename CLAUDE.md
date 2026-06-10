@@ -3,7 +3,7 @@
 > Display name: **Academic Paper Obsidian Citation Manager** · plugin id stays `rag-obsidian`
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.3.0 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities (40 integration checks green)
+**Version**: 0.4.0 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (40 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
