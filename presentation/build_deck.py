@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Build the RAG Obsidian presentation deck per design.md (SNUBH Spine system).
-Charts/diagrams via matplotlib → embedded; 4-zone skeleton + patterns via python-pptx.
+
+Rebuilt for first-time-viewer clarity: pain → idea → SEE it (real note + workflow)
+→ features → how (with analogies) → why different → proof → try it → conclude.
+Charts via matplotlib; 4-zone skeleton + patterns via python-pptx.
 Run: python3 build_deck.py  → rag_obsidian_deck.pptx
 """
+import json
 import os
 from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
+from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
@@ -15,10 +19,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "assets")
 os.makedirs(ASSETS, exist_ok=True)
 LOGO = os.path.join(HERE, "logo.png")
+VERSION = "v" + json.load(open(os.path.join(HERE, "..", "manifest.json")))["version"]
+REPO = "github.com/grotyx/rag-obsidian"
 
 # ---------------------------------------------------------------- palette
 NEUTRAL_WARM = "f2f0eb"; WHITE = "ffffff"; HOUSE = "1E3932"; STARBUCKS = "006241"
-ACCENT = "00754A"; GREEN_LIGHT = "d4e9e2"; UPLIFT = "2B5148"; GOLD = "cba258"
+ACCENT = "00754A"; GREEN_LIGHT = "d4e9e2"; UPLIFT = "2B5148"
 GRAY = "8e8e93"; HAIR = "D9D9D9"; TEXT = "1F1F1F"; TEXT_SOFT = "6B6B6B"
 NEUTRAL_COOL = "f9f9f9"; CERAMIC = "edebe9"; RED = "c82014"
 FONT = "Pretendard"
@@ -38,59 +44,12 @@ def build_charts():
             fm.fontManager.addfont(p)
     plt.rcParams["font.family"] = "Pretendard"
     plt.rcParams["axes.unicode_minus"] = False
-    g_acc, g_sb, g_lt, gold, gray = "#00754A", "#006241", "#d4e9e2", "#cba258", "#8e8e93"
+    g_acc, g_sb, gold = "#00754A", "#006241", "#cba258"
 
-    # ---- gap venn (slide 3) ----
-    fig, ax = plt.subplots(figsize=(5.2, 4.4), dpi=200)
-    from matplotlib.patches import Circle
-    ax.add_patch(Circle((0.36, 0.5), 0.34, fill=False, ec=g_acc, lw=3))
-    ax.add_patch(Circle((0.64, 0.5), 0.34, fill=False, ec=g_sb, lw=3))
-    ax.text(0.27, 0.5, "서지\n플러그인", ha="center", va="center", fontsize=15, color=g_acc, weight="bold")
-    ax.text(0.73, 0.5, "AI / RAG\n플러그인", ha="center", va="center", fontsize=15, color=g_sb, weight="bold")
-    ax.text(0.5, 0.5, "빈\n교집합", ha="center", va="center", fontsize=13, color=gold, weight="bold")
-    ax.text(0.5, 0.075, "의미검색 + 메타데이터 + 구절 인용", ha="center", va="center", fontsize=11, color="#444")
-    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
-    fig.tight_layout(pad=0.2); fig.savefig(f"{ASSETS}/gap.png", transparent=True); plt.close(fig)
-
-    # ---- architecture flow (slide 6) ----
-    fig, ax = plt.subplots(figsize=(12.0, 4.3), dpi=200)
-    from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
-    def box(x, y, w, h, label, fc="white", ec=g_acc, tc="#1F1F1F", fs=12, bold=True):
-        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.02,rounding_size=0.03",
-                     fc=fc, ec=ec, lw=2))
-        ax.text(x + w/2, y + h/2, label, ha="center", va="center", fontsize=fs,
-                color=tc, weight="bold" if bold else "normal")
-    def arrow(x1, y1, x2, y2):
-        ax.add_patch(FancyArrowPatch((x1, y1), (x2, y2), arrowstyle="-|>", mutation_scale=18,
-                     lw=2, color=g_acc))
-    pipe = [("입력\nDOI·PMID·arXiv·PDF", 0.01), ("References/*.md\nCSL-JSON 노트", 0.255),
-            ("청크\n[제목|섹션|연도]", 0.50), ("임베딩 →\nOrama 하이브리드 색인", 0.745)]
-    for label, x in pipe:
-        box(x, 0.58, 0.23, 0.30, label, fs=12)
-    for i in range(3):
-        arrow(pipe[i][1] + 0.23, 0.73, pipe[i+1][1], 0.73)
-    outs = [("검색", 0.42), ("근거 채팅", 0.235), ("인용 그래프", 0.05)]
-    bus_x = 0.785
-    for label, y in outs:
-        box(0.81, y, 0.18, 0.13, label, ec=g_sb, fs=12)
-    ax.plot([0.86, bus_x], [0.58, 0.58], color=g_acc, lw=2)       # embedding bottom → bus
-    ax.plot([bus_x, bus_x], [0.115, 0.58], color=g_acc, lw=2)     # vertical bus
-    for label, y in outs:
-        arrow(bus_x, y + 0.065, 0.81, y + 0.065)                  # bus → each box (left edge)
-    box(0.05, 0.05, 0.18, 0.12, "OpenAlex", fc=g_lt, ec=g_sb, fs=11)
-    arrow(0.23, 0.11, 0.81, 0.115)                                # OpenAlex → 인용 그래프
-    ax.text(0.5, 0.97, "전부 TypeScript 플러그인 안 · 로컬 우선 · 백엔드 0", ha="center",
-            fontsize=12, color=gray, style="italic")
-    ax.set_xlim(0, 1.0); ax.set_ylim(0, 1.0); ax.axis("off")
-    fig.tight_layout(pad=0.1); fig.savefig(f"{ASSETS}/arch.png", transparent=True); plt.close(fig)
-
-    # ---- citation graph (slide 9) ----
-    import networkx as nx
+    # ---- citation graph (그래프 slide) ----
     fig, ax = plt.subplots(figsize=(5.3, 4.5), dpi=200)
     have = {"2015\n딥러닝": (0.5, 0.78), "1998\nLeNet": (0.18, 0.5),
             "1997\nLSTM": (0.5, 0.30), "2017\nAlexNet": (0.84, 0.55)}
-    miss = {"놓친 ×3": (0.30, 0.88), "놓친 ×2": (0.10, 0.80),
-            "놓친 ×2": (0.74, 0.86), "놓친 ×2b": (0.90, 0.30)}
     edges = [("2015\n딥러닝", "1998\nLeNet"), ("2015\n딥러닝", "1997\nLSTM"),
              ("2017\nAlexNet", "1998\nLeNet")]
     for a, b in edges:
@@ -104,21 +63,21 @@ def build_charts():
     for label, (x, y) in [("놓친 ×3", (0.30, 0.88)), ("×2", (0.10, 0.80)), ("×2", (0.74, 0.86)), ("×2", (0.90, 0.30))]:
         ax.scatter([x], [y], s=1100, facecolors="none", edgecolors=gold, lw=1.8, ls=(0, (2, 1.5)), zorder=2)
         ax.text(x, y, label, ha="center", va="center", fontsize=8, color=gold, weight="bold", zorder=3)
-    ax.text(0.5, 0.03, "● 보유 4편    ○ 놓친 논문 10편 (인용 ≥2회)", ha="center", fontsize=10, color="#444")
+    ax.text(0.5, 0.03, "● 보유 4편    ○ 놓친 논문 (9편 발굴 중 4편 표시)", ha="center", fontsize=10, color="#444")
     ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
     fig.tight_layout(pad=0.1); fig.savefig(f"{ASSETS}/graph.png", transparent=True); plt.close(fig)
 
-    # ---- validation bars (slide 11) ----
+    # ---- validation bars ----
     fig, ax = plt.subplots(figsize=(11.8, 2.7), dpi=200)
     phases = ["메타\nfetch", "색인\nsearch", "근거\n채팅", "인용\n그래프", "PDF\n추출", "참고\n문헌", "온톨\n로지"]
     vals = [6, 9, 4, 6, 4, 5, 6]
-    bars = ax.bar(range(len(phases)), vals, color=g_acc, width=0.62, zorder=2)
+    ax.bar(range(len(phases)), vals, color=g_acc, width=0.62, zorder=2)
     for i, v in enumerate(vals):
         ax.text(i, v + 0.15, str(v), ha="center", fontsize=12, color=g_sb, weight="bold")
     ax.set_xticks(range(len(phases))); ax.set_xticklabels(phases, fontsize=11, color="#333")
     ax.set_ylim(0, 10.5); ax.set_yticks([])
-    for s in ("top", "right", "left"):
-        ax.spines[s].set_visible(False)
+    for sname in ("top", "right", "left"):
+        ax.spines[sname].set_visible(False)
     ax.spines["bottom"].set_color("#cccccc")
     ax.text(0.0, 1.06, "통합검증 통과 항목 (단계별) — 합계 40, 실패 0", transform=ax.transAxes,
             fontsize=12, color="#1F1F1F", weight="bold")
@@ -135,7 +94,6 @@ def add_slide(bg=NEUTRAL_WARM):
     r = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
     r.fill.solid(); r.fill.fore_color.rgb = C(bg); r.line.fill.background()
     r.shadow.inherit = False
-    r._element.addprevious(r._element)  # keep at back (already first)
     return s
 
 def no_shadow(shape): shape.shadow.inherit = False
@@ -143,7 +101,6 @@ def no_shadow(shape): shape.shadow.inherit = False
 def set_run(run, size, bold=False, color=TEXT, italic=False, spc=True):
     run.font.name = FONT; run.font.size = Pt(size); run.font.bold = bold
     run.font.italic = italic; run.font.color.rgb = C(color)
-    # set east-asian + latin font
     rPr = run._r.get_or_add_rPr()
     for tag in ("a:latin", "a:ea", "a:cs"):
         e = rPr.find(qn(tag))
@@ -189,6 +146,16 @@ def rect(slide, x, y, w, h, fill, line=None, line_w=0.75):
     else: sh.line.color.rgb = C(line); sh.line.width = Pt(line_w)
     no_shadow(sh); return sh
 
+def num_badge(slide, cx, cy, n, d=0.44, fill=ACCENT, tc=WHITE, fs=18):
+    ov = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(cx - d / 2), Inches(cy), Inches(d), Inches(d))
+    ov.fill.solid(); ov.fill.fore_color.rgb = C(fill); ov.line.fill.background(); no_shadow(ov)
+    _, tf = textbox(slide, cx - d / 2, cy, d, d, anchor=MSO_ANCHOR.MIDDLE)
+    para(tf, [{"t": str(n), "s": fs, "b": True, "c": tc}], align=PP_ALIGN.CENTER, first=True)
+
+def step_arrow(s, x, y, w, h):
+    _, tf = textbox(s, x, y, w, h, anchor=MSO_ANCHOR.MIDDLE)
+    para(tf, [{"t": "→", "s": 24, "b": True, "c": ACCENT}], align=PP_ALIGN.CENTER, first=True)
+
 def add_logo(slide):
     pic = slide.shapes.add_picture(LOGO, Inches(11.7545), Inches(0.0131), Inches(1.5788), Inches(0.8733))
     pic.crop_left = 0.0324; pic.crop_right = 0.1636; pic.crop_top = 0.2139; pic.crop_bottom = 0.1133
@@ -216,21 +183,23 @@ def card(slide, x=0.2752, y=1.4111, w=12.7946, h=5.7167):
 def content(chapter, head, page, source=""):
     s = add_slide(NEUTRAL_WARM)
     header(s, chapter); headline(s, head); add_logo(s)
-    c = card(s); footer(s, page, source)
+    card(s); footer(s, page, source)
     return s
 
 # ================================================================ slide builders
 def cover():
     s = add_slide(NEUTRAL_WARM); add_logo(s)
-    rounded(s, 0.6, 1.11, 2.4, 0.49, fill=ACCENT, line=None, radius=0.5)
-    _, tf = textbox(s, 0.6, 1.11, 2.4, 0.49, anchor=MSO_ANCHOR.MIDDLE)
-    para(tf, [{"t": "RESEARCH TOOL", "s": 14, "b": True, "c": WHITE}], align=PP_ALIGN.CENTER, first=True)
+    rounded(s, 0.6, 1.11, 2.95, 0.49, fill=ACCENT, line=None, radius=0.5)
+    _, tf = textbox(s, 0.6, 1.11, 2.95, 0.49, anchor=MSO_ANCHOR.MIDDLE)
+    para(tf, [{"t": "OBSIDIAN PLUGIN", "s": 14, "b": True, "c": WHITE}], align=PP_ALIGN.CENTER, first=True)
     _, tf = textbox(s, 0.6, 2.0512, 12.2953, 1.6)
     para(tf, [{"t": "RAG Obsidian", "s": 54, "b": True, "c": STARBUCKS}], first=True, line=60)
     rect(s, 0.6, 3.7593, 1.8, 0.05, fill=ACCENT)
-    _, tf = textbox(s, 0.6, 4.0517, 11.0, 0.9)
-    para(tf, [{"t": "내 서재가 답하는 AI 서지관리", "s": 20, "b": True, "c": UPLIFT}], first=True)
-    para(tf, [{"t": "Obsidian 네이티브 · 로컬 우선 · 인용 근거", "s": 15, "c": TEXT_SOFT}], space_before=4)
+    _, tf = textbox(s, 0.6, 4.0517, 11.5, 0.9)
+    para(tf, [{"t": "내 논문 서재가 그대로 AI 검색엔진이 된다", "s": 20, "b": True, "c": UPLIFT}], first=True)
+    para(tf, [{"t": "Obsidian 위에서 · 내 컴퓨터 안에서 · 답은 늘 출처와 함께", "s": 15, "c": TEXT_SOFT}], space_before=4)
+    _, tf = textbox(s, 0.6, 4.98, 8.0, 0.35)
+    para(tf, [{"t": REPO, "s": 14, "b": True, "c": ACCENT}], first=True)
     _, tf = textbox(s, 7.509, 5.58, 5.5, 0.32)
     para(tf, [{"t": "분당서울대학교병원 정형외과", "s": 16, "c": TEXT_SOFT}], align=PP_ALIGN.RIGHT, first=True)
     _, tf = textbox(s, 7.509, 5.95, 5.5, 0.5)
@@ -244,8 +213,8 @@ def big_message(chapter, big_lines, subline, page):
     for i, ln in enumerate(big_lines):
         col = STARBUCKS if i == 0 else ACCENT
         para(tf, [{"t": ln, "s": 56, "b": True, "c": col}], align=PP_ALIGN.CENTER, first=(i == 0), line=64)
-    _, tf = textbox(s, 0.6, 5.5, 12.1, 0.6)
-    para(tf, [{"t": subline, "s": 16, "i": True, "c": TEXT_SOFT}], align=PP_ALIGN.CENTER, first=True)
+    _, tf = textbox(s, 0.9, 5.5, 11.5, 0.8)
+    para(tf, [{"t": subline, "s": 16, "i": True, "c": TEXT_SOFT}], align=PP_ALIGN.CENTER, first=True, line=22)
 
 def closing():
     s = add_slide(NEUTRAL_WARM); add_logo(s)
@@ -255,9 +224,9 @@ def closing():
     para(tf, [{"t": "Questions & discussion", "s": 18, "c": TEXT_SOFT}], align=PP_ALIGN.CENTER, first=True)
     _, tf = textbox(s, 0.6, 5.4, 12.1, 0.7)
     para(tf, [{"t": "박상민  ·  분당서울대학교병원 정형외과", "s": 14, "c": TEXT_SOFT}], align=PP_ALIGN.CENTER, first=True)
-    para(tf, [{"t": "github.com/grotyx/rag-obsidian", "s": 12, "c": ACCENT}], align=PP_ALIGN.CENTER, space_before=4)
+    para(tf, [{"t": REPO, "s": 13, "b": True, "c": ACCENT}], align=PP_ALIGN.CENTER, space_before=5)
 
-# ---- patterns (inside body card: x0.2752 y1.4111 w12.7946 h5.7167; inner pad 0.4)
+# ---- patterns (inside body card)
 CX, CY, CW, CH = 0.2752, 1.4111, 12.7946, 5.7167
 IX, IY, IW = CX + 0.45, CY + 0.4, CW - 0.9
 
@@ -267,8 +236,79 @@ def takeaway_strip(s, text, y=None):
     _, tf = textbox(s, CX + 0.6, y, CW - 1.2, 0.5, anchor=MSO_ANCHOR.MIDDLE)
     para(tf, [{"t": text, "s": 14, "b": True, "c": WHITE}], first=True)
 
+def pattern_twoproblem(s, left, right, takeaway):
+    gap = 0.5; cw = (IW - gap) / 2; cy = IY + 0.05; ch = 3.55
+    for i, col in enumerate([left, right]):
+        x = IX + i * (cw + gap)
+        rounded(s, x, cy, cw, ch, fill=WHITE, line=HAIR, line_w=0.9, radius=0.05)
+        _, tf = textbox(s, x + 0.4, cy + 0.32, 0.7, 0.7)
+        para(tf, [{"t": "✗", "s": 32, "b": True, "c": RED}], first=True)
+        _, tf = textbox(s, x + 0.4, cy + 1.08, cw - 0.8, 0.4)
+        para(tf, [{"t": col["label"], "s": 14, "b": True, "c": TEXT_SOFT}], first=True)
+        _, tf = textbox(s, x + 0.4, cy + 1.5, cw - 0.8, 1.1)
+        para(tf, [{"t": col["problem"], "s": 24, "b": True, "c": TEXT}], first=True, line=30)
+        _, tf = textbox(s, x + 0.4, cy + 2.72, cw - 0.8, 0.7)
+        para(tf, [{"t": col["detail"], "s": 14, "c": TEXT_SOFT}], first=True, line=20)
+    takeaway_strip(s, takeaway)
+
+def note_mock(s, takeaway):
+    px, py, pw, ph = IX, IY, 6.7, 4.3
+    rounded(s, px, py, pw, ph, fill=WHITE, line=HAIR, line_w=0.9, radius=0.035)
+    _, tf = textbox(s, px + 0.3, py + 0.22, pw - 0.6, 0.4)
+    para(tf, [{"t": "References / ", "s": 13, "c": TEXT_SOFT},
+              {"t": "lecun2015deep.md", "s": 13, "b": True, "c": TEXT}], first=True)
+    rect(s, px + 0.3, py + 0.7, pw - 0.6, 0.014, fill=HAIR)
+    _, tf = textbox(s, px + 0.35, py + 0.88, pw - 0.7, 2.1)
+    fm = [("title", "Deep learning"), ("author", "LeCun Y · Bengio Y · Hinton G"),
+          ("issued", "2015"), ("container-title", "Nature"),
+          ("DOI", "10.1038/nature14539"), ("type", "article-journal")]
+    first = True
+    for k, v in fm:
+        para(tf, [{"t": k + ":  ", "s": 13, "b": True, "c": ACCENT},
+                  {"t": v, "s": 13, "c": TEXT}], first=first, line=20, space_before=0 if first else 2)
+        first = False
+    rect(s, px + 0.3, py + 3.18, pw - 0.6, 0.014, fill=HAIR)
+    _, tf = textbox(s, px + 0.35, py + 3.32, pw - 0.7, 0.9)
+    para(tf, [{"t": "## Abstract", "s": 12, "b": True, "c": TEXT_SOFT}], first=True, line=16)
+    para(tf, [{"t": "Deep learning lets computational models learn representations of data with multiple levels of abstraction…",
+               "s": 12, "c": TEXT_SOFT, "i": True}], space_before=2, line=16)
+    ax = px + pw + 0.4; aw = IW - pw - 0.4
+    anns = [("1", "파일 이름 = 인용키", "노트 한 개 = 논문 한 편"),
+            ("2", "맨 위 = 메타데이터", "저자·연도·DOI를 표준 형식(CSL-JSON)으로. EndNote가 숨겨 두는 걸 사람이 읽는 평문으로."),
+            ("3", "본문 = 검색·채팅이 읽는 글", "초록·메모·메인 텍스트")]
+    ay = py + 0.08
+    for nb, title, sub in anns:
+        num_badge(s, ax + 0.22, ay, nb, d=0.42, fs=16)
+        _, tf = textbox(s, ax + 0.62, ay - 0.06, aw - 0.62, 1.35)
+        para(tf, [{"t": title, "s": 16, "b": True, "c": STARBUCKS}], first=True, line=20)
+        para(tf, [{"t": sub, "s": 13, "c": TEXT_SOFT}], space_before=4, line=18)
+        ay += 1.45
+    takeaway_strip(s, takeaway)
+
+def workflow_steps(s, steps, takeaway):
+    n = len(steps); aw = 0.46
+    cw = (IW - aw * (n - 1)) / n
+    cy = IY + 0.18; ch = 3.4
+    for i, st in enumerate(steps):
+        x = IX + i * (cw + aw)
+        rounded(s, x, cy, cw, ch, fill=WHITE, line=HAIR, line_w=0.9, radius=0.05)
+        num_badge(s, x + cw / 2, cy + 0.26, i + 1)
+        _, tf = textbox(s, x + 0.12, cy + 0.9, cw - 0.24, 0.6, anchor=MSO_ANCHOR.TOP)
+        para(tf, [{"t": st["title"], "s": 15, "b": True, "c": STARBUCKS}], align=PP_ALIGN.CENTER, first=True, line=19)
+        ebx = x + 0.18; eby = cy + 1.62; ebw = cw - 0.36; ebh = ch - 1.82
+        rounded(s, ebx, eby, ebw, ebh, fill=NEUTRAL_WARM, line=None, radius=0.08)
+        _, tf = textbox(s, ebx + 0.1, eby + 0.1, ebw - 0.2, ebh - 0.2, anchor=MSO_ANCHOR.MIDDLE)
+        first = True
+        for ln in st["ex"]:
+            para(tf, [{"t": ln["t"], "s": ln.get("s", 12), "b": ln.get("b", False),
+                       "c": ln.get("c", TEXT), "i": ln.get("i", False)}],
+                 align=PP_ALIGN.CENTER, first=first, line=16, space_before=0 if first else 4)
+            first = False
+        if i < n - 1:
+            step_arrow(s, x + cw + 0.02, cy + ch / 2 - 0.3, aw - 0.04, 0.6)
+    takeaway_strip(s, takeaway)
+
 def pattern_C(s, claim, bullets, img, takeaway):
-    # left 52%, right 46%
     lw = (CW - 0.9) * 0.52
     _, tf = textbox(s, IX, IY, lw, 3.6)
     para(tf, [{"t": claim, "s": 22, "b": True, "c": TEXT}], first=True, line=30)
@@ -280,8 +320,7 @@ def pattern_C(s, claim, bullets, img, takeaway):
     s.shapes.add_picture(img, Inches(rx), Inches(IY - 0.1), height=Inches(3.7))
     takeaway_strip(s, takeaway)
 
-def pattern_E(s, cols, rows, source_hi=True):
-    from pptx.util import Inches as I
+def pattern_E(s, cols, rows):
     nrow, ncol = len(rows) + 1, len(cols)
     tbl_w, tbl_h = CW - 0.9, 0.55 * nrow
     gtbl = s.shapes.add_table(nrow, ncol, Inches(IX), Inches(IY), Inches(tbl_w), Inches(tbl_h)).table
@@ -294,7 +333,7 @@ def pattern_E(s, cols, rows, source_hi=True):
         cell.margin_left = Inches(0.1); cell.margin_top = Inches(0.03); cell.margin_bottom = Inches(0.03)
         cell.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf = cell.text_frame; tf.word_wrap = True
-        p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER if size <= 13 else PP_ALIGN.LEFT
+        p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER
         r = p.add_run(); r.text = txt; set_run(r, size, bold, color)
     for j, ctxt in enumerate(cols):
         hi = (j == ncol - 1)
@@ -303,13 +342,8 @@ def pattern_E(s, cols, rows, source_hi=True):
         for j, val in enumerate(row):
             hi = (j == ncol - 1)
             bg = GREEN_LIGHT if hi else (WHITE if i % 2 == 0 else CERAMIC)
-            fill_cell(gtbl.cell(i + 1, j), val, 13 if j else 13,
+            fill_cell(gtbl.cell(i + 1, j), val, 13,
                       bold=hi, color=(STARBUCKS if hi else (TEXT if j == 0 else TEXT_SOFT)), bg=bg)
-
-def pattern_A(s, img, note):
-    _, tf = textbox(s, IX, IY - 0.05, IW, 0.35)
-    para(tf, [{"t": note, "s": 13, "b": True, "c": TEXT}], first=True)
-    s.shapes.add_picture(img, Inches(IX), Inches(IY + 0.35), width=Inches(IW))
 
 def pattern_H(s, pillars, takeaway):
     n = len(pillars); gap = 0.22
@@ -318,8 +352,7 @@ def pattern_H(s, pillars, takeaway):
     for i, p in enumerate(pillars):
         x = IX + i * (cw + gap)
         rounded(s, x, cy, cw, ch, fill=WHITE, line=HAIR, line_w=0.75, radius=0.06)
-        rect(s, x, cy, cw, 0.07, fill=ACCENT)  # top accent bar
-        # tag pill
+        rect(s, x, cy, cw, 0.07, fill=ACCENT)
         pw = min(cw - 0.4, 1.9)
         rounded(s, x + (cw - pw) / 2, cy + 0.28, pw, 0.34, fill=ACCENT, line=None, radius=0.5)
         _, tf = textbox(s, x + (cw - pw) / 2, cy + 0.28, pw, 0.34, anchor=MSO_ANCHOR.MIDDLE)
@@ -356,10 +389,9 @@ def pattern_B(s, kpis, img, note, takeaway):
         para(tf, [{"t": k["value"], "s": 40, "b": True, "c": STARBUCKS}], align=PP_ALIGN.CENTER, first=True)
         _, tf = textbox(s, x + 0.1, ty + 0.92, tw - 0.2, 0.35)
         para(tf, [{"t": k["label"], "s": 12, "c": TEXT_SOFT}], align=PP_ALIGN.CENTER, first=True)
-        if k.get("delta"):
-            pw = 1.0
-            rounded(s, x + (tw - pw) / 2, ty - 0.02, pw, 0.0, fill=None, line=None)
-    s.shapes.add_picture(img, Inches(IX), Inches(ty + th + 0.15), width=Inches(IW))
+    _, tf = textbox(s, IX, ty + th + 0.08, IW, 0.3)
+    para(tf, [{"t": note, "s": 12, "i": True, "c": TEXT_SOFT}], first=True)
+    s.shapes.add_picture(img, Inches(IX), Inches(ty + th + 0.42), width=Inches(IW))
     takeaway_strip(s, takeaway)
 
 def pattern_J(s, milestones, takeaway):
@@ -379,76 +411,125 @@ def pattern_J(s, milestones, takeaway):
         para(tf, [{"t": m["label"], "s": 12, "c": TEXT}], align=PP_ALIGN.CENTER, first=True, line=15)
     takeaway_strip(s, takeaway)
 
+def try_it(s, takeaway):
+    steps = ["Obsidian 설치", "RAG Obsidian\n플러그인 활성화", "임베딩·LLM 키 설정"]
+    n = 3; aw = 0.5; bw = (IW - aw * (n - 1)) / n; by = IY + 0.2; bh = 1.4
+    for i, t in enumerate(steps):
+        x = IX + i * (bw + aw)
+        rounded(s, x, by, bw, bh, fill=None, line=ACCENT, line_w=1.5, radius=0.06)
+        _, tf = textbox(s, x + 0.15, by, bw - 0.3, bh, anchor=MSO_ANCHOR.MIDDLE)
+        para(tf, [{"t": t, "s": 17, "b": True, "c": TEXT}], align=PP_ALIGN.CENTER, first=True, line=22)
+        if i < n - 1:
+            step_arrow(s, x + bw + 0.02, by + bh / 2 - 0.25, aw - 0.04, 0.5)
+    uy = by + bh + 0.72
+    rounded(s, IX + 0.8, uy, IW - 1.6, 1.05, fill=None, line=ACCENT, line_w=1.75, radius=0.1)
+    _, tf = textbox(s, IX + 0.8, uy + 0.16, IW - 1.6, 0.35, anchor=MSO_ANCHOR.MIDDLE)
+    para(tf, [{"t": "코드 · 문서 · 이슈", "s": 12, "b": True, "c": ACCENT}], align=PP_ALIGN.CENTER, first=True)
+    _, tf = textbox(s, IX + 0.8, uy + 0.5, IW - 1.6, 0.5, anchor=MSO_ANCHOR.MIDDLE)
+    para(tf, [{"t": REPO, "s": 27, "b": True, "c": STARBUCKS}], align=PP_ALIGN.CENTER, first=True)
+    _, tf = textbox(s, IX, uy + 1.25, IW, 0.4)
+    para(tf, [{"t": f"현재 {VERSION} · 개발 빌드로 사용 중 · 공개 배포 예정", "s": 13, "c": TEXT_SOFT}], align=PP_ALIGN.CENTER, first=True)
+    takeaway_strip(s, takeaway)
+
 # ================================================================ assemble
 def main():
     build_charts()
     cover()  # 1
-    big_message("OPENING", ["서재는 늘어나는데", "답에는 출처가 없다"],
-                "Obsidian은 노트를 찾아주지만, 어느 논문·어느 구절인지는 말해주지 않는다", 2)
-    s = content("BACKGROUND", "서지 플러그인과 AI 플러그인은 서로를 모른다", 3,
-                "Obsidian community plugins · 2026")
-    pattern_C(s, "Obsidian 생태계는 두 세계로 갈라져 있다",
-              ["서지: Citation·Zotero·ZotLit — 키워드뿐, Zotero 의존",
-               "AI: Smart Connections·Copilot·Khoj — 서지 모름, 노트 단위",
-               "교집합(의미검색+메타데이터+구절 인용)은 비어 있음"],
-              f"{ASSETS}/gap.png", "둘 다 반쪽 — 서지는 AI가 없고, AI는 서지를 모른다")
-    s = content("BACKGROUND", "둘을 잇는 다리는 아무도 안 놓았다 — 그게 빈틈", 4,
-                "Smart Connections 5.1k★ · Copilot 7.1k★ · Citation 1.3k★")
+
+    big_message("OPENING", ["답은 술술 나오는데", "출처가 가짜다"],
+                "AI에 물으면 그럴듯한 답 — 인용은 지어낸 것. 정작 내 서재는 뜻으로 못 뒤진다.", 2)  # 2
+
+    s = content("BACKGROUND", "AI는 출처를 지어내고, 내 노트는 뜻으로 못 찾는다", 3)  # 3
+    pattern_twoproblem(s,
+        {"label": "AI 챗봇에 물으면", "problem": "답은 그럴듯한데\n인용이 가짜다",
+         "detail": "없는 DOI를 지어내고, 출처를 확인할 수 없다"},
+        {"label": "내 노트·PDF를 뒤지면", "problem": "단어가 같아야\n겨우 찾힌다",
+         "detail": "뜻이 같아도 표현이 다르면 놓친다 — 의미로 못 찾는다"},
+        "필요한 건 — 내 서재 안에서, 뜻으로 찾아, 진짜 출처와 함께 답하는 도구")
+
+    big_message("THE IDEA", ["내 논문 서재가", "곧 검색엔진이다"],
+                "논문 1편 = 노트 1개. 그 노트들이 그대로 AI가 답하는 근거가 된다 — Zotero도, 서버도 없이.", 4)  # 4
+
+    s = content("HOW · 데이터", "노트 한 개가 곧 데이터베이스의 한 줄이다", 5,
+                "References/ 폴더의 마크다운 노트")  # 5
+    note_mock(s, "이 평범한 .md 파일 하나 = 데이터베이스의 한 줄. 플러그인을 지워도 내 데이터는 남는다.")
+
+    s = content("HOW · 흐름", "붙여넣기 한 번이면 출처 달린 답까지 간다", 6,
+                "실제 사용 흐름 예시")  # 6
+    workflow_steps(s, [
+        {"title": "DOI 붙여넣기", "ex": [{"t": "10.1038/nature14539", "s": 12.5, "b": True, "c": ACCENT}]},
+        {"title": "노트 자동 생성", "ex": [{"t": "lecun2015deep.md", "s": 12.5, "b": True, "c": TEXT},
+                                     {"t": "제목·저자·초록 자동 채움 ✓", "s": 11.5, "c": TEXT_SOFT}]},
+        {"title": "서재에 질문", "ex": [{"t": "“표현 학습이", "s": 13, "b": True, "c": TEXT},
+                                   {"t": "뭐였지?”", "s": 13, "b": True, "c": TEXT}]},
+        {"title": "출처 달린 답", "ex": [{"t": "“…계층적 표현을", "s": 12, "c": TEXT},
+                                    {"t": "학습한다 [1]”", "s": 12, "c": TEXT},
+                                    {"t": "[1] LeCun 2015 → 노트", "s": 11.5, "b": True, "c": ACCENT}]},
+    ], "붙여넣기 → 노트 → 질문 → 출처 달린 답. 서버 없이, 내 컴퓨터 안에서 한 흐름으로.")
+
+    s = content("FEATURES", "한 플러그인 안에 네 가지: 서재·검색·채팅·그래프", 7)  # 7
+    pattern_H(s, [{"tag": "LIBRARY", "big": "서재", "sub": "Zotero 대체", "body": "DOI/PMID/arXiv\n→ 마크다운 노트"},
+                  {"tag": "SEARCH", "big": "검색", "sub": "단어+뜻", "body": "하이브리드\n+ 메타데이터 필터"},
+                  {"tag": "CHAT", "big": "채팅", "sub": "근거 기반", "body": "구절 인용 [n]\n→ 서식 출처"},
+                  {"tag": "GRAPH", "big": "그래프", "sub": "OpenAlex", "body": "관련 ·\n놓친 논문"}],
+              "추가로: PDF 임포트 · @인용 자동완성 · 참고문헌 자동생성 · 온톨로지(분류체계) 팩")
+
+    s = content("HOW · 검색", "검색은 단어와 뜻을 함께 본다", 8,
+                "하이브리드 검색 · 임베딩 provider 3종")  # 8
+    pattern_F(s, [{"band": "단어로", "text": "정확한 용어 매칭 — 똑똑해진 Ctrl+F (BM25)"},
+                  {"band": "뜻으로", "text": "의미가 가까우면 매칭 — 'MI'로 검색해도 'myocardial infarction'을 찾음 (벡터 임베딩)"},
+                  {"band": "+ 필터", "text": "저자·연도·저널로 좁히기 (노트 맨 위 메타데이터)"}],
+              "단어 + 뜻 + 메타데이터를 한 번에 — 전부 로컬·무료. 필요하면 인용 그래프로 확장.")
+
+    s = content("HOW · 채팅", "모든 답은 내 서재의 진짜 구절을 인용한다", 9,
+                "근거 기반(RAG) 채팅 파이프라인")  # 9
+    pattern_F(s, [{"band": "① 검색", "text": "질문 → 내 서재에서 관련 구절만 회수 (서재 밖은 보지 않음)"},
+                  {"band": "② 근거", "text": "LLM이 그 구절로만 답하고, 문장마다 [n] 표시 — 출처 없는 주장 금지"},
+                  {"band": "③ 인용", "text": "[n] → APA·Vancouver 서식으로, 클릭하면 원문 노트로 이동"}],
+              "슬라이드 2의 '가짜 인용' 문제 해결 — 모든 [n]은 내 서재의 진짜 구절")
+
+    s = content("HOW · 그래프", "인용 그래프가 '내가 놓친 논문'을 찾아준다", 10,
+                "테스트 vault 4편 · OpenAlex (2.5억 편) 라이브")  # 10
+    pattern_C(s, "OpenAlex 인용 데이터로\n서재의 '인용 지도'를 그린다",
+              ["내 논문들이 서로 인용하는 관계 = 지도의 선",
+               "여러 번 인용되는데 내겐 없는 논문 = 놓친 논문",
+               "다음에 뭘 읽을지 — LLM 비용 0으로"],
+              f"{ASSETS}/graph.png", "실데이터: 4편만 넣어도 핵심 누락 논문 9편 자동 발굴")
+
+    s = content("WHY DIFFERENT", "서지 도구도 AI 도구도 못 하던 일을 한 번에", 11,
+                "Smart Connections 5.1k★ · Copilot 7.1k★ · Citation 1.3k★")  # 11
     pattern_E(s, ["기능", "서지 플러그인", "AI/RAG 플러그인", "RAG Obsidian"],
-              [["의미 검색", "✗", "✓", "✓"], ["메타데이터 패싯", "✓", "✗", "✓"],
+              [["의미(뜻) 검색", "✗", "✓", "✓"], ["저자·연도 필터", "✓", "✗", "✓"],
                ["구절 단위 인용", "✗", "✗ (노트 단위)", "✓"], ["서식 참고문헌", "일부", "✗", "✓"],
                ["인용 그래프", "✗", "✗", "✓"], ["Zotero 불필요", "✗", "—", "✓"]])
-    big_message("THE IDEA", ["마크다운이", "곧 데이터베이스다"],
-                "논문 1편 = 노트 1개 · CSL-JSON frontmatter · Zotero 없이, 백엔드 없이", 5)
-    s = content("ARCHITECTURE", "한 장으로 보는 구조: 노트 → 색인 → 근거 답변", 6,
-                "RAG Obsidian v0.1.0")
-    pattern_A(s, f"{ASSETS}/arch.png", "데이터 흐름 — 입력에서 근거 답변까지")
-    s = content("FEATURES", "네 가지가 한 플러그인에: 서재·검색·채팅·그래프", 7)
-    pattern_H(s, [{"tag": "LIBRARY", "big": "서재", "sub": "Zotero 대체", "body": "DOI/PMID/arXiv\n→ CSL-JSON 노트"},
-                  {"tag": "SEARCH", "big": "검색", "sub": "하이브리드", "body": "BM25+벡터\n메타데이터 필터"},
-                  {"tag": "CHAT", "big": "채팅", "sub": "근거 기반", "body": "구절 [n]\n→ 서식 인용"},
-                  {"tag": "GRAPH", "big": "그래프", "sub": "OpenAlex", "body": "관련 ·\n놓친 논문"}],
-              "추가로: PDF 임포트 · @인용 자동완성 · 참고문헌 생성 · 온톨로지 팩")
-    s = content("HOW IT WORKS · 검색", "검색은 싼 것부터 — 하이브리드, 필요하면 그래프", 8,
-                "Orama 하이브리드 · 임베딩 provider 3종")
-    pattern_F(s, [{"band": "Tier 0", "text": "하이브리드(BM25+벡터) + frontmatter 패싯 — 로컬, LLM 비용 0"},
-                  {"band": "Tier 1", "text": "OpenAlex 인용 그래프 1-hop 확장 — 무료·구조화, GraphRAG-lite"},
-                  {"band": "Tier 2+", "text": "선택: 재랭킹 · 온톨로지 IS_A 확장 (필요할 때만)"}],
-              "개인 서재엔 풀 GraphRAG 과함 — 인용엣지가 더 싸고 정확")
-    s = content("HOW IT WORKS · 그래프", "인용 그래프가 '내가 놓친 논문'을 찾아준다", 9,
-                "테스트 vault 4편 · OpenAlex 라이브")
-    pattern_C(s, "OpenAlex referenced_works로\n서재의 인용 지형을 그린다",
-              ["내 논문끼리 인용하는 엣지 (2015→1997·1998)",
-               "공동 인용(coupling)으로 비슷한 논문 묶기",
-               "≥2회 인용하지만 없는 논문 = 놓친 논문"],
-              f"{ASSETS}/graph.png", "실데이터: 보유 4편 → 놓친 논문 10편 (LLM 비용 0)")
-    s = content("HOW IT WORKS · 채팅", "모든 답은 구절 단위 출처와 함께 나온다", 10,
-                "근거 채팅 파이프라인")
-    pattern_F(s, [{"band": "검색", "text": "질문 → 관련 구절 top-K 회수 (서재 안에서만)"},
-                  {"band": "근거", "text": "LLM이 [n] 앵커로 인용 — 출처 없는 주장 금지"},
-                  {"band": "인용", "text": "[n] → APA/Vancouver/Plain 서식 출처 (클릭→노트)"}],
-              "Anthropic·OpenAI·Ollama 교체 가능 — 답은 항상 서재에 근거")
-    s = content("VALIDATION", "40개 통합검증 — 실 API·실데이터로 전부 통과", 11,
-                "npm test · 통합 하니스 40 checks")
-    pattern_B(s, [{"value": "40", "label": "통합검증 통과"}, {"value": "0", "label": "백엔드/서버"},
-                  {"value": "10", "label": "놓친 논문(실데이터)"}, {"value": "19p", "label": "실 PDF 추출 · 72K자"}],
+
+    s = content("VALIDATION", "40개 통합검증, 실제 API·데이터로 전부 통과", 12,
+                "npm test · 통합 하니스 40 checks")  # 12
+    pattern_B(s, [{"value": "40", "label": "통합검증 통과 (실패 0)"}, {"value": "0", "label": "백엔드/서버"},
+                  {"value": "9", "label": "놓친 논문 발굴 (실데이터)"}, {"value": "19p", "label": "실 PDF 추출 · 72K자"}],
               f"{ASSETS}/validation.png", "단계별 검증 분포",
               "live Crossref·PubMed·OpenAlex + Orama + pdfjs 실검증")
-    s = content("ROADMAP", "Phase 0에서 5까지, 각 단계가 독립적으로 쓸모", 12,
-                "v0.1.0 · github.com/grotyx/rag-obsidian")
+
+    s = content("ROADMAP", "Phase 0부터 5까지, 각 단계가 따로도 쓸모 있다", 13,
+                f"{VERSION} · {REPO}")  # 13
     pattern_J(s, [{"year": "P0", "label": "서지관리\nDOI→노트"}, {"year": "P1", "label": "의미 검색\nOrama"},
                   {"year": "P2", "label": "근거 채팅"}, {"year": "P3", "label": "PDF\n임포트"},
                   {"year": "P4", "label": "인용\n그래프"}, {"year": "P5", "label": "작성 지원\n참고문헌"}],
-              "향후: 풀 CSL(citeproc) · 온톨로지 검색확장 · 모바일 QA")
-    s = content("CONCLUSION", "Zotero 없이, 백엔드 없이, 근거와 함께", 13)
-    pattern_H(s, [{"tag": "OWN YOUR DATA", "big": "마크다운", "sub": "= DB", "body": "평문·git·로컬 우선\n플러그인보다 오래 남음"},
-                  {"tag": "GROUNDED", "big": "근거", "sub": "구절 인용", "body": "출처 없는 답 없음\n서식 참고문헌"},
+              "향후: 풀 CSL(citeproc) 스타일 · 온톨로지 검색확장 · 모바일 QA")
+
+    s = content("GET STARTED", "Obsidian만 있으면 오늘부터 시작", 14)  # 14
+    try_it(s, "Obsidian만 있으면 오늘부터 — 내 서재가 답하기 시작한다")
+
+    s = content("CONCLUSION", "Zotero 없이, 서버 없이, 늘 출처와 함께", 15)  # 15
+    pattern_H(s, [{"tag": "OWN YOUR DATA", "big": "마크다운", "sub": "= 내 DB", "body": "평문·git·로컬 우선\n플러그인보다 오래 남음"},
+                  {"tag": "GROUNDED", "big": "근거", "sub": "구절 인용", "body": "출처 없는 답 없음\n서식 참고문헌까지"},
                   {"tag": "GRAPH-LITE", "big": "그래프", "sub": "놓친 논문", "body": "OpenAlex 인용엣지\nLLM 비용 0"}],
-              "서재가 곧 검색엔진이고, 답은 늘 출처와 함께 — RAG Obsidian v0.1.0")
-    closing()  # 14
+              "내 서재가 곧 검색엔진이고, 답은 늘 출처와 함께 — RAG Obsidian")
+
+    closing()  # 16
     out = os.path.join(HERE, "rag_obsidian_deck.pptx")
     prs.save(out)
-    print("saved →", out, "·", len(prs.slides.__iter__.__self__._sldIdLst), "slides")
+    print("saved →", out, "·", len(prs.slides), "slides")
 
 if __name__ == "__main__":
     main()
