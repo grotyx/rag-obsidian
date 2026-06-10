@@ -302,9 +302,8 @@ export default class ScholarRagPlugin extends Plugin {
       bib = buildBibliography(keys, this.library, this.settings.citeStyle);
     }
     const section = `## References\n\n${bib}\n`;
-    const idx = content.search(/\n##\s+References\s*\n/i);
-    const base = (idx >= 0 ? content.slice(0, idx) : content).replace(/\s+$/, "");
-    await this.app.vault.modify(file, `${base}\n\n${section}`);
+    const { base, tail } = splitAtReferences(content);
+    await this.app.vault.modify(file, `${base}\n\n${section}${tail}`);
     new Notice(`Bibliography updated: ${keys.length} reference(s)`);
   }
 
@@ -407,24 +406,29 @@ export default class ScholarRagPlugin extends Plugin {
     const notice = new Notice(`Citation counts 0/${entries.length}…`, 0);
     let done = 0;
     let updated = 0;
-    for (const e of entries) {
-      const item = this.library.getItem(e.citekey);
-      const file = this.library.getFile(e.citekey);
-      if (item && file) {
-        const w = await resolveWork(item, this.settings.openalexMailto);
-        if (w) {
-          await this.app.fileManager.processFrontMatter(file, (fm) => {
-            fm.cited_by_count = w.citedByCount;
-            if (!fm.openalex_id) fm.openalex_id = w.openalexId;
-          });
-          updated++;
+    try {
+      for (const e of entries) {
+        const item = this.library.getItem(e.citekey);
+        const file = this.library.getFile(e.citekey);
+        if (item && file) {
+          const w = await resolveWork(item, this.settings.openalexMailto);
+          if (w) {
+            await this.app.fileManager.processFrontMatter(file, (fm) => {
+              fm.cited_by_count = w.citedByCount;
+              if (!fm.openalex_id) fm.openalex_id = w.openalexId;
+            });
+            updated++;
+          }
         }
+        done++;
+        notice.setMessage(`Citation counts ${done}/${entries.length}…`);
       }
-      done++;
-      notice.setMessage(`Citation counts ${done}/${entries.length}…`);
+      new Notice(`Updated citation counts for ${updated} reference(s).`);
+    } catch (e) {
+      new Notice(`Citation count backfill failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      notice.hide();
     }
-    notice.hide();
-    new Notice(`Updated citation counts for ${updated} reference(s).`);
   }
 
   /** Look up an open-access PDF for the active reference note (Unpaywall) and store it. */
@@ -490,9 +494,8 @@ export default class ScholarRagPlugin extends Plugin {
       });
       refsBlock = buildBibliography(keys, this.library, this.settings.citeStyle);
     }
-    const idx = body.search(/\n##\s+References\s*\n/i);
-    const base = (idx >= 0 ? body.slice(0, idx) : body).replace(/\s+$/, "");
-    const out = `${base}\n\n## References\n\n${refsBlock}\n`;
+    const { base, tail } = splitAtReferences(body);
+    const out = `${base}\n\n## References\n\n${refsBlock}\n${tail}`;
     const outPath = normalizePath(file.path.replace(/\.md$/i, "") + " (compiled).md");
     await this.app.vault.adapter.write(outPath, out);
     new Notice(`Compiled → ${outPath}`);
@@ -690,8 +693,15 @@ export default class ScholarRagPlugin extends Plugin {
     const item = this.library.getItem(String(r.fm.citekey));
     if (!item) return;
     const notice = new Notice("Finding related papers…", 0);
-    const rel = await relatedWorks(item, this.settings.openalexMailto);
-    notice.hide();
+    let rel: Awaited<ReturnType<typeof relatedWorks>>;
+    try {
+      rel = await relatedWorks(item, this.settings.openalexMailto);
+    } catch (e) {
+      new Notice(`Related-papers lookup failed: ${e instanceof Error ? e.message : e}`);
+      return;
+    } finally {
+      notice.hide();
+    }
     if (!rel.length) {
       new Notice("No related works found on OpenAlex");
       return;
@@ -874,7 +884,7 @@ export default class ScholarRagPlugin extends Plugin {
   /** Rename (or delete, if newTag is empty) a tag across every reference note. */
   async renameTag(oldTag: string, newTag: string): Promise<number> {
     let n = 0;
-    for (const file of this.app.vault.getMarkdownFiles()) {
+    for (const { file } of this.library.entries()) {
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
       if (!fm || !Array.isArray(fm.tags) || !fm.tags.includes(oldTag)) continue;
       await this.app.fileManager.processFrontMatter(file, (f) => {
@@ -898,6 +908,20 @@ export default class ScholarRagPlugin extends Plugin {
     }
     workspace.revealLeaf(leaf);
   }
+}
+
+/** Split a note around its "## References" section: `base` is everything before the heading
+ *  (trailing whitespace trimmed), `tail` is any later same-or-higher-level section
+ *  (e.g. "## Appendix") to reattach after the freshly built bibliography. */
+function splitAtReferences(content: string): { base: string; tail: string } {
+  const m = content.match(/\n##\s+References\s*\n/i);
+  if (!m || m.index === undefined) return { base: content.replace(/\s+$/, ""), tail: "" };
+  const rest = content.slice(m.index + m[0].length);
+  const next = rest.search(/\n#{1,2} /);
+  return {
+    base: content.slice(0, m.index).replace(/\s+$/, ""),
+    tail: next >= 0 ? rest.slice(next) : "",
+  };
 }
 
 /** Render a citeproc in-text label (e.g. `<sup>1</sup>`, `[1]`, `(Park et al., 2022)`) into a span. */

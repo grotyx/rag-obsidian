@@ -23,10 +23,14 @@ export class OntologyManager {
       const f = this.app.vault.getAbstractFileByPath(normalizePath(p));
       if (f instanceof TFile) {
         try {
-          pack = JSON.parse(await this.app.vault.read(f));
+          const parsed = JSON.parse(await this.app.vault.read(f));
+          if (!Array.isArray(parsed?.concepts)) throw new Error("missing `concepts` array");
+          pack = parsed;
         } catch {
-          new Notice("Ontology pack failed to parse — using built-in sample");
+          new Notice("Ontology pack invalid (parse error or missing `concepts`) — using built-in sample");
         }
+      } else {
+        new Notice(`Ontology pack not found at "${p}" — using built-in sample`);
       }
     }
     this.ontology.load(pack);

@@ -1,6 +1,8 @@
 /* PDF text extraction. pdfjs is loaded from a CDN at runtime (kept out of the
  * bundle to avoid a ~1MB main.js). The loader is injectable for testing. */
 
+import { cleanDoi } from "./metadata";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PdfjsLike = {
   GlobalWorkerOptions: { workerSrc: string };
@@ -128,7 +130,7 @@ export async function extractPdfHighlights(data: ArrayBuffer): Promise<PdfHighli
 export function findIdentifier(text: string): { kind: "doi" | "arxiv"; value: string } | null {
   const head = text.slice(0, 6000);
   const doi = head.match(/10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i);
-  if (doi) return { kind: "doi", value: doi[0].replace(/[.,;]+$/, "") };
+  if (doi) return { kind: "doi", value: cleanDoi(doi[0]) };
   const arx = head.match(/arXiv:\s*(\d{4}\.\d{4,5})/i);
   if (arx) return { kind: "arxiv", value: arx[1] };
   return null;

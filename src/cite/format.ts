@@ -60,12 +60,17 @@ export function formatCitation(item: CSLItem, style: CiteStyle = "apa"): string 
 
   if (style === "vancouver") {
     const a = vancouverAuthors(item.author);
-    return tidy(`${a}. ${title}. ${journal}. ${year(item)};${vol}${iss}${pg}.${doi}`);
+    const lead = a ? `${a}. ` : ""; // no authors → title leads the entry
+    return tidy(`${lead}${title}. ${journal}. ${year(item)};${vol}${iss}${pg}.${doi}`);
   }
   if (style === "plain") {
-    return tidy(`${apaAuthors(item.author)} (${year(item)}). ${title}. ${journal}.`);
+    const a = apaAuthors(item.author);
+    const lead = a ? `${a} (${year(item)}). ${title}` : `${title} (${year(item)})`;
+    return tidy(`${lead}. ${journal}.`);
   }
   // APA
+  const a = apaAuthors(item.author);
+  const lead = a ? `${a} (${year(item)}). ${title}` : `${title} (${year(item)})`;
   const volPart = vol ? `, ${vol}${iss}` : "";
-  return tidy(`${apaAuthors(item.author)} (${year(item)}). ${title}. ${journal}${volPart}${pg}.${doi}`);
+  return tidy(`${lead}. ${journal}${volPart}${pg}.${doi}`);
 }

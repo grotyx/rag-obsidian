@@ -1,7 +1,10 @@
 import {
   create,
   insertMultiple,
+  remove,
   removeMultiple,
+  getByID,
+  count,
   search,
   MODE_HYBRID_SEARCH,
 } from "@orama/orama";
@@ -13,6 +16,8 @@ export interface StoredMeta {
   dim: number;
   chunkIds: Record<string, string[]>;
   count: number;
+  /** note path → citekey (optional: absent in pre-0.3.1 metas). */
+  paths?: Record<string, string>;
 }
 
 export interface SearchHit {
@@ -37,9 +42,20 @@ export class VectorStore {
   dim = 0;
   modelId = "";
   chunkIds: Record<string, string[]> = {};
+  /** note path → citekey, so deletes/renames can resolve chunks even when filename ≠ citekey. */
+  paths: Record<string, string> = {};
 
   get ready(): boolean {
     return this.db !== null;
+  }
+
+  /** Drop everything; store becomes not-ready until the next init/load. */
+  reset(): void {
+    this.db = null;
+    this.dim = 0;
+    this.modelId = "";
+    this.chunkIds = {};
+    this.paths = {};
   }
 
   /** Create a fresh DB for a given vector dimension + model id. Clears content. */
@@ -47,6 +63,7 @@ export class VectorStore {
     this.dim = dim;
     this.modelId = modelId;
     this.chunkIds = {};
+    this.paths = {};
     this.db = create({
       schema: {
         id: "string",
@@ -74,10 +91,14 @@ export class VectorStore {
       text: c.text,
       embedding: vectors[i],
     }));
+    // stale ids (e.g. meta/DB desync) would make insertMultiple throw DOCUMENT_ALREADY_EXISTS
+    for (const d of docs) {
+      if (getByID(this.db, d.id)) await remove(this.db, d.id);
+    }
     await insertMultiple(this.db, docs);
     for (const c of chunks) {
       if (!this.chunkIds[c.citekey]) this.chunkIds[c.citekey] = [];
-      this.chunkIds[c.citekey].push(c.id);
+      if (!this.chunkIds[c.citekey].includes(c.id)) this.chunkIds[c.citekey].push(c.id);
     }
   }
 
@@ -86,6 +107,18 @@ export class VectorStore {
     const ids = this.chunkIds[citekey];
     if (ids && ids.length) await removeMultiple(this.db, ids);
     delete this.chunkIds[citekey];
+    for (const [p, ck] of Object.entries(this.paths)) {
+      if (ck === citekey) delete this.paths[p];
+    }
+  }
+
+  /** Record which note path holds a citekey's chunks. */
+  setPath(path: string, citekey: string): void {
+    this.paths[path] = citekey;
+  }
+
+  citekeyForPath(path: string): string | undefined {
+    return this.paths[path];
   }
 
   async search(
@@ -138,14 +171,23 @@ export class VectorStore {
       dim: this.dim,
       chunkIds: this.chunkIds,
       count: this.count,
+      paths: this.paths,
     };
     return { data, meta };
   }
 
   async load(data: string, meta: StoredMeta): Promise<void> {
-    this.db = await restore("json", data);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = await restore("json", data);
+    // DB/meta written separately — a crash between writes can desync them; treat as absent.
+    const tracked = Object.values(meta.chunkIds || {}).reduce((a, b) => a + b.length, 0);
+    if (count(db) !== tracked) {
+      throw new Error(`index/meta desync (${count(db)} docs vs ${tracked} tracked) — rebuild required`);
+    }
+    this.db = db;
     this.dim = meta.dim;
     this.modelId = meta.modelId;
     this.chunkIds = meta.chunkIds || {};
+    this.paths = meta.paths || {};
   }
 }

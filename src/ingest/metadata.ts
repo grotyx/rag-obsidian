@@ -7,6 +7,16 @@ export type SourceId =
   | { kind: "arxiv"; value: string }
   | { kind: "unknown"; value: string };
 
+/** Strip trailing sentence punctuation from a matched DOI (reference-list pastes like
+ * "10.1038/xxx."), but keep a trailing ')' that balances an unmatched '(' (legacy SICI DOIs). */
+export function cleanDoi(doi: string): string {
+  let d = doi.replace(/[.,;:)\]]+$/, "");
+  const open = (d.match(/\(/g) || []).length;
+  const close = (d.match(/\)/g) || []).length;
+  if (open > close && doi[d.length] === ")") d += ")";
+  return d;
+}
+
 /** Detect identifier type from a raw string (DOI, PMID, arXiv ID, or URL). */
 export function detectId(raw: string): SourceId {
   const s = raw.trim();
@@ -22,7 +32,7 @@ export function detectId(raw: string): SourceId {
 
   // DOI (also matches DOIs embedded in URLs)
   const doi = s.match(/10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i);
-  if (doi) return { kind: "doi", value: doi[0] };
+  if (doi) return { kind: "doi", value: cleanDoi(doi[0]) };
 
   // PMID
   if (/^pmid:?\s*\d+$/i.test(s)) return { kind: "pmid", value: s.replace(/\D/g, "") };
@@ -133,17 +143,50 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
     issued: parsePubDate(r.pubdate),
   };
 
-  // abstract via efetch (best-effort)
+  // abstract via efetch (best-effort) — retmode=xml so we get the real abstract,
+  // not the full formatted citation (journal/authors/affiliations/DOI footer)
   try {
     const ab = await requestUrl({
-      url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=text${key}`,
+      url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=xml${key}`,
     });
-    if (ab.text) item.abstract = ab.text.replace(/\s+/g, " ").trim().slice(0, 5000);
+    let abstract = ab.text ? extractAbstractXml(ab.text) : "";
+    if (!abstract) {
+      // fall back to the plain-text fetch (formatted citation; better than nothing)
+      const txt = await requestUrl({
+        url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=text${key}`,
+      });
+      abstract = (txt.text || "").replace(/\s+/g, " ").trim();
+    }
+    if (abstract) item.abstract = abstract.slice(0, 5000);
   } catch {
     /* abstract is optional */
   }
 
   return clean(item);
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+/** Pull the abstract out of a PubMed efetch XML response: concatenate all
+ * <AbstractText> sections, prefixing "LABEL: " when a Label attribute exists. */
+function extractAbstractXml(xml: string): string {
+  const parts: string[] = [];
+  const re = /<AbstractText([^>]*)>([\s\S]*?)<\/AbstractText>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml))) {
+    const label = m[1].match(/\bLabel="([^"]*)"/i)?.[1];
+    const text = decodeEntities(stripTags(m[2]));
+    if (!text) continue;
+    parts.push(label ? `${label}: ${text}` : text);
+  }
+  return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
 function splitName(name: string): { family?: string; given?: string } {

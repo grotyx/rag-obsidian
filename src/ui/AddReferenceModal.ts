@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting, TextComponent } from "obsidian";
+import { App, ButtonComponent, Modal, Notice, Setting, TextComponent } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { detectId, fetchMetadata } from "../ingest/metadata";
 import { resolveWork } from "../graph/openalex";
@@ -7,6 +7,8 @@ import { CSLItem } from "../types";
 export class AddReferenceModal extends Modal {
   private plugin: ScholarRagPlugin;
   private input = "";
+  private busy = false;
+  private fetchBtn?: ButtonComponent;
 
   constructor(app: App, plugin: ScholarRagPlugin) {
     super(app);
@@ -32,19 +34,23 @@ export class AddReferenceModal extends Modal {
       });
     });
 
-    new Setting(contentEl).addButton((b) =>
-      b.setButtonText("Fetch & add").setCta().onClick(() => void this.submit())
-    );
+    new Setting(contentEl).addButton((b) => {
+      this.fetchBtn = b;
+      b.setButtonText("Fetch & add").setCta().onClick(() => void this.submit());
+    });
 
     window.setTimeout(() => textComp?.inputEl.focus(), 0);
   }
 
   private async submit(): Promise<void> {
+    if (this.busy) return;
     const raw = this.input.trim();
     if (!raw) {
       new Notice("Enter an identifier");
       return;
     }
+    this.busy = true;
+    this.fetchBtn?.setDisabled(true).setButtonText("Adding…");
     const id = detectId(raw);
     const notice = new Notice(
       id.kind === "unknown" ? `Searching "${raw}"…` : `Fetching ${id.kind.toUpperCase()} ${id.value}…`,
@@ -85,6 +91,9 @@ export class AddReferenceModal extends Modal {
       notice.hide();
       console.error("[RAG Obsidian] fetch failed", e);
       new Notice(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      this.busy = false;
+      this.fetchBtn?.setDisabled(false).setButtonText("Fetch & add");
     }
   }
 

@@ -72,6 +72,11 @@ export class CitationGraph {
           data.byCitekey[e.citekey] = { openalexId: w.openalexId, refs: w.referencedWorks };
           data.idToCitekey[w.openalexId] = e.citekey;
           await this.backfillId(e.file, w.openalexId);
+        } else if (this.data.byCitekey[e.citekey]) {
+          // Transient failure (e.g. 429): keep the previously resolved node.
+          const prev = this.data.byCitekey[e.citekey];
+          data.byCitekey[e.citekey] = prev;
+          data.idToCitekey[prev.openalexId] = e.citekey;
         }
       }
       onProgress?.(++done, entries.length);
@@ -118,7 +123,7 @@ export class CitationGraph {
     const scored: CoupledPaper[] = [];
     for (const [ck, n] of Object.entries(this.data.byCitekey)) {
       if (ck === citekey) continue;
-      const shared = n.refs.filter((r) => mine.has(r)).length;
+      const shared = new Set(n.refs.filter((r) => mine.has(r))).size;
       if (shared >= minShared) scored.push({ citekey: ck, shared });
     }
     return scored.sort((a, b) => b.shared - a.shared);
@@ -128,7 +133,7 @@ export class CitationGraph {
   async missingFrequent(minCount = 2): Promise<MissingPaper[]> {
     const count: Record<string, number> = {};
     for (const n of Object.values(this.data.byCitekey)) {
-      for (const r of n.refs) {
+      for (const r of new Set(n.refs)) {
         if (!this.data.idToCitekey[r]) count[r] = (count[r] || 0) + 1;
       }
     }

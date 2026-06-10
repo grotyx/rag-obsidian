@@ -49,11 +49,24 @@ export class RagChat {
       "Use ONLY the information in the provided sources. If the sources do not contain the answer, say so plainly.",
       "Cite every claim with bracketed source numbers like [1] or [2][3]. Never invent citations or facts.",
       "Be concise and precise; surface specific findings, numbers, effect sizes, and methods when present.",
+      "Cite ONLY from the current source list below; earlier turns in the conversation refer to different source numberings.",
     ].join(" ");
+
+    // Prior assistant answers carry [n] anchors numbered against THEIR turn's sources;
+    // strip them so they can't collide with the current numbering.
+    const cleanHistory: ChatMessage[] = history.map((m) =>
+      m.role === "assistant" ? { ...m, content: m.content.replace(/\[\d+\]/g, "") } : m
+    );
 
     const user = `Question: ${query}\n\nSources:\n${context}`;
     const llm = new LLMClient(this.settings);
-    const text = await llm.chat([...history, { role: "user", content: user }], system);
+    const raw = await llm.chat([...cleanHistory, { role: "user", content: user }], system);
+
+    // Drop dangling anchors (n outside 1..sources) so the UI never maps them.
+    const text = raw.replace(/\[(\d+)\]/g, (m, d) => {
+      const n = parseInt(d, 10);
+      return n >= 1 && n <= order.length ? m : "";
+    });
 
     const style = this.settings.citeStyle as CiteStyle;
     const sources: AnswerSource[] = order.map((ck, i) => {

@@ -10,6 +10,11 @@ export interface OntologyPack {
   concepts: OntologyConcept[];
 }
 
+/** Normalize an alias the same way `link()` normalizes the haystack. */
+function normAlias(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
 /** In-memory ontology: alias linking + IS_A (parent/child) traversal. Scheme-agnostic
  *  (SNOMED-CT, MeSH, MONDO, custom) — the JSON pack supplies the content. */
 export class Ontology {
@@ -24,8 +29,10 @@ export class Ontology {
     this.scheme = pack.scheme;
     for (const c of pack.concepts) {
       this.byId.set(c.id, c);
-      this.aliasToId.set(c.label.toLowerCase(), c.id);
-      for (const s of c.synonyms ?? []) this.aliasToId.set(s.toLowerCase(), c.id);
+      for (const alias of [c.label, ...(c.synonyms ?? [])]) {
+        const a = normAlias(alias);
+        if (a) this.aliasToId.set(a, c.id);
+      }
     }
     this.loaded = true;
   }
@@ -73,11 +80,17 @@ export class Ontology {
 
   descendants(id: string): OntologyConcept[] {
     const out: OntologyConcept[] = [];
-    for (const c of this.byId.values()) {
-      if ((c.parents ?? []).includes(id)) {
-        out.push(c, ...this.descendants(c.id));
+    const seen = new Set<string>([id]);
+    const walk = (cid: string) => {
+      for (const c of this.byId.values()) {
+        if (!seen.has(c.id) && (c.parents ?? []).includes(cid)) {
+          seen.add(c.id);
+          out.push(c);
+          walk(c.id);
+        }
       }
-    }
+    };
+    walk(id);
     return out;
   }
 

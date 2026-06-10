@@ -2,17 +2,20 @@ import { Library } from "../data/library";
 import { formatCitation } from "./format";
 import { CiteStyle, CSLItem } from "../types";
 
-const CITE_RE = /\[@([^\]]+)\]/g; // [@key]  or  [@a; @b]
+const CITE_RE = /\[([^\]]*@[^\]]*)\]/g; // [@key]  ·  [-@key]  ·  [@a; @b]  ·  [@key, p. 23]
+const KEY_RE = /-?@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+?<>~\/-]*)/g; // Pandoc citekey (locators ignored)
 
 /** Pull unique citekeys (in first-seen order) out of `[@citekey]` Pandoc citations. */
 export function extractCitekeys(text: string): string[] {
   const keys: string[] = [];
+  const clean = text.replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " "); // skip code
   let m: RegExpExecArray | null;
   CITE_RE.lastIndex = 0;
-  while ((m = CITE_RE.exec(text)) !== null) {
-    for (const part of m[1].split(";")) {
-      const k = part.trim().replace(/^@/, "").trim();
-      if (k && !keys.includes(k)) keys.push(k);
+  while ((m = CITE_RE.exec(clean)) !== null) {
+    let km: RegExpExecArray | null;
+    KEY_RE.lastIndex = 0;
+    while ((km = KEY_RE.exec(m[1])) !== null) {
+      if (!keys.includes(km[1])) keys.push(km[1]);
     }
   }
   return keys;

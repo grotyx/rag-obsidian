@@ -44,6 +44,13 @@ export class CitationSuggest extends EditorSuggest<RefEntry> {
   selectSuggestion(e: RefEntry): void {
     const ctx = this.context;
     if (!ctx) return;
-    ctx.editor.replaceRange(`[@${e.citekey}]`, ctx.start, ctx.end);
+    let { start, end } = ctx;
+    const line = ctx.editor.getLine(start.line);
+    if (line[start.ch - 1] === "[") {
+      // user already typed '[' (and maybe ']') — replace them so we don't double-bracket
+      start = { line: start.line, ch: start.ch - 1 };
+      if (line[end.ch] === "]") end = { line: end.line, ch: end.ch + 1 };
+    }
+    ctx.editor.replaceRange(`[@${e.citekey}]`, start, end);
   }
 }

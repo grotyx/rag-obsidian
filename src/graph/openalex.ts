@@ -21,6 +21,34 @@ function withMailto(url: string, mailto: string): string {
   return url + (url.includes("?") ? "&" : "?") + "mailto=" + encodeURIComponent(mailto);
 }
 
+/** Strip doi.org/doi: prefixes so the bare DOI can be safely encoded into a URL path. */
+function normalizeDoi(doi: string): string {
+  return doi.trim().replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").replace(/^doi:/i, "");
+}
+
+/** Commas and pipes are OpenAlex filter syntax — replace them before embedding a title. */
+function sanitizeFilterValue(value: string): string {
+  return value.replace(/[,|]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
+function normalizeTitle(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** requestUrl with a single retry after ~1s on 429 (rate limit). */
+async function requestRetry429(url: string) {
+  let res = await requestUrl({ url, throw: false });
+  if (res.status === 429) {
+    await sleep(1000);
+    res = await requestUrl({ url, throw: false });
+  }
+  return res;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toWork(w: any): OAWork {
   return {
@@ -38,23 +66,28 @@ export async function resolveWork(item: CSLItem, mailto = ""): Promise<OAWork | 
   const oaId = typeof item.openalex_id === "string" ? shortId(item.openalex_id) : "";
   let url: string;
   if (oaId) url = `${BASE}/works/${oaId}`;
-  else if (item.DOI) url = `${BASE}/works/https://doi.org/${item.DOI}`;
+  else if (item.DOI) url = `${BASE}/works/https://doi.org/${encodeURIComponent(normalizeDoi(String(item.DOI)))}`;
   else if (item.PMID) url = `${BASE}/works/pmid:${item.PMID}`;
   else if (item.title) {
-    const r = await requestUrl({
-      url: withMailto(
-        `${BASE}/works?filter=title.search:${encodeURIComponent(String(item.title))}&per-page=1`,
+    const r = await requestRetry429(
+      withMailto(
+        `${BASE}/works?filter=title.search:${encodeURIComponent(sanitizeFilterValue(String(item.title)))}&per-page=1`,
         mailto
-      ),
-      throw: false,
-    });
+      )
+    );
+    if (r.status >= 400 || !r.json) return null;
     const w = r.json?.results?.[0];
-    return w ? toWork(w) : null;
+    if (!w) return null;
+    // Guard against a wrong top hit being persisted: titles must match.
+    const want = normalizeTitle(String(item.title));
+    const got = normalizeTitle(String(w.title || w.display_name || ""));
+    if (!want || !got || (want !== got && !want.includes(got) && !got.includes(want))) return null;
+    return toWork(w);
   } else {
     return null;
   }
 
-  const res = await requestUrl({ url: withMailto(url, mailto), throw: false });
+  const res = await requestRetry429(withMailto(url, mailto));
   if (res.status >= 400 || !res.json) return null;
   return toWork(res.json);
 }
@@ -67,7 +100,7 @@ export async function relatedWorks(
   let url: string;
   const oaId = typeof item.openalex_id === "string" ? shortId(item.openalex_id) : "";
   if (oaId) url = `${BASE}/works/${oaId}`;
-  else if (item.DOI) url = `${BASE}/works/https://doi.org/${item.DOI}`;
+  else if (item.DOI) url = `${BASE}/works/https://doi.org/${encodeURIComponent(normalizeDoi(String(item.DOI)))}`;
   else if (item.PMID) url = `${BASE}/works/pmid:${item.PMID}`;
   else return [];
   url += "?select=related_works";

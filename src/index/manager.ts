@@ -80,11 +80,23 @@ export class IndexManager {
   async rebuild(onProgress?: (done: number, total: number) => void): Promise<number> {
     const provider = createProvider(this.settings);
     const all: Chunk[] = [];
-    for (const f of this.files()) all.push(...(await this.readChunks(f)));
+    const pathByCitekey = new Map<string, string>();
+    for (const f of this.files()) {
+      const chunks = await this.readChunks(f);
+      const citekey = chunks[0]?.citekey;
+      if (!citekey) continue;
+      if (pathByCitekey.has(citekey)) {
+        console.warn(`[RAG Obsidian] duplicate citekey "${citekey}" — skipping ${f.path}`);
+        continue;
+      }
+      pathByCitekey.set(citekey, f.path);
+      all.push(...chunks);
+    }
 
     if (all.length === 0) {
-      this.store.init(1, provider.id);
-      await this.persist();
+      // don't init() with a bogus dim — clear instead so reindexFile no-ops until a real build
+      this.store.reset();
+      await this.clearPersisted();
       return 0;
     }
 
@@ -98,6 +110,7 @@ export class IndexManager {
 
     this.store.init(vectors[0].length, provider.id);
     await this.store.addChunks(all, vectors);
+    for (const [citekey, path] of pathByCitekey) this.store.setPath(path, citekey);
     await this.persist();
     return all.length;
   }
@@ -107,19 +120,32 @@ export class IndexManager {
     if (!this.store.ready) return;
     const provider = createProvider(this.settings);
     const chunks = await this.readChunks(file);
-    const citekey = chunks[0]?.citekey ?? this.citekeyOfPath(file.path);
-    if (citekey) await this.store.removeCitekey(citekey);
+    const oldCitekey = this.store.citekeyForPath(file.path);
     if (chunks.length) {
+      // embed + dim-check BEFORE touching the index, so a model mismatch can't drop the note
       const vecs = await provider.embed(chunks.map((c) => c.embedText));
-      if (vecs[0]?.length !== this.store.dim) return; // model mismatch — needs full rebuild
+      if (vecs[0]?.length !== this.store.dim) {
+        console.warn(
+          `[RAG Obsidian] embedding dim ${vecs[0]?.length} ≠ index dim ${this.store.dim} — rebuild required; ${file.path} left as-is`
+        );
+        return;
+      }
+      const citekey = chunks[0].citekey;
+      if (oldCitekey && oldCitekey !== citekey) await this.store.removeCitekey(oldCitekey);
+      await this.store.removeCitekey(citekey);
       await this.store.addChunks(chunks, vecs);
+      this.store.setPath(file.path, citekey);
+    } else {
+      const citekey = oldCitekey ?? this.citekeyOfPath(file.path);
+      if (citekey) await this.store.removeCitekey(citekey);
     }
     await this.persist();
   }
 
   async removeFile(path: string): Promise<void> {
     if (!this.store.ready) return;
-    const citekey = this.citekeyOfPath(path);
+    // chunks are keyed by frontmatter citekey, which may differ from the filename
+    const citekey = this.store.citekeyForPath(path) ?? this.citekeyOfPath(path);
     if (citekey) {
       await this.store.removeCitekey(citekey);
       await this.persist();
@@ -163,7 +189,16 @@ export class IndexManager {
     const adapter = this.app.vault.adapter;
     if (!(await adapter.exists(this.dir))) await adapter.mkdir(this.dir);
     const { data, meta } = await this.store.serialize();
+    // orama first, meta last: meta is the commit marker (restore bails if it's missing,
+    // and store.load rejects a count desync from a crash between the two writes)
     await adapter.write(this.oramaPath, data);
     await adapter.write(this.metaPath, JSON.stringify(meta));
+  }
+
+  private async clearPersisted(): Promise<void> {
+    const adapter = this.app.vault.adapter;
+    // meta first: without it, a leftover orama.json is ignored on restore
+    if (await adapter.exists(this.metaPath)) await adapter.remove(this.metaPath);
+    if (await adapter.exists(this.oramaPath)) await adapter.remove(this.oramaPath);
   }
 }

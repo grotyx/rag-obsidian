@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, WorkspaceLeaf, debounce, normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { RefEntry } from "../data/library";
 import { AddReferenceModal } from "./AddReferenceModal";
@@ -13,6 +13,7 @@ export class LibraryView extends ItemView {
   private plugin: ScholarRagPlugin;
   private filter = "";
   private listEl!: HTMLElement;
+  private refresh = debounce(() => this.renderList(), 300, true);
 
   constructor(leaf: WorkspaceLeaf, plugin: ScholarRagPlugin) {
     super(leaf);
@@ -31,9 +32,15 @@ export class LibraryView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.render();
-    this.registerEvent(this.app.metadataCache.on("changed", () => this.renderList()));
-    this.registerEvent(this.app.vault.on("delete", () => this.renderList()));
-    this.registerEvent(this.app.vault.on("rename", () => this.renderList()));
+    this.registerEvent(this.app.metadataCache.on("changed", (f) => this.onFileEvent(f.path)));
+    this.registerEvent(this.app.vault.on("delete", (f) => this.onFileEvent(f.path)));
+    this.registerEvent(this.app.vault.on("rename", (f, oldPath) => this.onFileEvent(f.path, oldPath)));
+  }
+
+  /** Re-render (debounced) only for files under the references folder. */
+  private onFileEvent(path: string, oldPath?: string): void {
+    const prefix = normalizePath(this.plugin.settings.referencesFolder) + "/";
+    if (path.startsWith(prefix) || oldPath?.startsWith(prefix)) this.refresh();
   }
 
   async onClose(): Promise<void> {

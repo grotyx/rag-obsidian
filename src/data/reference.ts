@@ -32,7 +32,9 @@ export function firstTitleWord(item: CSLItem): string {
 }
 
 export function generateCitekey(item: CSLItem, settings: ScholarRagSettings): string {
-  const fam = slug(firstAuthorFamily(item)).replace(/\s+/g, "");
+  // Non-Latin family names slug to "" → fall back to "anon" (mirrors authorTag)
+  // so citekeys don't collapse to a bare year and collide across papers.
+  const fam = slug(firstAuthorFamily(item)).replace(/\s+/g, "") || "anon";
   const yr = getYear(item);
   if (settings.citekeyStyle === "authoryear") return `${fam}${yr}`;
   return `${fam}${yr}${firstTitleWord(item)}`;

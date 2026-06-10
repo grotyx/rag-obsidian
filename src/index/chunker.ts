@@ -23,7 +23,7 @@ export interface ChunkInput {
 
 /** Strip a leading YAML frontmatter block from markdown. */
 export function stripFrontmatter(content: string): string {
-  const m = content.match(/^---\n[\s\S]*?\n---\n?/);
+  const m = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
   return m ? content.slice(m[0].length) : content;
 }
 
@@ -54,7 +54,9 @@ function splitText(text: string, maxChars: number, overlap = 150): string[] {
     if (p.length > maxChars) {
       if (cur.trim()) chunks.push(cur);
       cur = "";
-      for (let i = 0; i < p.length; i += maxChars - overlap) {
+      // clamp the step: maxChars <= overlap would otherwise loop forever
+      const step = Math.max(1, maxChars - overlap);
+      for (let i = 0; i < p.length; i += step) {
         chunks.push(p.slice(i, i + maxChars));
       }
       continue;

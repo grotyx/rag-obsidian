@@ -44,12 +44,13 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("PubMed API key (optional)")
       .setDesc("NCBI E-utilities API key for higher rate limits.")
-      .addText((t) =>
+      .addText((t) => {
         t.setValue(this.plugin.settings.pubmedApiKey).onChange(async (v) => {
           this.plugin.settings.pubmedApiKey = v.trim();
           await this.plugin.saveSettings();
-        })
-      );
+        });
+        t.inputEl.type = "password";
+      });
 
     containerEl.createEl("h2", { text: "Retrieval (semantic search)" });
     containerEl.createEl("p", {
