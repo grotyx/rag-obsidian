@@ -113,10 +113,12 @@ async function fetchCrossref(doi: string): Promise<CSLItem> {
 }
 
 async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
-  const key = apiKey ? `&api_key=${apiKey}` : "";
+  const key = apiKey ? `&api_key=${encodeURIComponent(apiKey)}` : "";
   const sum = await requestUrl({
     url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${pmid}&retmode=json${key}`,
+    throw: false,
   });
+  if (sum.status >= 400) throw new Error(`PubMed request failed (HTTP ${sum.status})`);
   const r = sum.json?.result?.[pmid];
   if (!r || r.error) throw new Error(`PubMed returned no data for ${pmid}`);
 
@@ -148,14 +150,16 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
   try {
     const ab = await requestUrl({
       url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=xml${key}`,
+      throw: false,
     });
-    let abstract = ab.text ? extractAbstractXml(ab.text) : "";
+    let abstract = ab.status < 400 && ab.text ? extractAbstractXml(ab.text) : "";
     if (!abstract) {
       // fall back to the plain-text fetch (formatted citation; better than nothing)
       const txt = await requestUrl({
         url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=text${key}`,
+        throw: false,
       });
-      abstract = (txt.text || "").replace(/\s+/g, " ").trim();
+      abstract = txt.status < 400 ? (txt.text || "").replace(/\s+/g, " ").trim() : "";
     }
     if (abstract) item.abstract = abstract.slice(0, 5000);
   } catch {

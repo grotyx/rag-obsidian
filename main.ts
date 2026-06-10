@@ -271,12 +271,17 @@ export default class ScholarRagPlugin extends Plugin {
     let migrated = false;
     for (const field of SECRET_FIELDS) {
       const stored = store.getSecret(this.secretId(field));
-      if (stored !== null) {
+      if (stored) {
+        // Empty string means "never set / blanked" — don't let it shadow a key in data.json.
         this.settings[field] = stored;
       } else if (this.settings[field]) {
         // One-time migration: move the plaintext key from data.json into secretStorage.
-        store.setSecret(this.secretId(field), this.settings[field]);
-        migrated = true;
+        try {
+          store.setSecret(this.secretId(field), this.settings[field]);
+          migrated = true;
+        } catch (e) {
+          console.warn(`${this.manifest.id}: secretStorage write failed for ${field}; key stays in data.json`, e);
+        }
       }
     }
     if (migrated) await this.saveSettings(); // re-persist data.json with the keys blanked
@@ -289,8 +294,12 @@ export default class ScholarRagPlugin extends Plugin {
       // (In-memory settings keep the keys — providers read them directly.)
       const data: ScholarRagSettings = { ...this.settings };
       for (const field of SECRET_FIELDS) {
-        store.setSecret(this.secretId(field), this.settings[field]);
-        data[field] = "";
+        try {
+          store.setSecret(this.secretId(field), this.settings[field]);
+          data[field] = ""; // only blank in data.json once the keychain write succeeded
+        } catch (e) {
+          console.warn(`${this.manifest.id}: secretStorage write failed for ${field}; keeping key in data.json`, e);
+        }
       }
       await this.saveData(data);
     } else {
@@ -632,6 +641,16 @@ export default class ScholarRagPlugin extends Plugin {
     new Notice(`${dups.length} duplicate group(s) — see "Duplicate references.md"`);
   }
 
+  /** Open a URL externally — http(s) only, so frontmatter can't smuggle javascript:/file: schemes. */
+  private safeOpenExternal(url: string): void {
+    if (!/^https?:\/\//i.test(url)) {
+      new Notice("Blocked non-http(s) URL");
+      return;
+    }
+    if (typeof window !== "undefined" && window.open) window.open(url, "_blank");
+    else new Notice(url); // no window.open (e.g. mobile) — show the URL
+  }
+
   openReferenceOnline(): void {
     const r = this.activeRef();
     if (!r) return;
@@ -649,8 +668,7 @@ export default class ScholarRagPlugin extends Plugin {
       new Notice("No DOI / PMID / URL on this note");
       return;
     }
-    if (typeof window !== "undefined" && window.open) window.open(url, "_blank");
-    else new Notice(url); // no window.open (e.g. mobile) — show the URL
+    this.safeOpenExternal(url);
   }
 
   async copyCitation(): Promise<void> {
@@ -712,6 +730,16 @@ export default class ScholarRagPlugin extends Plugin {
       new Notice("No open-access PDF found (try 'Find open-access PDF' first)");
       return;
     }
+    if (!/^https?:\/\//i.test(url)) {
+      new Notice("Blocked non-http(s) URL");
+      return;
+    }
+    // Citekey comes from frontmatter — sanitize before using it as a vault filename.
+    const safe = String(r.fm.citekey).replace(/[^A-Za-z0-9._-]/g, "").replace(/^\.+/, "");
+    if (!safe || safe.includes("..")) {
+      new Notice("Invalid citekey for PDF filename");
+      return;
+    }
     const notice = new Notice("Downloading PDF…", 0);
     const res = await requestUrl({ url, throw: false });
     notice.hide();
@@ -721,12 +749,12 @@ export default class ScholarRagPlugin extends Plugin {
     }
     const dir = normalizePath("PDFs");
     if (!this.app.vault.getAbstractFileByPath(dir)) await this.app.vault.createFolder(dir).catch(() => {});
-    const path = normalizePath(`PDFs/${r.fm.citekey}.pdf`);
+    const path = normalizePath(`PDFs/${safe}.pdf`);
     const existing = this.app.vault.getAbstractFileByPath(path);
     if (existing instanceof TFile) await this.app.vault.modifyBinary(existing, res.arrayBuffer);
     else await this.app.vault.createBinary(path, res.arrayBuffer);
-    await this.app.fileManager.processFrontMatter(r.file, (fm) => (fm.pdf = `[[${r.fm.citekey}.pdf]]`));
-    new Notice(`Saved PDFs/${r.fm.citekey}.pdf`);
+    await this.app.fileManager.processFrontMatter(r.file, (fm) => (fm.pdf = `[[${safe}.pdf]]`));
+    new Notice(`Saved PDFs/${safe}.pdf`);
   }
 
   /** List OpenAlex "related_works" for the active reference, flagging ones already in the library. */

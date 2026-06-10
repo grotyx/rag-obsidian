@@ -92,7 +92,11 @@ export class ChatView extends ItemView {
   private async renderAnswer(ans: RagAnswer): Promise<void> {
     const wrap = this.logEl.createDiv({ cls: "srag-bubble srag-assistant" });
     const body = wrap.createDiv({ cls: "srag-answer" });
-    await MarkdownRenderer.render(this.app, ans.text, body, "", this);
+    // Neutralize embeds/images before rendering (`![[…]]` → `[[…]]`, `![…](…)` → `[…](…)`):
+    // model output steered by a malicious note could otherwise auto-load an external image
+    // (exfil beacon) or transclude a private note. Render-time only — history keeps ans.text.
+    const safeText = ans.text.replace(/!\[/g, "[");
+    await MarkdownRenderer.render(this.app, safeText, body, "", this);
 
     if (ans.sources.length) {
       const src = wrap.createDiv({ cls: "srag-sources" });

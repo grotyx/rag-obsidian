@@ -5,6 +5,10 @@ import * as CSL from "citeproc";
 const RAW_STYLES = "https://raw.githubusercontent.com/citation-style-language/styles/master";
 const RAW_LOCALE = "https://raw.githubusercontent.com/citation-style-language/locales/master/locales-en-US.xml";
 
+// Style ids come from note frontmatter and flow into vault paths + URLs:
+// restrict to safe chars (no slashes, no leading dot → no `../` traversal).
+const SAFE_STYLE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 /** Styles shipped in `<plugin>/styles/` (id → friendly label). Prioritized spine journals. */
 export const BUNDLED_STYLES: Record<string, string> = {
   spine: "Spine",
@@ -53,6 +57,10 @@ export class CiteEngine {
 
   /** Resolve a style id to independent CSL XML: bundled → on-disk cache → CSL repo; follow dependent parent. */
   async style(id: string, seen: Set<string> = new Set()): Promise<string> {
+    if (!SAFE_STYLE_ID.test(id)) {
+      // callers catch and fall back to the default/lightweight style
+      throw new Error(`Citation style "${id}" is not a valid style id.`);
+    }
     const cached = this.styles.get(id);
     if (cached) return cached;
     let xml =

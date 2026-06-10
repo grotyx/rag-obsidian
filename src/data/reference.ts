@@ -3,7 +3,10 @@ import { CSLItem, ScholarRagSettings, SummarySections } from "../types";
 
 export function getYear(item: CSLItem): string {
   const dp = item.issued?.["date-parts"]?.[0];
-  if (dp && dp[0]) return String(dp[0]);
+  // coerce via parseInt: a string year from malformed metadata could otherwise
+  // pass arbitrary chars into filenames (getYear is the one unrestricted component)
+  const yr = dp && dp[0] ? parseInt(String(dp[0]), 10) : NaN;
+  if (!Number.isNaN(yr) && yr !== 0) return String(yr);
   return "nd";
 }
 
