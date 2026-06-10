@@ -191,14 +191,26 @@ export class IndexManager {
     const { data, meta } = await this.store.serialize();
     // orama first, meta last: meta is the commit marker (restore bails if it's missing,
     // and store.load rejects a count desync from a crash between the two writes)
-    await adapter.write(this.oramaPath, data);
-    await adapter.write(this.metaPath, JSON.stringify(meta));
+    await this.writeAtomic(this.oramaPath, data);
+    await this.writeAtomic(this.metaPath, JSON.stringify(meta));
+  }
+
+  /** Crash-safe write: stage to `<path>.tmp`, then rename into place so the target
+   *  file is never observed truncated/half-written. A stale .tmp from a crash is
+   *  harmless — it's simply overwritten on the next persist. */
+  private async writeAtomic(path: string, content: string): Promise<void> {
+    const adapter = this.app.vault.adapter;
+    const tmp = `${path}.tmp`;
+    await adapter.write(tmp, content);
+    // DataAdapter.rename doesn't document overwrite-on-existing semantics — clear the target first
+    if (await adapter.exists(path)) await adapter.remove(path);
+    await adapter.rename(tmp, path);
   }
 
   private async clearPersisted(): Promise<void> {
     const adapter = this.app.vault.adapter;
     // meta first: without it, a leftover orama.json is ignored on restore
-    if (await adapter.exists(this.metaPath)) await adapter.remove(this.metaPath);
-    if (await adapter.exists(this.oramaPath)) await adapter.remove(this.oramaPath);
+    const paths = [this.metaPath, this.oramaPath, `${this.metaPath}.tmp`, `${this.oramaPath}.tmp`];
+    for (const p of paths) if (await adapter.exists(p)) await adapter.remove(p);
   }
 }

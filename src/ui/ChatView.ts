@@ -1,14 +1,13 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile, normalizePath, MarkdownRenderer } from "obsidian";
 import type ScholarRagPlugin from "../../main";
-import { RagChat, RagAnswer } from "../chat/rag";
-import { ChatMessage } from "../llm/client";
+import { RagChat, RagAnswer, ChatTurn } from "../chat/rag";
 
 export const VIEW_TYPE_CHAT = "rag-obsidian-chat";
 
 export class ChatView extends ItemView {
   private plugin: ScholarRagPlugin;
   private rag: RagChat;
-  private history: ChatMessage[] = [];
+  private history: ChatTurn[] = [];
   private logEl!: HTMLElement;
   private inputEl!: HTMLTextAreaElement;
 
@@ -79,7 +78,8 @@ export class ChatView extends ItemView {
       thinking.remove();
       await this.renderAnswer(ans);
       this.history.push({ role: "user", content: query });
-      this.history.push({ role: "assistant", content: ans.text });
+      // Keep this turn's source order so follow-up turns can resolve its [n] anchors.
+      this.history.push({ role: "assistant", content: ans.text, sources: ans.sources.map((s) => s.citekey) });
       // keep history bounded
       if (this.history.length > 8) this.history = this.history.slice(-8);
     } catch (e) {

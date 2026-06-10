@@ -28,6 +28,19 @@ export class Library {
   // even before the metadata cache catches up.
   private createdCitekeys = new Set<string>();
 
+  // Identifiers (normalized DOI / PMID / normalized title → citekey) of references created
+  // this session — metadataCache lags vault.create, so rapid double-adds or DOI-then-PMID
+  // adds of the same work would slip past the cache scan in findDuplicate.
+  private createdIds = new Map<string, string>();
+
+  private rememberIds(item: CSLItem, citekey: string): void {
+    const doi = normDoi(item.DOI);
+    if (doi) this.createdIds.set(`doi:${doi}`, citekey);
+    if (item.PMID) this.createdIds.set(`pmid:${item.PMID}`, citekey);
+    const title = normTitle(item.title);
+    if (title.length > 12) this.createdIds.set(`title:${title}`, citekey);
+  }
+
   private knownCitekeys(): Set<string> {
     const s = new Set(this.createdCitekeys);
     for (const e of this.list()) s.add(e.citekey);
@@ -63,6 +76,7 @@ export class Library {
     await this.ensureFolder();
     const citekey = this.uniqueCitekey(generateCitekey(item, this.settings));
     this.createdCitekeys.add(citekey);
+    this.rememberIds(item, citekey);
     const filename = this.uniqueFilename(generateFilename(item));
     const content = buildNote(item, citekey, opts);
     const path = normalizePath(`${this.folder()}/${filename}.md`);
@@ -90,16 +104,24 @@ export class Library {
 
   /** Return the citekey of an existing note that matches by DOI, PMID, or normalized title. */
   findDuplicate(item: CSLItem): string | null {
-    const doi = (item.DOI || "").toLowerCase();
+    const doi = normDoi(item.DOI);
     const pmid = String(item.PMID || "");
     const title = normTitle(item.title);
+    // Session registry first: covers notes created moments ago that metadataCache
+    // hasn't indexed yet (rapid double-add, DOI-then-PMID of the same work).
+    const session =
+      (doi && this.createdIds.get(`doi:${doi}`)) ||
+      (pmid && this.createdIds.get(`pmid:${pmid}`)) ||
+      (title.length > 12 && this.createdIds.get(`title:${title}`)) ||
+      null;
+    if (session) return session;
     const prefix = this.folder() + "/";
     for (const file of this.app.vault.getMarkdownFiles()) {
       if (!file.path.startsWith(prefix)) continue;
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
       if (!fm) continue;
       const key = String(fm.citekey || file.basename);
-      if (doi && String(fm.DOI || "").toLowerCase() === doi) return key;
+      if (doi && normDoi(fm.DOI) === doi) return key;
       if (pmid && String(fm.PMID || "") === pmid) return key;
       if (title && title.length > 12 && normTitle(String(fm.title || "")) === title) return key;
     }
@@ -146,6 +168,16 @@ export class Library {
     out.sort((a, b) => b.year.localeCompare(a.year) || a.title.localeCompare(b.title));
     return out;
   }
+}
+
+/** Normalize a DOI for comparison: lowercase, strip doi.org URL / "doi:" prefixes
+ *  (CSL DOI casing and prefixing vary by source — Crossref vs PubMed vs pasted URLs). */
+function normDoi(d: unknown): string {
+  return String(d || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\/(dx\.)?doi\.org\//, "")
+    .replace(/^doi:\s*/, "");
 }
 
 function normTitle(t: unknown): string {

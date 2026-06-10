@@ -1,5 +1,5 @@
-import { Plugin, WorkspaceLeaf, TFile, TAbstractFile, Notice } from "obsidian";
-import { ScholarRagSettings, DEFAULT_SETTINGS } from "./src/types";
+import { Plugin, WorkspaceLeaf, TFile, TAbstractFile, Notice, SecretStorage } from "obsidian";
+import { ScholarRagSettings, DEFAULT_SETTINGS, SECRET_FIELDS, SecretField } from "./src/types";
 import { ScholarRagSettingTab } from "./src/settings";
 import { Library } from "./src/data/library";
 import { IndexManager } from "./src/index/manager";
@@ -254,12 +254,48 @@ export default class ScholarRagPlugin extends Plugin {
     );
   }
 
+  /** Obsidian's OS-keychain secret store (1.11.4+), or null on older apps (minAppVersion is 1.5.0). */
+  private secretStore(): SecretStorage | null {
+    return (this.app.secretStorage as SecretStorage | undefined) ?? null;
+  }
+
+  /** secretStorage id for a settings field — lowercase alphanumeric + dashes, as the API requires. */
+  private secretId(field: SecretField): string {
+    return `${this.manifest.id}-${field.toLowerCase()}`;
+  }
+
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const store = this.secretStore();
+    if (!store) return;
+    let migrated = false;
+    for (const field of SECRET_FIELDS) {
+      const stored = store.getSecret(this.secretId(field));
+      if (stored !== null) {
+        this.settings[field] = stored;
+      } else if (this.settings[field]) {
+        // One-time migration: move the plaintext key from data.json into secretStorage.
+        store.setSecret(this.secretId(field), this.settings[field]);
+        migrated = true;
+      }
+    }
+    if (migrated) await this.saveSettings(); // re-persist data.json with the keys blanked
   }
 
   async saveSettings(): Promise<void> {
-    await this.saveData(this.settings);
+    const store = this.secretStore();
+    if (store) {
+      // Keys live in the OS keychain; data.json gets a copy with the secret fields blanked.
+      // (In-memory settings keep the keys — providers read them directly.)
+      const data: ScholarRagSettings = { ...this.settings };
+      for (const field of SECRET_FIELDS) {
+        store.setSecret(this.secretId(field), this.settings[field]);
+        data[field] = "";
+      }
+      await this.saveData(data);
+    } else {
+      await this.saveData(this.settings);
+    }
     this.citeCache.clear(); // style may have changed
     if (this.library) this.library.settings = this.settings;
     if (this.indexManager) this.indexManager.settings = this.settings;
@@ -381,6 +417,21 @@ export default class ScholarRagPlugin extends Plugin {
     if (file) await this.app.workspace.getLeaf(false).openFile(file);
   }
 
+  /** Write `content` to `path` (create or overwrite) and open it. vault.create/modify register
+   *  the file synchronously — adapter.write + getAbstractFileByPath can race the vault index
+   *  and return null for a just-created file, silently skipping the open. */
+  private async writeAndOpen(path: string, content: string): Promise<void> {
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    let file: TFile;
+    if (existing instanceof TFile) {
+      await this.app.vault.modify(existing, content);
+      file = existing;
+    } else {
+      file = await this.app.vault.create(path, content);
+    }
+    await this.app.workspace.getLeaf(true).openFile(file);
+  }
+
   /** Write the whole library to a bibliographic file at the vault root and open it. */
   async exportLibrary(format: ExportFormat): Promise<void> {
     const refs: ExportRef[] = [];
@@ -394,10 +445,8 @@ export default class ScholarRagPlugin extends Plugin {
     }
     const ext = format === "bibtex" ? "bib" : format === "ris" ? "ris" : "json";
     const path = normalizePath(`library.${ext}`);
-    await this.app.vault.adapter.write(path, exportRefs(refs, format));
+    await this.writeAndOpen(path, exportRefs(refs, format));
     new Notice(`Exported ${refs.length} references → ${path}`);
-    const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) await this.app.workspace.getLeaf(true).openFile(f);
   }
 
   /** Resolve each reference on OpenAlex and write `cited_by_count` (+ `openalex_id`). */
@@ -497,10 +546,8 @@ export default class ScholarRagPlugin extends Plugin {
     const { base, tail } = splitAtReferences(body);
     const out = `${base}\n\n## References\n\n${refsBlock}\n${tail}`;
     const outPath = normalizePath(file.path.replace(/\.md$/i, "") + " (compiled).md");
-    await this.app.vault.adapter.write(outPath, out);
+    await this.writeAndOpen(outPath, out);
     new Notice(`Compiled → ${outPath}`);
-    const f = this.app.vault.getAbstractFileByPath(outPath);
-    if (f instanceof TFile) await this.app.workspace.getLeaf(true).openFile(f);
   }
 
   /** The active note if it is a reference note (has a `citekey`), else null (with a notice). */
@@ -557,9 +604,7 @@ export default class ScholarRagPlugin extends Plugin {
       out = `# Library Dashboard\n\n${rows.length} references. (Install Dataview for a live, sortable table.)\n\n${header}\n${body}\n`;
     }
     const path = normalizePath("Library Dashboard.md");
-    await this.app.vault.adapter.write(path, out);
-    const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) await this.app.workspace.getLeaf(true).openFile(f);
+    await this.writeAndOpen(path, out);
   }
 
   /** Group library notes by DOI / PMID / normalized title and report duplicate clusters. */
@@ -583,9 +628,7 @@ export default class ScholarRagPlugin extends Plugin {
       dups.map((g) => "- " + g.map((name) => `[[${name}]]`).join(" · ")).join("\n") +
       "\n";
     const path = normalizePath("Duplicate references.md");
-    await this.app.vault.adapter.write(path, report);
-    const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) await this.app.workspace.getLeaf(true).openFile(f);
+    await this.writeAndOpen(path, report);
     new Notice(`${dups.length} duplicate group(s) — see "Duplicate references.md"`);
   }
 
@@ -714,9 +757,7 @@ export default class ScholarRagPlugin extends Plugin {
       });
     const out = `# Related to ${r.fm.citekey}\n\n${rel.length} related works (OpenAlex), most-cited first:\n\n${lines.join("\n")}\n`;
     const path = normalizePath(`Related to ${r.fm.citekey}.md`);
-    await this.app.vault.adapter.write(path, out);
-    const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) await this.app.workspace.getLeaf(true).openFile(f);
+    await this.writeAndOpen(path, out);
   }
 
   /** Export a styled citation + its summary for each reference (active note's citations, else whole library). */
@@ -752,9 +793,7 @@ export default class ScholarRagPlugin extends Plugin {
     notice.hide();
     const title = wholeLib ? "Annotated bibliography (library)" : `Annotated bibliography — ${active?.basename}`;
     const path = normalizePath(`${title}.md`);
-    await this.app.vault.adapter.write(path, `# ${title}\n\n${blocks.join("\n")}`);
-    const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) await this.app.workspace.getLeaf(true).openFile(f);
+    await this.writeAndOpen(path, `# ${title}\n\n${blocks.join("\n")}`);
   }
 
   /** Read this reference's PDF annotations and write them into its ## Highlights section. */
@@ -822,9 +861,7 @@ export default class ScholarRagPlugin extends Plugin {
       .join("\n");
     const out = `# Reading queue\n\n${rows.length} to read:\n\n${body || "_(all caught up)_"}\n`;
     const path = normalizePath("Reading queue.md");
-    await this.app.vault.adapter.write(path, out);
-    const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) await this.app.workspace.getLeaf(true).openFile(f);
+    await this.writeAndOpen(path, out);
   }
 
   /** Export the in-library citation graph as a Mermaid diagram note. */
@@ -842,9 +879,7 @@ export default class ScholarRagPlugin extends Plugin {
     const lines = edges.map(([a, b]) => `  ${id(a)} --> ${id(b)}`).join("\n");
     const out = `# Citation network\n\n${seen.size} papers, ${edges.length} citation edges.\n\n\`\`\`mermaid\ngraph LR\n${labels}\n${lines}\n\`\`\`\n`;
     const path = normalizePath("Citation network.md");
-    await this.app.vault.adapter.write(path, out);
-    const f = this.app.vault.getAbstractFileByPath(path);
-    if (f instanceof TFile) await this.app.workspace.getLeaf(true).openFile(f);
+    await this.writeAndOpen(path, out);
   }
 
   /** Re-fetch metadata for notes missing abstract / journal / authors and fill the gaps. */

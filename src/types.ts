@@ -36,6 +36,11 @@ export interface ScholarRagSettings {
   ontologyPackPath: string;
 }
 
+/** Settings fields holding API keys — kept in Obsidian secretStorage (1.11.4+) when available,
+ *  and blanked in data.json so secrets never persist in plaintext. */
+export const SECRET_FIELDS = ["pubmedApiKey", "openaiApiKey", "anthropicApiKey"] as const;
+export type SecretField = (typeof SECRET_FIELDS)[number];
+
 export const DEFAULT_SETTINGS: ScholarRagSettings = {
   referencesFolder: "References",
   citekeyStyle: "authoryeartitle",

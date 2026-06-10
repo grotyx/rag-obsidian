@@ -6,6 +6,7 @@ export const VIEW_TYPE_RELATED = "rag-obsidian-related";
 export class RelatedView extends ItemView {
   private plugin: ScholarRagPlugin;
   private bodyEl!: HTMLElement;
+  private gen = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: ScholarRagPlugin) {
     super(leaf);
@@ -83,6 +84,7 @@ export class RelatedView extends ItemView {
 
   private refresh(): void {
     if (!this.bodyEl) return;
+    const gen = ++this.gen;
     this.bodyEl.empty();
     const graph = this.plugin.citationGraph;
 
@@ -119,6 +121,7 @@ export class RelatedView extends ItemView {
     // Missing frequently-cited (async)
     const s4 = this.section("Frequently cited by your library, but missing", 0);
     void graph.missingFrequent().then((missing) => {
+      if (gen !== this.gen) return;
       s4.querySelector(".srag-rel-head")?.setText(`Frequently cited by your library, but missing (${missing.length})`);
       for (const m of missing) {
         const row = s4.createDiv({ cls: "srag-rel-row" });

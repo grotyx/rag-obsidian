@@ -4,6 +4,12 @@ import { LLMClient, ChatMessage } from "../llm/client";
 import { formatCitation } from "../cite/format";
 import { ScholarRagSettings, CiteStyle } from "../types";
 
+/** A chat-history message; assistant turns may carry the citekeys (in [n] order)
+ *  of the sources they were generated against, so anchors stay resolvable. */
+export interface ChatTurn extends ChatMessage {
+  sources?: string[];
+}
+
 export interface AnswerSource {
   n: number;
   citekey: string;
@@ -25,7 +31,7 @@ export class RagChat {
     private settings: ScholarRagSettings
   ) {}
 
-  async answer(query: string, history: ChatMessage[] = []): Promise<RagAnswer> {
+  async answer(query: string, history: ChatTurn[] = []): Promise<RagAnswer> {
     if (!this.index.ready) {
       throw new Error("Search index not built — open the search pane and click “Rebuild index”.");
     }
@@ -50,13 +56,22 @@ export class RagChat {
       "Cite every claim with bracketed source numbers like [1] or [2][3]. Never invent citations or facts.",
       "Be concise and precise; surface specific findings, numbers, effect sizes, and methods when present.",
       "Cite ONLY from the current source list below; earlier turns in the conversation refer to different source numberings.",
+      "Earlier assistant turns mark which work was meant with [@citekey] labels — use them to resolve follow-up references.",
     ].join(" ");
 
     // Prior assistant answers carry [n] anchors numbered against THEIR turn's sources;
-    // strip them so they can't collide with the current numbering.
-    const cleanHistory: ChatMessage[] = history.map((m) =>
-      m.role === "assistant" ? { ...m, content: m.content.replace(/\[\d+\]/g, "") } : m
-    );
+    // rewrite each to a stable [@citekey] label when that turn's source order is known
+    // (out-of-range → strip), otherwise strip them so they can't collide with the
+    // current numbering.
+    const cleanHistory: ChatMessage[] = history.map((m) => {
+      if (m.role !== "assistant") return { role: m.role, content: m.content };
+      const turnSources = m.sources;
+      const content = m.content.replace(/\[(\d+)\]/g, (_, d) => {
+        const ck = turnSources?.[parseInt(d, 10) - 1];
+        return ck ? `[@${ck}]` : "";
+      });
+      return { role: m.role, content };
+    });
 
     const user = `Question: ${query}\n\nSources:\n${context}`;
     const llm = new LLMClient(this.settings);

@@ -113,7 +113,8 @@ bibliography, ontology link/IS_A.
   `new Function("u","return import(u)")` trick so they stay out of the bundle.
 - Frontmatter uses **CSL-JSON field names verbatim** (`container-title`, `issued.date-parts`, …).
 - Embedding index is tagged with `provider:model`; on mismatch it won't restore → user rebuilds.
-- API keys currently live in `data.json` (gitignored). **TODO**: migrate to Obsidian `secretStorage`.
+- API keys live in Obsidian `secretStorage` (synced from in-memory settings on save; `data.json`
+  stores them blanked). On apps without `secretStorage` they fall back to `data.json` as before.
 
 ## Providers & defaults
 
@@ -128,15 +129,16 @@ bibliography, ontology link/IS_A.
   (Obsidian's `requestUrl` handles this itself).
 - Crossref often omits abstracts; PubMed efetch supplies them.
 - Obsidian Properties UI may warn on nested CSL frontmatter (`author`/`issued`) — data is valid.
-- Same work added via DOI and PMID → two notes (cross-identifier dedup is a future feature).
+- Cross-identifier dedup on add: session registry + normalized-DOI/PMID/title match in
+  `findDuplicate`; bare-digit PMID input requires a confirm click in the Add modal.
 
 ## Roadmap / next (see PLAN.md)
 
 1. **citeproc-js full CSL** (10k+ styles) replacing the lightweight `cite/format.ts`.
 2. **Ontology-aware retrieval** (Tier 3: IS_A query expansion in `index/manager.search`).
-3. **Cross-identifier dedup** on add (match DOI/PMID/title vs existing).
-4. **secretStorage** migration for API keys.
-5. Mobile QA; community-store submission (BRAT beta first).
+3. Mobile QA; community-store submission (BRAT beta first).
+
+Done (v0.3.x): cross-identifier dedup on add · secretStorage migration for API keys.
 
 ## Resuming from another folder
 
@@ -151,6 +153,8 @@ npm run dev
 
 Update **all three** on a release: `manifest.json`, `package.json`, `versions.json` (+ a
 CHANGELOG.md entry + the Version line in this file and README). Then commit `vX.Y.Z: summary`.
+The deck (`presentation/build_deck.py`) reads its version from `manifest.json`, but the prose
+docs (`lecture_script.md`, `slides_content.md`) hardcode it — grep `v0.X` under `presentation/`.
 
 ## Git
 
