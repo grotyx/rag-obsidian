@@ -553,13 +553,21 @@ def main():
          "res": "저널 스타일 자동 — 노트에 csl: 한 줄이면 교체 (1만+ 스타일 자동 다운로드)"},
     ], "전부 Cmd+P 한 곳에서 — 처음 딱 한 번 “Rebuild search index”로 색인만 만들어 두면 끝")
 
-    s = content("CONCLUSION", "Zotero 없이, 서버 없이, 늘 출처와 함께", 16)  # 16
+    s = content("MORE TOOLS", "추가부터 투고까지, 연구 워크플로 전체를 덮는다", 16,
+                "명령 30개 · 전부 Cmd+P")  # 16
+    pattern_H(s, [{"tag": "MIGRATE", "big": "이관", "sub": "Zotero·EndNote", "body": "BibTeX/RIS/CSL-JSON\n한 번에 가져오고\n언제든 도로 내보내기"},
+                  {"tag": "SUMMARIZE", "big": "요약", "sub": "LLM + MeSH", "body": "PubMed 추가 시 자동 요약\n(OA는 전문 기반)\n+ 진짜 MeSH 태그"},
+                  {"tag": "WRITE", "big": "투고", "sub": "원고 컴파일", "body": "[@키] 전부 풀어\n인용+참고문헌 완성본\n(Pandoc-ready)"},
+                  {"tag": "CURATE", "big": "관리", "sub": "서재 위생", "body": "철회 경고 · 중복 정리\n읽기 큐 · OA PDF 다운로드\nPDF 하이라이트 추출"}],
+              "갈아타기 부담 0 (이관+내보내기) — 들어온 뒤엔 읽기·쓰기·투고까지 한 앱에서")
+
+    s = content("CONCLUSION", "Zotero 없이, 서버 없이, 늘 출처와 함께", 17)  # 17
     pattern_H(s, [{"tag": "OWN YOUR DATA", "big": "마크다운", "sub": "= 내 DB", "body": "평문·git·로컬 우선\n플러그인보다 오래 남음"},
                   {"tag": "GROUNDED", "big": "근거", "sub": "구절 인용", "body": "출처 없는 답 없음\n서식 참고문헌까지"},
                   {"tag": "GRAPH-LITE", "big": "그래프", "sub": "놓친 논문", "body": "OpenAlex 인용엣지\nLLM 비용 0"}],
               "내 서재가 곧 검색엔진이고, 답은 늘 출처와 함께 — RAG Obsidian")
 
-    closing()  # 17
+    closing()  # 18
     out = os.path.join(HERE, "rag_obsidian_deck.pptx")
     prs.save(out)
     print("saved →", out, "·", len(prs.slides), "slides")
