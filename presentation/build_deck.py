@@ -565,9 +565,7 @@ def main():
                   {"tag": "GRAPH-LITE", "big": "그래프", "sub": "놓친 논문", "body": "OpenAlex 인용엣지\nLLM 비용 0"}],
               "내 서재가 곧 검색엔진이고, 답은 늘 출처와 함께 — RAG Obsidian")
 
-    closing()  # 18
-
-    s = content("APPENDIX · Q&A", "자주 나올 질문 ①")  # 19
+    s = content("APPENDIX · Q&A", "자주 나올 질문 ①")  # 18
     qa_rows(s, [
         ("Zotero랑 뭐가 다른가요?",
          "Zotero는 별도 앱+별도 DB. 여기선 글 쓰는 Obsidian 노트 자체가 서지 DB라 한 곳에서 끝나고, AI 근거 검색이 기본 내장."),
@@ -577,7 +575,7 @@ def main():
          "전부 내 vault 안 평문 마크다운. 외부 서버 없음 — 내가 키를 넣은 LLM 호출만 예외."),
     ])
 
-    s = content("APPENDIX · Q&A", "자주 나올 질문 ②")  # 20
+    s = content("APPENDIX · Q&A", "자주 나올 질문 ②")  # 19
     qa_rows(s, [
         ("SNOMED·MeSH 같은 의학 용어체계도 되나요?",
          "온톨로지 팩(JSON)으로 장착. IS_A 계층·동의어 링크 지원. PubMed 추가 시 MeSH 태그는 기본."),
@@ -586,6 +584,8 @@ def main():
         ("가짜 인용(환각)은 정말 없나요?",
          "답을 서재 구절에만 근거하게 강제하고 [n]은 실제 노트에 연결. 근거 없으면 \"근거 없음\"이라 답하게 설계."),
     ])
+
+    closing()  # 20
 
     out = os.path.join(HERE, "rag_obsidian_deck.pptx")
     prs.save(out)

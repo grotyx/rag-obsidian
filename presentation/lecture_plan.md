@@ -53,9 +53,9 @@
 | 15 | HOW TO USE ② | Usage 4행 | ⭐ **찾고·묻고·쓰는 법**: 뜻 검색 / 채팅 [n] / @ 인용 자동완성 / Update bibliography + `csl:` 한 줄 저널 스타일 (1만+ 자동 다운로드) |
 | 16 | MORE TOOLS | Pillar Cards (H) | 내보내기(lock-in 0)·LLM요약+MeSH·원고컴파일·관리도구 |
 | 17 | CONCLUSION | Pillar Cards (H) | 3기둥 + take-home |
-| 18 | — | Closing | Thank you + URL |
-| 19 | APPENDIX | Q&A 카드 ① | **질문 시에만**: Zotero 차이 / 오프라인 / 데이터 위치 |
-| 20 | APPENDIX | Q&A 카드 ② | **질문 시에만**: SNOMED·MeSH / 큰 서재 / 환각 |
+| 18 | APPENDIX | Q&A 카드 ① | **질문 시에만**: Zotero 차이 / 오프라인 / 데이터 위치 |
+| 19 | APPENDIX | Q&A 카드 ② | **질문 시에만**: SNOMED·MeSH / 큰 서재 / 환각 |
+| 20 | — | Closing | Thank you + URL |
 
 **Big Message(G) 슬라이드(2,4)** = 통증 → 해법 전환점. 그 사이/뒤에 구체 장면을 배치.
 
@@ -78,9 +78,9 @@
 15. "찾고, 묻고, 쓰는 법 — 매일 쓰는 네 가지"
 16. "추가부터 투고까지, 연구 워크플로 전체를 덮는다"
 17. "Zotero 없이, 서버 없이, 늘 출처와 함께"
-18. (thank you)
-19. (appendix — 예상 Q&A ①, 질문 시에만)
-20. (appendix — 예상 Q&A ②, 질문 시에만)
+18. (appendix — 예상 Q&A ①, 질문 시에만)
+19. (appendix — 예상 Q&A ②, 질문 시에만)
+20. (thank you)
 
 ## 6. 전달 팁 (발표 운영)
 

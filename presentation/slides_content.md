@@ -243,12 +243,6 @@ Neutral Warm. 차트의 데이터 색만 유지.
     takeaway: "내 서재가 곧 검색엔진이고, 답은 늘 출처와 함께 — RAG Obsidian"
 
 - slide: 18
-  type: closing
-  headline: "Thank you"
-  subline: "Questions & discussion"
-  repo: "github.com/grotyx/rag-obsidian"
-
-- slide: 19
   section: APPENDIX · Q&A
   type: content
   pattern: "qa-rows (3 outline rows: Q 굵게 + A 본문)"
@@ -262,7 +256,7 @@ Neutral Warm. 차트의 데이터 색만 유지.
       - {q: "내 데이터는 어디에 저장되나요?",
          a: "전부 내 vault 안 평문 마크다운. 외부 서버 없음 — 내가 키를 넣은 LLM 호출만 예외."}
 
-- slide: 20
+- slide: 19
   section: APPENDIX · Q&A
   type: content
   pattern: "qa-rows (3 outline rows: Q 굵게 + A 본문)"
@@ -275,4 +269,10 @@ Neutral Warm. 차트의 데이터 색만 유지.
          a: "수백~수천 편 타깃. 색인이 인메모리라 아주 큰 vault는 추후 sqlite-vec 교체 예정."}
       - {q: "가짜 인용(환각)은 정말 없나요?",
          a: "답을 서재 구절에만 근거하게 강제하고 [n]은 실제 노트에 연결. 근거 없으면 \"근거 없음\"이라 답하게 설계."}
+
+- slide: 20
+  type: closing
+  headline: "Thank you"
+  subline: "Questions & discussion"
+  repo: "github.com/grotyx/rag-obsidian"
 ```
