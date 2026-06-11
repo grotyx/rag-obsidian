@@ -50,7 +50,7 @@
 | 12 | VALIDATION | KPI + Chart (B) | 40 검증, 실데이터 |
 | 13 | ROADMAP | Timeline (J) | Phase 0→5 + 향후 |
 | 14 | GET STARTED | Try-It + URL | ⭐ 설치 3스텝 + **github URL 크게** |
-| 15 | HOW TO USE | Usage 5행 | ⭐ **실제 조작법**: Cmd+P 다섯 동작 (추가·검색·질문·@인용·참고문헌) |
+| 15 | HOW TO USE | Usage 6행 | ⭐ **실제 조작법**: Cmd+P 여섯 동작 (추가·PubMed·검색·질문·@인용·참고문헌+저널스타일) |
 | 16 | CONCLUSION | Pillar Cards (H) | 3기둥 + take-home |
 | 17 | — | Closing | Thank you + URL |
 
@@ -72,7 +72,7 @@
 12. "40개 통합검증, 실제 API·데이터로 전부 통과"
 13. "Phase 0부터 5까지, 각 단계가 따로도 쓸모 있다"
 14. "Obsidian만 있으면 오늘부터 시작"
-15. "쓰는 법은 다섯 동작이 전부다"
+15. "쓰는 법은 여섯 동작이 전부다"
 16. "Zotero 없이, 서버 없이, 늘 출처와 함께"
 17. (thank you)
 
@@ -102,5 +102,5 @@
 - 12: KPI 타일(40/0/9/19p) + 막대.
 - 13: 타임라인 (Phase 0–5).
 - 14: 3스텝 설치 + 큰 URL 바.
-- 15: 사용법 5행 — 동작 · 명령(Cmd+P) · 결과.
+- 15: 사용법 6행 — 동작 · 명령(Cmd+P) · 결과.
 - 표/문단 최소화, 슬라이드당 시각물 ≤ 2.

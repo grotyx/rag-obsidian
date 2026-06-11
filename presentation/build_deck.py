@@ -432,7 +432,7 @@ def try_it(s, takeaway):
     takeaway_strip(s, takeaway)
 
 def usage_steps(s, rows, takeaway):
-    ry = IY + 0.05; rh = 0.74; step = 0.85
+    ry = IY - 0.02; rh = 0.66; step = 0.76
     for i, r in enumerate(rows):
         y = ry + i * step
         rounded(s, IX, y, IW, rh, fill=WHITE, line=HAIR, line_w=0.9, radius=0.08)
@@ -536,19 +536,21 @@ def main():
     s = content("GET STARTED", "Obsidian만 있으면 오늘부터 시작", 14)  # 14
     try_it(s, "Obsidian만 있으면 오늘부터 — 내 서재가 답하기 시작한다")
 
-    s = content("HOW TO USE", "쓰는 법은 다섯 동작이 전부다", 15,
+    s = content("HOW TO USE", "쓰는 법은 여섯 동작이 전부다", 15,
                 "명령 팔레트 = Cmd/Ctrl+P · 'RAG'만 쳐도 전부 검색됨")  # 15
     usage_steps(s, [
         {"act": "논문 추가", "cmd": "Cmd+P → “Add reference by DOI / PMID / arXiv”",
          "res": "DOI·PMID 붙여넣기 → References/에 노트 자동 생성"},
-        {"act": "뜻으로 검색", "cmd": "“Search library (semantic)”  (리본: 돋보기)",
-         "res": "단어+뜻 하이브리드 검색, 저자·연도로 좁히기"},
+        {"act": "PubMed 검색", "cmd": "“Search PubMed and add references”  (리본: 돋보기)",
+         "res": "키워드로 PubMed 검색 → 골라서 한 번에 서재로"},
+        {"act": "뜻으로 검색", "cmd": "“Search library (semantic)”",
+         "res": "내 서재를 단어+뜻 하이브리드로, 저자·연도 필터"},
         {"act": "서재에 질문", "cmd": "“Chat with library”  (리본: 말풍선)",
          "res": "출처 [n] 달린 답 — [n] 클릭하면 원문 노트로"},
         {"act": "글 쓰며 인용", "cmd": "본문에서  @  입력",
          "res": "제목·저자로 골라 [@citekey] 자동완성 삽입"},
         {"act": "참고문헌 생성", "cmd": "“Update bibliography in current note”",
-         "res": "## References를 저널 스타일(APA·Vancouver·CSL)로 자동 생성"},
+         "res": "저널 스타일 자동 — 노트에 csl: 한 줄이면 교체 (1만+ 스타일 자동 다운로드)"},
     ], "전부 Cmd+P 한 곳에서 — 처음 딱 한 번 “Rebuild search index”로 색인만 만들어 두면 끝")
 
     s = content("CONCLUSION", "Zotero 없이, 서버 없이, 늘 출처와 함께", 16)  # 16
