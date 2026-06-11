@@ -431,6 +431,22 @@ def try_it(s, takeaway):
     para(tf, [{"t": f"현재 {VERSION} · 개발 빌드로 사용 중 · 공개 배포 예정", "s": 13, "c": TEXT_SOFT}], align=PP_ALIGN.CENTER, first=True)
     takeaway_strip(s, takeaway)
 
+def usage_steps(s, rows, takeaway):
+    ry = IY + 0.05; rh = 0.74; step = 0.85
+    for i, r in enumerate(rows):
+        y = ry + i * step
+        rounded(s, IX, y, IW, rh, fill=WHITE, line=HAIR, line_w=0.9, radius=0.08)
+        num_badge(s, IX + 0.42, y + (rh - 0.4) / 2, i + 1, d=0.4, fs=15)
+        _, tf = textbox(s, IX + 0.75, y, 1.95, rh, anchor=MSO_ANCHOR.MIDDLE)
+        para(tf, [{"t": r["act"], "s": 15, "b": True, "c": STARBUCKS}], first=True, line=18)
+        cx0 = IX + 2.75; cw0 = 4.95
+        rounded(s, cx0, y + 0.13, cw0, rh - 0.26, fill=NEUTRAL_WARM, line=None, radius=0.12)
+        _, tf = textbox(s, cx0 + 0.15, y + 0.13, cw0 - 0.3, rh - 0.26, anchor=MSO_ANCHOR.MIDDLE)
+        para(tf, [{"t": r["cmd"], "s": 12, "b": True, "c": ACCENT}], first=True, line=15)
+        _, tf = textbox(s, cx0 + cw0 + 0.25, y, IW - 2.75 - cw0 - 0.4, rh, anchor=MSO_ANCHOR.MIDDLE)
+        para(tf, [{"t": r["res"], "s": 12.5, "c": TEXT_SOFT}], first=True, line=16)
+    takeaway_strip(s, takeaway)
+
 # ================================================================ assemble
 def main():
     build_charts()
@@ -520,13 +536,28 @@ def main():
     s = content("GET STARTED", "Obsidian만 있으면 오늘부터 시작", 14)  # 14
     try_it(s, "Obsidian만 있으면 오늘부터 — 내 서재가 답하기 시작한다")
 
-    s = content("CONCLUSION", "Zotero 없이, 서버 없이, 늘 출처와 함께", 15)  # 15
+    s = content("HOW TO USE", "쓰는 법은 다섯 동작이 전부다", 15,
+                "명령 팔레트 = Cmd/Ctrl+P · 'RAG'만 쳐도 전부 검색됨")  # 15
+    usage_steps(s, [
+        {"act": "논문 추가", "cmd": "Cmd+P → “Add reference by DOI / PMID / arXiv”",
+         "res": "DOI·PMID 붙여넣기 → References/에 노트 자동 생성"},
+        {"act": "뜻으로 검색", "cmd": "“Search library (semantic)”  (리본: 돋보기)",
+         "res": "단어+뜻 하이브리드 검색, 저자·연도로 좁히기"},
+        {"act": "서재에 질문", "cmd": "“Chat with library”  (리본: 말풍선)",
+         "res": "출처 [n] 달린 답 — [n] 클릭하면 원문 노트로"},
+        {"act": "글 쓰며 인용", "cmd": "본문에서  @  입력",
+         "res": "제목·저자로 골라 [@citekey] 자동완성 삽입"},
+        {"act": "참고문헌 생성", "cmd": "“Update bibliography in current note”",
+         "res": "## References를 저널 스타일(APA·Vancouver·CSL)로 자동 생성"},
+    ], "전부 Cmd+P 한 곳에서 — 처음 딱 한 번 “Rebuild search index”로 색인만 만들어 두면 끝")
+
+    s = content("CONCLUSION", "Zotero 없이, 서버 없이, 늘 출처와 함께", 16)  # 16
     pattern_H(s, [{"tag": "OWN YOUR DATA", "big": "마크다운", "sub": "= 내 DB", "body": "평문·git·로컬 우선\n플러그인보다 오래 남음"},
                   {"tag": "GROUNDED", "big": "근거", "sub": "구절 인용", "body": "출처 없는 답 없음\n서식 참고문헌까지"},
                   {"tag": "GRAPH-LITE", "big": "그래프", "sub": "놓친 논문", "body": "OpenAlex 인용엣지\nLLM 비용 0"}],
               "내 서재가 곧 검색엔진이고, 답은 늘 출처와 함께 — RAG Obsidian")
 
-    closing()  # 16
+    closing()  # 17
     out = os.path.join(HERE, "rag_obsidian_deck.pptx")
     prs.save(out)
     print("saved →", out, "·", len(prs.slides), "slides")
