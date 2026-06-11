@@ -17,7 +17,7 @@ Neutral Warm. 차트의 데이터 색만 유지.
 ```yaml
 - slide: 1
   type: cover
-  title: "RAG Obsidian"
+  title: "Academic Paper Obsidian Citation Manager"   # 40pt 2줄 (구 "RAG Obsidian")
   label_pill: "OBSIDIAN PLUGIN"        # 아웃라인 필 (ACCENT 테두리+텍스트)
   subtitle_1: "내 논문 서재가 그대로 AI 검색엔진이 된다"
   subtitle_2: "Obsidian 위에서 · 내 컴퓨터 안에서 · 답은 늘 출처와 함께"
