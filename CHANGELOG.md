@@ -3,7 +3,10 @@
 All notable changes to Academic Paper Obsidian Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
-## [Unreleased]
+## [0.4.3] — 2026-09-07
+
+Correctness release: three review passes over the 0.4.1/0.4.2 work plus in-vault testing
+against a live Obsidian, OpenRouter, PubMed, OpenAlex and Unpaywall. No breaking changes.
 
 ### Fixed
 
