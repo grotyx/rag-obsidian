@@ -7,6 +7,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Fixed
 
+- **"Check retraction status" is labelled OpenAlex**, which is what it queries — the command
+  said Crossref.
+- Talk scripts and deck: the citation style follows the note's `csl:` line, not its journal
+  name (the container-title→style map was never wired up and has been removed); the command
+  count says 33, matching `main.ts`.
 - **Open-access lookup works once you set your e-mail, and says so when you have not** — the
   hardcoded `anonymous@example.com` fallback made Unpaywall answer 422 for every request, so
   "Find open-access PDF" always reported "No open-access copy found". It now asks for the
