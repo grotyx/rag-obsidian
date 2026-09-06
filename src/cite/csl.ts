@@ -98,6 +98,28 @@ export class CiteEngine {
 
   /** Render the styled reference list (markdown) and per-citekey in-text labels (HTML),
    *  processed in one pass so numeric in-text markers match the bibliography numbering. */
+  /** Frontmatter keys the plugin manages. They share the note with the CSL-JSON fields, and
+   *  citeproc would render some of them: CSL defines `status` ("in press"), so a note's
+   *  `status: unread` printed "Unread." into every bibliography entry. */
+  private static readonly PLUGIN_FIELDS = new Set([
+    "citekey",
+    "status",
+    "added",
+    "tags",
+    "concepts",
+    "pdf",
+    "summary_source",
+    "oa_url",
+    "oa_version",
+    "retracted",
+    "cited_by_count",
+    "openalex_id",
+    "csl",
+    "citation-style",
+    "aliases",
+    "position", // Obsidian's own frontmatter cache marker
+  ]);
+
   async renderNote(
     styleId: string,
     keys: string[],
@@ -106,7 +128,12 @@ export class CiteEngine {
     const items = keys
       .map((k) => {
         const it = getItem(k);
-        return it ? ({ ...(it as CSLItem), id: k } as CSLItem & { id: string }) : null;
+        if (!it) return null;
+        const csl: Record<string, unknown> = { id: k };
+        for (const [field, value] of Object.entries(it as Record<string, unknown>)) {
+          if (!CiteEngine.PLUGIN_FIELDS.has(field)) csl[field] = value;
+        }
+        return csl as unknown as CSLItem & { id: string };
       })
       .filter((x): x is CSLItem & { id: string } => !!x);
     if (!items.length) return { bibliography: [], inText: {}, entryIds: [] };

@@ -3,7 +3,7 @@
 > Display name: **Academic Paper Obsidian Citation Manager** · plugin id stays `rag-obsidian`
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.2 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (52 integration checks green)
+**Version**: 0.4.2 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (53 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -82,7 +82,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (52 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (53 checks)
 ```
 
 ## Testing approach (important)
@@ -100,6 +100,13 @@ bibliography, ontology link/IS_A.
 
 **Needs in-vault (runtime-CDN, can't node-test)**: pdfjs loaded from CDN in the plugin (the
 *algorithm* is verified against the local build), Transformers.js embeddings from CDN.
+
+**In-app testing without clicking**: launch with `open -a Obsidian --args --remote-debugging-port=9222`,
+then drive the renderer over CDP (`http://127.0.0.1:9222/json/list` → `Runtime.evaluate`) — e.g.
+`app.commands.executeCommandById("rag-obsidian:update-bibliography")`,
+`app.plugins.plugins["rag-obsidian"].library.entries()`. This reaches the CDN-loaded paths and the
+real Obsidian API; the vault's plugin folder must hold copies of `main.js`/`manifest.json`/`styles.css`
+(a symlink to the repo makes Obsidian hang on "loading plugins").
 
 **Test vault**: `_testvault/` is the hand-made click-test vault (plugin symlinked into
 `.obsidian/plugins/`); `npm test` builds its own throwaway `_testvault-auto/` and wipes it each

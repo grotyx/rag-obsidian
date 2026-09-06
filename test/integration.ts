@@ -356,6 +356,14 @@ async function main() {
     const bib = buildBibliography(found, stubLib, "apa");
     bib.split("\n").forEach((l) => log("       " + l.slice(0, 92)));
     ok(bib.split("\n").length >= 2, "bibliography rendered");
+    // Plugin-managed frontmatter must not reach citeproc: CSL has a `status` variable, so
+    // `status: unread` used to print "Unread." into every bibliography entry.
+    const noteFm = { ...items.get(keys[0])!, citekey: keys[0], status: "unread", added: "2026-09-07", tags: ["x"] };
+    ok(
+      !/unread/i.test(formatCitation(noteFm as CSLItem, "apa")),
+      "plugin frontmatter stays out of the formatted citation"
+    );
+
     const label = inTextLabel(items.get(keys[0])!);
     ok(/\(LeCun, 2015\)/.test(label), `inTextLabel: ${label}`);
 

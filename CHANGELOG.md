@@ -3,6 +3,16 @@
 All notable changes to Academic Paper Obsidian Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [Unreleased]
+
+### Fixed
+
+- **Bibliographies no longer print "Unread."** — the whole note frontmatter was handed to
+  citeproc, and CSL defines a `status` variable, so every reference note's plugin-managed
+  `status: unread` rendered into the entry (bibliography, compiled manuscript, copied
+  citation, annotated bibliography). Plugin-managed fields are now stripped at the citeproc
+  boundary. Found by running the plugin in a real vault.
+
 ## [0.4.2] — 2026-09-07
 
 ### Fixed
