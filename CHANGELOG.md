@@ -3,7 +3,7 @@
 All notable changes to Academic Paper Obsidian Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
-## [Unreleased]
+## [0.4.2] — 2026-09-07
 
 ### Fixed
 
@@ -65,7 +65,6 @@ first edit (as before) and then settles.
   vault scans).
 - Reading-view citation cache is invalidated per note (whole cache only when a reference
   note changes), shares one in-flight render between blocks, and never caches a failed render.
-- 45 integration checks (citation grammar + `splitAtReferences` cases added).
 
 ### Fixed (src/)
 

@@ -1,6 +1,6 @@
 # Obsidian RAG Bibliography Manager — Concept & Plan
 
-**Status:** Phase 0–5 + ontology built (verified, 50 integration checks green) · **Date:** 2026-09-06
+**Status:** Phase 0–5 + ontology built (verified, 52 integration checks green) · **Date:** 2026-09-07
 **Working name:** *RAG Obsidian* (alt: ObsiCite, Athenaeum, Marginalia, Codex)
 
 ---
