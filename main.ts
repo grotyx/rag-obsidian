@@ -18,6 +18,7 @@ import {
   inTextLabel,
   citePattern,
   keysInCite,
+  replaceCitations,
   splitAtReferences,
 } from "./src/cite/bibliography";
 import { CiteEngine } from "./src/cite/csl";
@@ -560,10 +561,12 @@ export default class ScholarRagPlugin extends Plugin {
     const styleId = this.styleForNote(file);
     let body = content;
     let refsBlock = "";
-    const replaceKey = (raw: string, render: (k: string) => string | null): string =>
-      raw.replace(citePattern(), (mm, g) => {
-        const labels = keysInCite(String(g)).map(render);
-        return labels.length && labels.every((l) => l) ? labels.join("; ") : mm;
+    // Code spans / fenced blocks keep their literal [@citekey] — a manuscript documenting the
+    // syntax must compile unchanged, and extractCitekeys ignores those brackets too.
+    const replaceKey = (text: string, render: (k: string) => string | null): string =>
+      replaceCitations(text, (keys) => {
+        const labels = keys.map(render);
+        return labels.length && labels.every((l) => l) ? labels.join("; ") : null;
       });
     if (styleId) {
       try {

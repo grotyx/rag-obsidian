@@ -19,10 +19,31 @@ export function keysInCite(body: string): string[] {
   return keys;
 }
 
+// Fenced blocks and inline code, as one alternation: `split` with this capturing group
+// yields [prose, code, prose, code, …], so code chunks sit at the odd indices.
+const CODE_RE = /(```[\s\S]*?```|`[^`\n]*`)/g;
+
+/** Rewrite `[…@key…]` citations that are NOT inside code. `render` gets one bracket's keys
+ *  and its raw text, and returns the replacement — or null to leave the bracket as written
+ *  (unknown citekey, an e-mail in brackets). Mirrors what `extractCitekeys` chooses to see. */
+export function replaceCitations(
+  text: string,
+  render: (keys: string[], raw: string) => string | null
+): string {
+  return text
+    .split(CODE_RE)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(citePattern(), (raw, body) => render(keysInCite(String(body)), raw) ?? raw)
+    )
+    .join("");
+}
+
 /** Pull unique citekeys (in first-seen order) out of `[@citekey]` Pandoc citations. */
 export function extractCitekeys(text: string): string[] {
   const keys: string[] = [];
-  const clean = text.replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " "); // skip code
+  const clean = text.replace(CODE_RE, " "); // skip code
   let m: RegExpExecArray | null;
   CITE_RE.lastIndex = 0;
   while ((m = CITE_RE.exec(clean)) !== null) {

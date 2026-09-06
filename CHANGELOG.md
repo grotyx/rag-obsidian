@@ -7,6 +7,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Fixed
 
+- **"Compile manuscript" no longer rewrites citations inside code** — a manuscript that
+  documents the `[@citekey]` syntax had its code spans and fenced blocks replaced with
+  rendered citations. Reading view already skipped code; compile now shares that rule.
 - **Bibliographies no longer print "Unread."** — the whole note frontmatter was handed to
   citeproc, and CSL defines a `status` variable, so every reference note's plugin-managed
   `status: unread` rendered into the entry (bibliography, compiled manuscript, copied

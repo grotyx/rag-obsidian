@@ -27,6 +27,7 @@ import {
   inTextLabel,
   citePattern,
   keysInCite,
+  replaceCitations,
   splitAtReferences,
 } from "../src/cite/bibliography";
 import { Ontology } from "../src/ontology/pack";
@@ -376,6 +377,21 @@ async function main() {
       `citePattern+keysInCite: ${JSON.stringify(brackets)}`
     );
     ok(extractCitekeys(grammar).join() === "a,b,c,d,e,example.com", "extractCitekeys skips code spans");
+
+    // Compile-manuscript rewrites citations; code must survive verbatim, unknown keys stay.
+    const src = "Cite [@a; @b] and `[@a]` plus\n```\n[@b]\n```\nand [@zz].";
+    const known: Record<string, string> = { a: "(A, 2020)", b: "(B, 1998)" };
+    const compiled = replaceCitations(src, (ks) => {
+      const l = ks.map((k) => known[k] ?? null);
+      return l.length && l.every(Boolean) ? l.join("; ") : null;
+    });
+    ok(
+      compiled.includes("(A, 2020); (B, 1998)") &&
+        compiled.includes("`[@a]`") &&
+        compiled.includes("```\n[@b]\n```") &&
+        compiled.includes("[@zz]"),
+      `replaceCitations keeps code + unknown keys: ${JSON.stringify(compiled.slice(0, 60))}`
+    );
 
     // "## References" on the first line / without a trailing newline / with a later section.
     const s1 = splitAtReferences("Intro [@a]\n\n## References");
