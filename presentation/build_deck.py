@@ -492,7 +492,7 @@ def main():
     pattern_F(s, [{"band": "단어로", "text": "정확한 용어 매칭 — 똑똑해진 Ctrl+F (BM25)"},
                   {"band": "뜻으로", "text": "의미가 가까우면 매칭 — 'MI'로 검색해도 'myocardial infarction'을 찾음 (벡터 임베딩)"},
                   {"band": "+ 필터", "text": "저자·연도·저널로 좁히기 (노트 맨 위 메타데이터)"}],
-              "단어 + 뜻 + 메타데이터를 한 번에 — 전부 로컬·무료. 필요하면 인용 그래프로 확장.")
+              "단어 + 뜻 + 메타데이터를 한 번에 — Ollama면 전부 로컬·무료. 필요하면 인용 그래프로 확장.")
 
     s = content("HOW · 채팅", "모든 답은 내 서재의 진짜 구절을 인용한다",
                 "근거 기반(RAG) 채팅 파이프라인")  # 9
@@ -521,7 +521,7 @@ def main():
     pattern_J(s, [{"year": "P0", "label": "서지관리\nDOI→노트"}, {"year": "P1", "label": "의미 검색\nOrama"},
                   {"year": "P2", "label": "근거 채팅"}, {"year": "P3", "label": "PDF\n임포트"},
                   {"year": "P4", "label": "인용\n그래프"}, {"year": "P5", "label": "작성 지원\n참고문헌"}],
-              "향후: 풀 CSL(citeproc) 스타일 · 온톨로지 검색확장 · 모바일 QA")
+              "향후: 온톨로지 검색확장 · 모바일 QA · 대용량 색인 엔진")
 
     s = content("GET STARTED", "Obsidian만 있으면 오늘부터 시작")  # 13
     try_it(s, "Obsidian만 있으면 오늘부터 — 내 서재가 답하기 시작한다")
@@ -532,7 +532,7 @@ def main():
         {"act": "DOI·PMID 추가", "cmd": "“Add reference by DOI / PMID / arXiv”",
          "res": "식별자 붙여넣기 → References/에 노트 자동 생성.\n제목·저자·연도·초록까지 자동으로 채워진다"},
         {"act": "PubMed 검색", "cmd": "“Search PubMed and add references”  (리본: 돋보기)",
-         "res": "키워드 검색 → 체크해서 한 번에 추가.\n옵션: LLM 자동 요약(OA는 전문 기반) + MeSH 태그"},
+         "res": "키워드 검색 → 체크해서 한 번에 추가.\nMeSH 태그 자동 · 옵션: LLM 요약(PMC 전문 기반)"},
         {"act": "PDF 던져넣기", "cmd": "“Import PDF into library”",
          "res": "PDF에서 텍스트·DOI를 찾아 메타데이터 자동 인식.\n식별자 없으면 LLM이 제목·저자를 추출"},
         {"act": "Zotero·EndNote 이관", "cmd": "“Import references (BibTeX / RIS / CSL-JSON)”",
@@ -555,9 +555,9 @@ def main():
     s = content("MORE TOOLS", "추가부터 투고까지, 연구 워크플로 전체를 덮는다",
                 "명령 30개 · 전부 Cmd+P")  # 16
     pattern_H(s, [{"tag": "EXPORT", "big": "내보내기", "sub": "lock-in 0", "body": "BibTeX/RIS/CSL-JSON로\n언제든 통째로 도로\n가져갈 수 있다"},
-                  {"tag": "SUMMARIZE", "big": "요약", "sub": "LLM + MeSH", "body": "추가 시 자동 요약·MeSH\n(OA는 전문 기반)"},
+                  {"tag": "SUMMARIZE", "big": "요약", "sub": "LLM + MeSH", "body": "추가 시 자동 요약·MeSH\n(PMC 전문 기반)"},
                   {"tag": "WRITE", "big": "투고", "sub": "원고 컴파일", "body": "[@키] 전부 풀어\n인용+참고문헌 완성본\n(Pandoc-ready)"},
-                  {"tag": "CURATE", "big": "관리", "sub": "서재 위생", "body": "철회 경고 · 중복 정리\n읽기 큐 · OA PDF 다운로드\nPDF 하이라이트 추출"}],
+                  {"tag": "CURATE", "big": "관리", "sub": "서재 위생", "body": "철회 확인 · 중복 정리\n읽기 큐 · OA PDF 다운로드\nPDF 하이라이트 추출"}],
               "lock-in 0 (언제든 내보내기) — 들어온 뒤엔 읽기·쓰기·투고까지 한 앱에서")
 
     s = content("CONCLUSION", "Zotero 없이, 서버 없이, 늘 출처와 함께")  # 17
@@ -571,7 +571,7 @@ def main():
         ("Zotero랑 뭐가 다른가요?",
          "Zotero는 별도 앱+별도 DB. 여기선 글 쓰는 Obsidian 노트 자체가 서지 DB라 한 곳에서 끝나고, AI 근거 검색이 기본 내장."),
         ("오프라인에서도 되나요?",
-         "검색·색인은 전부 로컬. 임베딩도 로컬(Ollama) 가능. 네트워크는 메타데이터 가져오기와 인용 그래프(OpenAlex)뿐."),
+         "검색·색인은 전부 로컬. 임베딩도 로컬(Ollama) 가능. 네트워크는 외부 조회(메타데이터·PubMed·OpenAlex·CSL 스타일)와 클라우드 LLM·임베딩 호출뿐."),
         ("내 데이터는 어디에 저장되나요?",
          "전부 내 vault 안 평문 마크다운. 외부 서버 없음 — 내가 키를 넣은 LLM 호출만 예외."),
     ])
