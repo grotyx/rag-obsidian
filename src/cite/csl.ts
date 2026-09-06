@@ -18,17 +18,6 @@ export const BUNDLED_STYLES: Record<string, string> = {
   apa: "APA 7th edition",
 };
 
-/** container-title (lowercased) → default CSL style id, for "match the journal" convenience. */
-export const JOURNAL_STYLE: Record<string, string> = {
-  spine: "spine",
-  "the spine journal": "elsevier-vancouver",
-  "spine j": "elsevier-vancouver",
-  "european spine journal": "springer-basic-brackets",
-  "eur spine j": "springer-basic-brackets",
-  "global spine journal": "american-medical-association",
-  "global spine j": "american-medical-association",
-};
-
 /** citeproc-js wrapper: resolves CSL styles (bundled → cached → CSL repo) and renders bibliographies. */
 export class CiteEngine {
   private locale = "";

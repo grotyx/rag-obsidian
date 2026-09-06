@@ -180,7 +180,7 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addCommand({
       id: "check-retraction",
-      name: "Check retraction status (Crossref)",
+      name: "Check retraction status (OpenAlex)",
       callback: () => void this.checkRetractionForActive(),
     });
     this.addCommand({

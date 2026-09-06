@@ -228,7 +228,7 @@ Neutral Warm. 차트의 데이터 색만 유지.
       - {tag: "WRITE",     big: "투고",     sub: "원고 컴파일",  body: "[@키] 전부 풀어 인용+참고문헌 완성본 (Pandoc-ready)"}
       - {tag: "CURATE",    big: "관리",     sub: "서재 위생",    body: "철회 확인 · 중복 정리 · 읽기 큐 · OA PDF 다운로드 · PDF 하이라이트"}
     takeaway: "lock-in 0 (언제든 내보내기) — 들어온 뒤엔 읽기·쓰기·투고까지 한 앱에서"
-  source: "명령 30개 · 전부 Cmd+P"
+  source: "명령 33개 · 전부 Cmd+P"
 
 - slide: 17
   section: CONCLUSION

@@ -553,7 +553,7 @@ def main():
     ], "추가 → 검색 → 질문 → 인용 → 참고문헌, 전부 Cmd+P 안에서.")
 
     s = content("MORE TOOLS", "추가부터 투고까지, 연구 워크플로 전체를 덮는다",
-                "명령 30개 · 전부 Cmd+P")  # 16
+                "명령 33개 · 전부 Cmd+P")  # 16
     pattern_H(s, [{"tag": "EXPORT", "big": "내보내기", "sub": "lock-in 0", "body": "BibTeX/RIS/CSL-JSON로\n언제든 통째로 도로\n가져갈 수 있다"},
                   {"tag": "SUMMARIZE", "big": "요약", "sub": "LLM + MeSH", "body": "추가 시 자동 요약·MeSH\n(PMC 전문 기반)"},
                   {"tag": "WRITE", "big": "투고", "sub": "원고 컴파일", "body": "[@키] 전부 풀어\n인용+참고문헌 완성본\n(Pandoc-ready)"},
