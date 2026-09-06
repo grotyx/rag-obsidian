@@ -93,7 +93,9 @@ vault를 열고 활성화만 — Node·빌드 불필요.
 
 모두 Obsidian `requestUrl` 경유 (데스크톱·모바일):
 
-- **LLM**(챗 + 요약): Anthropic · OpenAI / 호환 · Ollama(로컬).
+- **LLM**(챗 + 요약): Anthropic · OpenAI / 호환 · Ollama(로컬). *Chat model*은 선택 항목으로,
+  **Chat with library** 답변에만 기본 모델 대신 적용됩니다. 논문 요약과 PDF 메타데이터 추출은
+  기본 모델을 그대로 쓰므로, 답변 품질이 중요한 채팅에만 더 좋은 모델을 지정할 수 있습니다.
 - **임베딩**(검색 + 챗): Ollama(로컬) · OpenAI / 호환 · Transformers.js.
 
 **OpenRouter 사용 시?** 채팅과 임베딩 모두 **OpenAI** provider를 고르면 됩니다. 키 하나, base URL 하나:
