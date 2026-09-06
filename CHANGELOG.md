@@ -7,6 +7,26 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Fixed
 
+- **Paper summaries stopped failing on Anthropic models** — the summarize call asked for
+  16 384 output tokens, above the 8 192 ceiling of several Claude models, so the API answered
+  400 for every paper. It asks for 8 192 now.
+- **The raised token default now reaches existing vaults** — a stored `llmMaxTokens: 1024`
+  (the pre-0.4.2 default) shadowed the new one, so upgrading users kept getting empty
+  answers from reasoning models. That exact value is lifted once on load.
+- **"Download open-access PDF" works on notes saved by older versions** — those keep the PDF
+  link in `oa_url`; the command only read the new `oa_pdf`. It falls back, and the `%PDF-`
+  check still rejects a landing page.
+- **A re-run of "Find open-access PDF" clears a stale link** instead of leaving a dead
+  `oa_pdf` behind to 404 on every download.
+- **A citation with an unknown key stays visible** — `[@real; @typo]` rendered as if the typo
+  were not there. Reading view and "Compile manuscript" now share one rule: a bracket is
+  rewritten only when every key resolves.
+- **Annotated bibliography no longer drops a reference** that citeproc skipped; the
+  lightweight formatter fills the gap per key, not only when the whole style fails.
+- **"Copy citation" only strips a leading `1. `**, so an entry whose text genuinely starts
+  with a number (a corporate author like "3. Bundesliga …") survives.
+- Reading-view rendering scans the library once per block instead of once per citekey, and
+  the citation cache is evicted when a note is deleted or renamed.
 - **"Check retraction status" is labelled OpenAlex**, which is what it queries — the command
   said Crossref.
 - Talk scripts and deck: the citation style follows the note's `csl:` line, not its journal

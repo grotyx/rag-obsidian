@@ -40,6 +40,21 @@ export function replaceCitations(
     .join("");
 }
 
+/** Resolve one bracket's citekeys, or null if ANY of them is unknown — the caller then leaves
+ *  the citation exactly as the author wrote it. All-or-nothing on purpose: silently dropping a
+ *  typo'd key from `[@real; @typo]` would hide the mistake, and reading view and
+ *  "Compile manuscript" must agree on what a citation looks like. */
+export function resolveCluster<T>(keys: string[], lookup: (key: string) => T | null): T[] | null {
+  if (!keys.length) return null;
+  const out: T[] = [];
+  for (const k of keys) {
+    const v = lookup(k);
+    if (v == null) return null;
+    out.push(v);
+  }
+  return out;
+}
+
 /** Pull unique citekeys (in first-seen order) out of `[@citekey]` Pandoc citations. */
 export function extractCitekeys(text: string): string[] {
   const keys: string[] = [];

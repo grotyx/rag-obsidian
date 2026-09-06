@@ -85,8 +85,6 @@ export class CiteEngine {
     throw new Error(`Citation style "${id}" not found (not bundled, not in the CSL repo).`);
   }
 
-  /** Render the styled reference list (markdown) and per-citekey in-text labels (HTML),
-   *  processed in one pass so numeric in-text markers match the bibliography numbering. */
   /** Frontmatter keys the plugin manages. They share the note with the CSL-JSON fields, and
    *  citeproc would render some of them: CSL defines `status` ("in press"), so a note's
    *  `status: unread` printed "Unread." into every bibliography entry. */
@@ -110,6 +108,8 @@ export class CiteEngine {
     "position", // Obsidian's own frontmatter cache marker
   ]);
 
+  /** Render the styled reference list (markdown) and per-citekey in-text labels (HTML),
+   *  processed in one pass so numeric in-text markers match the bibliography numbering. */
   async renderNote(
     styleId: string,
     keys: string[],

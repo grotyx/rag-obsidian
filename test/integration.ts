@@ -29,6 +29,7 @@ import {
   citePattern,
   keysInCite,
   replaceCitations,
+  resolveCluster,
   splitAtReferences,
 } from "../src/cite/bibliography";
 import { Ontology } from "../src/ontology/pack";
@@ -357,11 +358,17 @@ async function main() {
       `findOpenAccess demands a real contact address: ${msg.slice(0, 60)}`
     );
     // PLOS: best_oa_location carries only a landing page, the PDF sits in another oa_location.
-    const oa = await findOpenAccess("10.1371/journal.pmed.1000097", "grotyx@gmail.com").catch(() => null);
-    ok(
-      !!oa?.isOA && !!oa?.pdfUrl && /\.pdf/i.test(oa.pdfUrl),
-      `findOpenAccess scans every oa_location for a PDF: ${oa?.pdfUrl ?? "none"}`
-    );
+    // Unpaywall requires a real contact address, so this one runs only when CONTACT_EMAIL is set.
+    const contact = process.env.CONTACT_EMAIL;
+    if (contact) {
+      const oa = await findOpenAccess("10.1371/journal.pmed.1000097", contact).catch(() => null);
+      ok(
+        !!oa?.isOA && !!oa?.pdfUrl && /\.pdf/i.test(oa.pdfUrl),
+        `findOpenAccess scans every oa_location for a PDF: ${oa?.pdfUrl ?? "none"}`
+      );
+    } else {
+      log("     (set CONTACT_EMAIL to also check the live oa_locations scan)");
+    }
   }
 
   // ---- 10. bibliography / citations (Phase 5) ----
@@ -376,6 +383,29 @@ async function main() {
     const bib = buildBibliography(found, stubLib, "apa");
     bib.split("\n").forEach((l) => log("       " + l.slice(0, 92)));
     ok(bib.split("\n").length >= 2, "bibliography rendered");
+    // Every field buildNote writes must be either a real CSL variable or declared plugin-managed,
+    // or citeproc renders it into the entry (that is how `status: unread` printed "Unread.").
+    {
+      const noteText = buildNote(items.get(keys[0])!, "x2024test", { tags: ["t"], summarySource: "s" });
+      const fmKeys = (noteText.match(/^---\n([\s\S]*?)\n---/) || ["", ""])[1]
+        .split("\n")
+        .filter((l) => /^[A-Za-z][A-Za-z0-9_-]*:/.test(l))
+        .map((l) => l.split(":")[0]);
+      const CSL_VARS = new Set([
+        "type", "title", "author", "editor", "container-title", "collection-title", "publisher",
+        "publisher-place", "page", "volume", "issue", "number", "issued", "accessed", "DOI",
+        "PMID", "PMCID", "ISBN", "ISSN", "URL", "abstract", "keyword", "language", "note",
+        "edition", "genre", "medium", "source", "archive", "call-number", "citation-key",
+      ]);
+      const PLUGIN_FIELDS = new Set([
+        "citekey", "status", "added", "tags", "concepts", "pdf", "summary_source", "oa_url",
+        "oa_pdf", "oa_version", "retracted", "cited_by_count", "openalex_id", "csl",
+        "citation-style", "aliases", "position",
+      ]);
+      const stray = fmKeys.filter((k) => !CSL_VARS.has(k) && !PLUGIN_FIELDS.has(k));
+      ok(stray.length === 0, `every buildNote field is CSL or declared plugin-managed${stray.length ? ": " + stray.join(", ") : ""}`);
+    }
+
     // Plugin-managed frontmatter must not reach citeproc: CSL has a `status` variable, so
     // `status: unread` used to print "Unread." into every bibliography entry.
     const noteFm = { ...items.get(keys[0])!, citekey: keys[0], status: "unread", added: "2026-09-07", tags: ["x"] };
@@ -396,6 +426,16 @@ async function main() {
       `citePattern+keysInCite: ${JSON.stringify(brackets)}`
     );
     ok(extractCitekeys(grammar).join() === "a,b,c,d,e,example.com", "extractCitekeys skips code spans");
+
+    // Reading view and compile share one rule: a bracket renders only when EVERY key resolves.
+    const known2: Record<string, string> = { a: "(A)", b: "(B)" };
+    const look = (k: string) => known2[k] ?? null;
+    ok(
+      JSON.stringify(resolveCluster(["a", "b"], look)) === '["(A)","(B)"]' &&
+        resolveCluster(["a", "typo"], look) === null &&
+        resolveCluster([], look) === null,
+      "resolveCluster: all keys or nothing"
+    );
 
     // Compile-manuscript rewrites citations; code must survive verbatim, unknown keys stay.
     const src = "Cite [@a; @b] and `[@a]` plus\n```\n[@b]\n```\nand [@zz].";

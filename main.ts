@@ -19,6 +19,7 @@ import {
   citePattern,
   keysInCite,
   replaceCitations,
+  resolveCluster,
   splitAtReferences,
 } from "./src/cite/bibliography";
 import { CiteEngine } from "./src/cite/csl";
@@ -253,11 +254,13 @@ export default class ScholarRagPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on("delete", (file: TAbstractFile) => {
         void this.indexManager.removeFile(file.path);
+        this.citeCache.delete(file.path);
       })
     );
     this.registerEvent(
       this.app.vault.on("rename", (file: TAbstractFile, oldPath: string) => {
         void this.indexManager.removeFile(oldPath);
+        this.citeCache.delete(oldPath); // labels were cached under the old path
         if (file instanceof TFile) this.indexManager.enqueue(file);
       })
     );
@@ -275,6 +278,10 @@ export default class ScholarRagPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    // 1024 was the default through 0.4.1 and is below the current slider floor. Reasoning models
+    // spend that entire budget on thinking and return an empty answer, so lift the stored value
+    // for anyone who never moved the slider (a deliberate setting is any other number).
+    if (this.settings.llmMaxTokens === 1024) this.settings.llmMaxTokens = DEFAULT_SETTINGS.llmMaxTokens;
     const store = this.secretStore();
     if (!store) return;
     let migrated = false;
@@ -421,6 +428,9 @@ export default class ScholarRagPlugin extends Plugin {
     }
     if (!targets.length) return;
     const cslMap = sourcePath ? await this.citeMapFor(sourcePath) : null;
+    // One library scan for the whole block — getItem() walks every markdown file, so calling it
+    // per citekey turned a 40-citation note into 40 full-vault scans per render.
+    const byKey = new Map(this.library.entries().map((e) => [e.citekey, e.item]));
     for (const text of targets) {
       const value = text.nodeValue ?? "";
       const frag = document.createDocumentFragment();
@@ -429,15 +439,19 @@ export default class ScholarRagPlugin extends Plugin {
       const re = citePattern();
       let m: RegExpExecArray | null;
       while ((m = re.exec(value)) !== null) {
-        const keys = keysInCite(m[1]).filter((k) => this.library.getItem(k) || (cslMap && cslMap[k]));
-        if (!keys.length) continue; // not a citation we know (e.g. an e-mail in brackets)
+        const keys = keysInCite(m[1]);
+        const resolved = resolveCluster(keys, (k) => {
+          const item = byKey.get(k) ?? null;
+          const label = (cslMap && cslMap[k]) || null;
+          return item || label ? { key: k, item, label } : null;
+        });
+        if (!resolved) continue; // unknown key, or not a citation (an e-mail in brackets)
         if (m.index > last) frag.appendChild(document.createTextNode(value.slice(last, m.index)));
-        keys.forEach((k, i) => {
+        resolved.forEach(({ key: k, item, label }, i) => {
           if (i) frag.appendChild(document.createTextNode("; "));
-          const item = this.library.getItem(k);
           const span = document.createElement("span");
           span.className = "srag-cite";
-          if (cslMap && cslMap[k]) setCiteLabel(span, cslMap[k]);
+          if (label) setCiteLabel(span, label);
           else span.textContent = item ? inTextLabel(item) : `[@${k}]`;
           if (item) span.onclick = () => void this.openCitekey(k);
           frag.appendChild(span);
@@ -542,9 +556,13 @@ export default class ScholarRagPlugin extends Plugin {
     const landing = oa.landingUrl || "";
     const version = oa.version;
     await this.app.fileManager.processFrontMatter(file, (f) => {
+      // Overwrite unconditionally: a re-run that no longer finds a PDF must drop the stale one.
       if (landing) f.oa_url = landing;
+      else delete f.oa_url;
       if (pdfUrl) f.oa_pdf = pdfUrl;
+      else delete f.oa_pdf;
       if (version) f.oa_version = version;
+      else delete f.oa_version;
     });
     new Notice(
       pdfUrl
@@ -572,10 +590,7 @@ export default class ScholarRagPlugin extends Plugin {
     // Code spans / fenced blocks keep their literal [@citekey] — a manuscript documenting the
     // syntax must compile unchanged, and extractCitekeys ignores those brackets too.
     const replaceKey = (text: string, render: (k: string) => string | null): string =>
-      replaceCitations(text, (keys) => {
-        const labels = keys.map(render);
-        return labels.length && labels.every((l) => l) ? labels.join("; ") : null;
-      });
+      replaceCitations(text, (keys) => resolveCluster(keys, render)?.join("; ") ?? null);
     if (styleId) {
       try {
         const { bibliography, inText } = await this.citeEngine.renderNote(
@@ -725,7 +740,9 @@ export default class ScholarRagPlugin extends Plugin {
     if (styleId) {
       try {
         const { bibliography } = await this.citeEngine.renderNote(styleId, [key], (k) => this.library.getItem(k));
-        text = (bibliography[0] || "").replace(/^\d+[.)]\s+/, ""); // numeric styles prefix "1. "
+        // A one-item render under a numeric style is prefixed "1. " — anything else is the
+        // entry's own text (e.g. an author named "3. Bundesliga …") and must survive.
+        text = (bibliography[0] || "").replace(/^1[.)]\s+/, "");
       } catch {
         /* fall back below */
       }
@@ -773,8 +790,9 @@ export default class ScholarRagPlugin extends Plugin {
   async downloadOaPdf(): Promise<void> {
     const r = this.activeRef();
     if (!r) return;
-    // Only a direct PDF link is downloadable; `oa_url` may be a landing page.
-    let url = r.fm.oa_pdf ? String(r.fm.oa_pdf) : "";
+    // `oa_pdf` is the direct link; fall back to `oa_url`, which held the PDF before 0.4.3 and
+    // may be a landing page — the %PDF- check below rejects it if so.
+    let url = String(r.fm.oa_pdf || r.fm.oa_url || "");
     if (!url && r.fm.DOI) {
       try {
         url = (await findOpenAccess(String(r.fm.DOI), this.settings.openalexMailto))?.pdfUrl || "";
@@ -885,11 +903,12 @@ export default class ScholarRagPlugin extends Plugin {
           new Notice(`Style "${styleId}" failed; using ${this.settings.citeStyle}. ${e instanceof Error ? e.message : ""}`);
         }
       }
-      if (!ordered.length) {
-        ordered = keys.flatMap((key) => {
-          const item = this.library.getItem(key);
-          return item ? [{ key, cite: formatCitation(item, this.settings.citeStyle) }] : [];
-        });
+      // Fill in any key citeproc skipped (or all of them, if the style failed).
+      const rendered = new Set(ordered.map((e) => e.key));
+      for (const key of keys) {
+        if (rendered.has(key)) continue;
+        const item = this.library.getItem(key);
+        if (item) ordered.push({ key, cite: formatCitation(item, this.settings.citeStyle) });
       }
       for (const { key, cite } of ordered) {
         const file = this.library.getFile(key);

@@ -137,23 +137,9 @@ export class Library {
     return null;
   }
 
+  /** Same scan as `entries()`, without the parsed CSL item. */
   list(): RefEntry[] {
-    const prefix = this.folder() + "/";
-    const out: RefEntry[] = [];
-    for (const file of this.app.vault.getMarkdownFiles()) {
-      if (!file.path.startsWith(prefix)) continue;
-      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      if (!fm || !fm.citekey) continue;
-      out.push({
-        file,
-        citekey: String(fm.citekey),
-        title: String(fm.title ?? file.basename),
-        authors: formatAuthors(fm.author),
-        year: extractYear(fm.issued),
-      });
-    }
-    out.sort((a, b) => b.year.localeCompare(a.year) || a.title.localeCompare(b.title));
-    return out;
+    return this.entries();
   }
 
   /** Single-pass scan returning each note's citekey, CSL item, and file together —

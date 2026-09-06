@@ -17,6 +17,7 @@ export class IndexManager {
   // them can never interleave persist()'s write-tmp → remove → rename steps on the same files.
   private chain: Promise<unknown> = Promise.resolve();
   private provider: EmbeddingProvider | null = null;
+  private providerKey = "";
 
   constructor(
     private app: App,
@@ -40,10 +41,14 @@ export class IndexManager {
     return this.getProvider().id;
   }
 
-  /** One provider per `provider:model` — Transformers.js keeps its ONNX pipeline on the instance. */
+  /** One provider per `provider:model` — Transformers.js keeps its ONNX pipeline on the instance,
+   *  so rebuild only when the settings that define the id actually change. */
   private getProvider(): EmbeddingProvider {
-    const fresh = createProvider(this.settings);
-    if (!this.provider || this.provider.id !== fresh.id) this.provider = fresh;
+    const key = `${this.settings.embeddingProvider}:${this.settings.embeddingModel}`;
+    if (!this.provider || this.providerKey !== key) {
+      this.provider = createProvider(this.settings);
+      this.providerKey = key;
+    }
     return this.provider;
   }
 

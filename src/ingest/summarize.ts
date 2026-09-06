@@ -64,7 +64,9 @@ export async function summarizeSource(
   const user = header + sourceText.slice(0, 120000);
   const reply = await llm.chat([{ role: "user", content: user }], SYS_PROMPT, {
     reasoningEffort: "high",
-    maxTokens: 16384, // EN sections + KR + MESH, plus a reasoning model's thinking budget
+    // 8192: the smallest ceiling among current Anthropic models, and 8x the old 1024 default —
+    // enough for EN sections + KR + MESH plus a reasoning model's thinking budget.
+    maxTokens: 8192,
   });
   const out = parseSections(reply);
   if (!out.background && !out.results && !out.kr) {
