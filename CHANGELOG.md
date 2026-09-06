@@ -33,6 +33,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
   stronger model than paper summaries and PDF metadata extraction, which keep the default
   model. Empty means "same as default", so nothing changes for existing setups.
 - README (en + ko): OpenRouter setup — one key and base URL drive both chat and embeddings.
+- Settings: "OpenAlex contact email" is now **"Contact e-mail"** — the same address goes to
+  OpenAlex, Unpaywall and PubMed, and open-access lookup does not work without it.
 - 52 integration checks (chat-model routing).
 
 ### Changed

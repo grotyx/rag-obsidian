@@ -3,7 +3,7 @@
 > Display name: **Academic Paper Obsidian Citation Manager** · plugin id stays `rag-obsidian`
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.2 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (55 integration checks green)
+**Version**: 0.4.2 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (56 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -82,7 +82,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (55 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (56 checks)
 ```
 
 ## Testing approach (important)
@@ -140,6 +140,9 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 - Node `fetch` to `localhost` can hit IPv6 `::1` while Ollama is IPv4 — use `127.0.0.1` in tests
   (Obsidian's `requestUrl` handles this itself).
 - Crossref often omits abstracts; PubMed efetch supplies them.
+- `openalexMailto` (settings: "Contact e-mail") is one address shared by OpenAlex, Unpaywall and
+  PubMed. Unpaywall **requires** it — without one, `findOpenAccess` throws with a message naming
+  the setting rather than reporting "no OA copy".
 - Obsidian Properties UI may warn on nested CSL frontmatter (`author`/`issued`) — data is valid.
 - Cross-identifier dedup on add: session registry + normalized-DOI/PMID/title match in
   `findDuplicate`; bare-digit PMID input requires a confirm click in the Add modal.

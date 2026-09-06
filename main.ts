@@ -536,13 +536,21 @@ export default class ScholarRagPlugin extends Plugin {
       new Notice("No open-access copy found");
       return;
     }
-    const url = oa.pdfUrl || oa.landingUrl || "";
+    // Keep the two apart: `oa_pdf` is what "Download open-access PDF" fetches, `oa_url` is the
+    // record a human opens. Storing a landing page under `oa_url` made the download save HTML.
+    const pdfUrl = oa.pdfUrl || "";
+    const landing = oa.landingUrl || "";
     const version = oa.version;
     await this.app.fileManager.processFrontMatter(file, (f) => {
-      f.oa_url = url;
+      if (landing) f.oa_url = landing;
+      if (pdfUrl) f.oa_pdf = pdfUrl;
       if (version) f.oa_version = version;
     });
-    new Notice(`Open access (${version || "OA"}): ${url}`);
+    new Notice(
+      pdfUrl
+        ? `Open access (${version || "OA"}) — PDF found, run "Download open-access PDF"`
+        : `Open access (${version || "OA"}), but no direct PDF link: ${landing}`
+    );
   }
 
   /** Produce a sibling "(compiled)" note: [@citekey] resolved to in-text labels + a References list. */
@@ -765,7 +773,8 @@ export default class ScholarRagPlugin extends Plugin {
   async downloadOaPdf(): Promise<void> {
     const r = this.activeRef();
     if (!r) return;
-    let url = r.fm.oa_url ? String(r.fm.oa_url) : "";
+    // Only a direct PDF link is downloadable; `oa_url` may be a landing page.
+    let url = r.fm.oa_pdf ? String(r.fm.oa_pdf) : "";
     if (!url && r.fm.DOI) {
       try {
         url = (await findOpenAccess(String(r.fm.DOI), this.settings.openalexMailto))?.pdfUrl || "";
@@ -799,7 +808,9 @@ export default class ScholarRagPlugin extends Plugin {
       notice.hide();
     }
     if (res.status >= 400 || !res.arrayBuffer) {
-      new Notice(`Download failed (${res.status})`);
+      // Repositories often block non-browser requests (403) — point at the page that works.
+      const landing = r.fm.oa_url ? ` — open ${String(r.fm.oa_url)} instead` : "";
+      new Notice(`Download failed (${res.status})${landing}`);
       return;
     }
     // `oa_url` may be a landing page (Unpaywall had no url_for_pdf) — don't save HTML as .pdf.

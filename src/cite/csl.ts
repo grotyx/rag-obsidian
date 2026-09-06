@@ -110,6 +110,7 @@ export class CiteEngine {
     "pdf",
     "summary_source",
     "oa_url",
+    "oa_pdf",
     "oa_version",
     "retracted",
     "cited_by_count",

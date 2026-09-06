@@ -187,7 +187,7 @@ csl: european-spine-journal
 npm run dev        # esbuild watch → main.js
 npm run deploy     # build + copy into the vault (VAULT_PLUGIN_DIR in .env)
 npm run build      # tsc + esbuild production
-npm test           # live integration suite (55 checks)
+npm test           # live integration suite (56 checks)
 ```
 
 Helper scripts (terminal, no Obsidian needed) — keys/paths from `.env`:
@@ -210,6 +210,8 @@ See [`CLAUDE.md`](./CLAUDE.md) for the module map and [`PLAN.md`](./PLAN.md) for
   frontmatter is the `[@cite]` handle.
 - `.docx` export needs **Pandoc**; PDF highlight extraction needs a PDF with annotations.
 - Obsidian's Properties panel may warn on nested CSL frontmatter — the data is valid.
+- Set **Contact e-mail** in settings: OpenAlex, Unpaywall and PubMed all use it, and
+  open-access PDF lookup does not work without one.
 - API keys live in the OS keychain (Obsidian ≥ 1.11.4) and are blanked in `data.json`; on a
   synced vault, enter the key once per device.
 - Bundled CSL styles under `styles/` are CC BY-SA 3.0 (see `styles/README.md`); plugin code

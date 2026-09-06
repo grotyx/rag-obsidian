@@ -356,6 +356,12 @@ async function main() {
       /contact e-mail/i.test(msg) && /contact e-mail/i.test(msg2),
       `findOpenAccess demands a real contact address: ${msg.slice(0, 60)}`
     );
+    // PLOS: best_oa_location carries only a landing page, the PDF sits in another oa_location.
+    const oa = await findOpenAccess("10.1371/journal.pmed.1000097", "grotyx@gmail.com").catch(() => null);
+    ok(
+      !!oa?.isOA && !!oa?.pdfUrl && /\.pdf/i.test(oa.pdfUrl),
+      `findOpenAccess scans every oa_location for a PDF: ${oa?.pdfUrl ?? "none"}`
+    );
   }
 
   // ---- 10. bibliography / citations (Phase 5) ----

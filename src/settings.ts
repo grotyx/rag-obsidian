@@ -43,7 +43,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("PubMed API key (optional)")
-      .setDesc("NCBI E-utilities API key for higher rate limits.")
+      .setDesc("NCBI E-utilities key — raises the rate limit from 3 to 10 requests/second.")
       .addText((t) => {
         t.setValue(this.plugin.settings.pubmedApiKey).onChange(async (v) => {
           this.plugin.settings.pubmedApiKey = v.trim();
@@ -288,8 +288,12 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     containerEl.createEl("h2", { text: "Citation graph" });
 
     new Setting(containerEl)
-      .setName("OpenAlex contact email")
-      .setDesc("Optional. Joins OpenAlex's faster 'polite pool'. Recommended for large libraries.")
+      .setName("Contact e-mail")
+      .setDesc(
+        "Sent to OpenAlex, Unpaywall and PubMed as your contact address. " +
+          "Required for open-access PDF lookup (Unpaywall rejects requests without one), " +
+          "and it joins OpenAlex's faster 'polite pool'."
+      )
       .addText((t) =>
         t
           .setPlaceholder("you@example.com")
