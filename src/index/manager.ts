@@ -1,9 +1,9 @@
 import { App, TFile, normalizePath, debounce } from "obsidian";
 import { ScholarRagSettings } from "../types";
 import { Library } from "../data/library";
-import { createProvider } from "./embedding";
+import { createProvider, EmbeddingProvider } from "./embedding";
 import { VectorStore, SearchHit, SearchFilters, StoredMeta } from "./store";
-import { chunkReference, stripFrontmatter, yearFromIssued, Chunk } from "./chunker";
+import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash, Chunk } from "./chunker";
 
 /** Orchestrates the embedding index: build, incremental update, persistence, search. */
 export class IndexManager {
@@ -13,6 +13,10 @@ export class IndexManager {
   private metaPath: string;
   private reindexQueue = new Set<string>();
   private flush: () => void;
+  // Every index mutation (rebuild / debounced reindex / remove) is chained here, so two of
+  // them can never interleave persist()'s write-tmp → remove → rename steps on the same files.
+  private chain: Promise<unknown> = Promise.resolve();
+  private provider: EmbeddingProvider | null = null;
 
   constructor(
     private app: App,
@@ -33,7 +37,21 @@ export class IndexManager {
     return this.store.count;
   }
   get modelId(): string {
-    return createProvider(this.settings).id;
+    return this.getProvider().id;
+  }
+
+  /** One provider per `provider:model` — Transformers.js keeps its ONNX pipeline on the instance. */
+  private getProvider(): EmbeddingProvider {
+    const fresh = createProvider(this.settings);
+    if (!this.provider || this.provider.id !== fresh.id) this.provider = fresh;
+    return this.provider;
+  }
+
+  /** Run an index mutation after every previously scheduled one has settled. */
+  private serialized<T>(job: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(job);
+    this.chain = run.catch(() => undefined);
+    return run;
   }
 
   /** On load: restore the index if it exists AND matches the current model. */
@@ -77,10 +95,14 @@ export class IndexManager {
   }
 
   /** Full rebuild from scratch over all reference notes. */
-  async rebuild(onProgress?: (done: number, total: number) => void): Promise<number> {
-    const provider = createProvider(this.settings);
+  rebuild(onProgress?: (done: number, total: number) => void): Promise<number> {
+    return this.serialized(() => this.rebuildNow(onProgress));
+  }
+
+  private async rebuildNow(onProgress?: (done: number, total: number) => void): Promise<number> {
+    const provider = this.getProvider();
     const all: Chunk[] = [];
-    const pathByCitekey = new Map<string, string>();
+    const pathByCitekey = new Map<string, { path: string; hash: string }>();
     for (const f of this.files()) {
       const chunks = await this.readChunks(f);
       const citekey = chunks[0]?.citekey;
@@ -89,7 +111,7 @@ export class IndexManager {
         console.warn(`[RAG Obsidian] duplicate citekey "${citekey}" — skipping ${f.path}`);
         continue;
       }
-      pathByCitekey.set(citekey, f.path);
+      pathByCitekey.set(citekey, { path: f.path, hash: chunkHash(chunks) });
       all.push(...chunks);
     }
 
@@ -110,46 +132,52 @@ export class IndexManager {
 
     this.store.init(vectors[0].length, provider.id);
     await this.store.addChunks(all, vectors);
-    for (const [citekey, path] of pathByCitekey) this.store.setPath(path, citekey);
+    for (const [citekey, { path, hash }] of pathByCitekey) this.store.setPath(path, citekey, hash);
     await this.persist();
     return all.length;
   }
 
-  /** Incremental: re-embed a single note (on edit/create). No-op until first build. */
-  async reindexFile(file: TFile): Promise<void> {
-    if (!this.store.ready) return;
-    const provider = createProvider(this.settings);
+  /** Incremental: re-embed a single note (on edit/create). No-op until first build.
+   *  Returns false when the embedded text is unchanged — e.g. only plugin-managed
+   *  frontmatter (`openalex_id`, `status`, `cited_by_count`) was written — so the
+   *  caller can skip embedding + persist. */
+  private async reindexNow(file: TFile): Promise<boolean> {
+    if (!this.store.ready) return false;
     const chunks = await this.readChunks(file);
     const oldCitekey = this.store.citekeyForPath(file.path);
     if (chunks.length) {
+      const citekey = chunks[0].citekey;
+      const hash = chunkHash(chunks);
+      if (oldCitekey === citekey && this.store.hashForPath(file.path) === hash) return false;
       // embed + dim-check BEFORE touching the index, so a model mismatch can't drop the note
-      const vecs = await provider.embed(chunks.map((c) => c.embedText));
+      const vecs = await this.getProvider().embed(chunks.map((c) => c.embedText));
       if (vecs[0]?.length !== this.store.dim) {
         console.warn(
           `[RAG Obsidian] embedding dim ${vecs[0]?.length} ≠ index dim ${this.store.dim} — rebuild required; ${file.path} left as-is`
         );
-        return;
+        return false;
       }
-      const citekey = chunks[0].citekey;
       if (oldCitekey && oldCitekey !== citekey) await this.store.removeCitekey(oldCitekey);
       await this.store.removeCitekey(citekey);
       await this.store.addChunks(chunks, vecs);
-      this.store.setPath(file.path, citekey);
-    } else {
-      const citekey = oldCitekey ?? this.citekeyOfPath(file.path);
-      if (citekey) await this.store.removeCitekey(citekey);
+      this.store.setPath(file.path, citekey, hash);
+      return true;
     }
-    await this.persist();
+    const citekey = oldCitekey ?? this.citekeyOfPath(file.path);
+    if (!citekey) return false;
+    await this.store.removeCitekey(citekey);
+    return true;
   }
 
-  async removeFile(path: string): Promise<void> {
-    if (!this.store.ready) return;
-    // chunks are keyed by frontmatter citekey, which may differ from the filename
-    const citekey = this.store.citekeyForPath(path) ?? this.citekeyOfPath(path);
-    if (citekey) {
+  removeFile(path: string): Promise<void> {
+    return this.serialized(async () => {
+      if (!this.store.ready) return;
+      // chunks are keyed by frontmatter citekey, which may differ from the filename
+      const citekey = this.store.citekeyForPath(path) ?? this.citekeyOfPath(path);
+      if (!citekey) return;
       await this.store.removeCitekey(citekey);
       await this.persist();
-    }
+    });
   }
 
   private citekeyOfPath(path: string): string {
@@ -164,24 +192,26 @@ export class IndexManager {
     this.flush();
   }
 
-  private async flushReindex(): Promise<void> {
-    const paths = [...this.reindexQueue];
-    this.reindexQueue.clear();
-    for (const p of paths) {
-      const f = this.app.vault.getAbstractFileByPath(p);
-      if (f instanceof TFile) {
+  private flushReindex(): Promise<void> {
+    return this.serialized(async () => {
+      const paths = [...this.reindexQueue];
+      this.reindexQueue.clear();
+      let changed = false;
+      for (const p of paths) {
+        const f = this.app.vault.getAbstractFileByPath(p);
+        if (!(f instanceof TFile)) continue;
         try {
-          await this.reindexFile(f);
+          if (await this.reindexNow(f)) changed = true;
         } catch (e) {
           console.error("[RAG Obsidian] reindex failed", p, e);
         }
       }
-    }
+      if (changed) await this.persist(); // once per burst, not once per note
+    });
   }
 
   async search(query: string, filters: SearchFilters = {}): Promise<SearchHit[]> {
-    const provider = createProvider(this.settings);
-    const [vec] = await provider.embed([query]);
+    const [vec] = await this.getProvider().embed([query]);
     return this.store.search(vec, query, this.settings.topK, filters);
   }
 

@@ -30,6 +30,10 @@ export function detectId(raw: string): SourceId {
     return { kind: "arxiv", value: s.replace(/v\d+$/, "") };
   }
 
+  // PubMed article URL
+  const pm = s.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/i);
+  if (pm) return { kind: "pmid", value: pm[1] };
+
   // DOI (also matches DOIs embedded in URLs)
   const doi = s.match(/10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i);
   if (doi) return { kind: "doi", value: cleanDoi(doi[0]) };
@@ -193,7 +197,8 @@ function extractAbstractXml(xml: string): string {
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
-function splitName(name: string): { family?: string; given?: string } {
+/** PubMed "Family Initials" → CSL name parts (shared with pubmedSearch.ts). */
+export function splitName(name: string): { family?: string; given?: string } {
   const parts = (name || "").trim().split(/\s+/);
   if (parts.length < 2) return { family: name };
   const given = parts.pop() as string;
@@ -205,13 +210,15 @@ const MONTHS: Record<string, number> = {
   Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12,
 };
 
-function parsePubDate(pubdate: string | undefined): { "date-parts": number[][] } | undefined {
+/** PubMed pubdate ("2020 Mar 15", "2020 Mar", "2020") → CSL date-parts (shared with pubmedSearch.ts). */
+export function parsePubDate(pubdate: string | undefined): { "date-parts": number[][] } | undefined {
   if (!pubdate) return undefined;
-  const m = pubdate.match(/(\d{4})(?:\s+(\w{3}))?/);
+  const m = pubdate.match(/(\d{4})(?:\s+([A-Za-z]{3}))?(?:\s+(\d{1,2}))?/);
   if (!m) return undefined;
-  const year = parseInt(m[1], 10);
-  const mo = m[2] ? MONTHS[m[2]] : undefined;
-  return { "date-parts": [mo ? [year, mo] : [year]] };
+  const dp = [parseInt(m[1], 10)];
+  if (m[2] && MONTHS[m[2]]) dp.push(MONTHS[m[2]]);
+  if (m[3] && dp.length === 2) dp.push(parseInt(m[3], 10));
+  return { "date-parts": [dp] };
 }
 
 async function fetchArxiv(arxivId: string): Promise<CSLItem> {

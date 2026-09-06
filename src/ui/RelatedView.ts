@@ -133,9 +133,8 @@ export class RelatedView extends ItemView {
   }
 
   private async openCitekey(citekey: string): Promise<void> {
-    const path = normalizePath(`${this.plugin.settings.referencesFolder}/${citekey}.md`);
-    const file = this.app.vault.getAbstractFileByPath(path);
-    if (file instanceof TFile) await this.app.workspace.getLeaf(false).openFile(file);
+    const file = this.plugin.library.getFile(citekey); // note filename ≠ citekey
+    if (file) await this.app.workspace.getLeaf(false).openFile(file);
     else new Notice(`Note not found: ${citekey}`);
   }
 }

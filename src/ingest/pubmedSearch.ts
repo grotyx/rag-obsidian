@@ -1,4 +1,5 @@
 import { requestUrl } from "obsidian";
+import { splitName, parsePubDate } from "./metadata";
 import { CSLItem } from "../types";
 
 /** One PubMed search hit: parsed CSL metadata plus identifiers for follow-up fetches. */
@@ -23,28 +24,6 @@ function auth(apiKey?: string, email?: string): string {
   if (apiKey) p.push(`api_key=${encodeURIComponent(apiKey)}`);
   if (email) p.push(`email=${encodeURIComponent(email)}`, "tool=rag-obsidian");
   return p.length ? "&" + p.join("&") : "";
-}
-
-const MONTHS: Record<string, number> = {
-  Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
-  Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12,
-};
-
-function parsePubDate(pubdate?: string): { "date-parts": number[][] } | undefined {
-  if (!pubdate) return undefined;
-  const m = pubdate.match(/(\d{4})(?:\s+([A-Za-z]{3}))?(?:\s+(\d{1,2}))?/);
-  if (!m) return undefined;
-  const dp = [parseInt(m[1], 10)];
-  if (m[2] && MONTHS[m[2]]) dp.push(MONTHS[m[2]]);
-  if (m[3]) dp.push(parseInt(m[3], 10));
-  return { "date-parts": [dp] };
-}
-
-function splitName(name: string): { family?: string; given?: string } {
-  const parts = (name || "").trim().split(/\s+/);
-  if (parts.length < 2) return { family: name };
-  const given = parts.pop() as string;
-  return { family: parts.join(" "), given };
 }
 
 /** esearch -> PMIDs -> esummary -> parsed CSL metadata (+ PMC id when present). */
@@ -95,50 +74,35 @@ export async function searchPubmed(query: string, opts: PubmedSearchOpts = {}): 
   return hits;
 }
 
-/** efetch the abstract as XML and join <AbstractText> sections (with labels). */
-export async function fetchAbstractText(pmid: string, apiKey?: string, email?: string): Promise<string> {
+export interface PubmedRecord {
+  abstract: string; // <AbstractText> sections joined (labels kept)
+  descriptors: string[]; // assigned NLM MeSH headings (empty when not yet indexed — keeps the LLM MeSH fallback alive)
+  keywords: string[]; // author-supplied keywords
+}
+
+/** One efetch per PMID: abstract, MeSH descriptors and author keywords all come from the same XML. */
+export async function fetchPubmedRecord(pmid: string, apiKey?: string, email?: string): Promise<PubmedRecord> {
   const a = auth(apiKey, email);
   try {
     const res = await requestUrl({
       url: `${EUTILS}/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=xml${a}`,
     });
     const doc = new DOMParser().parseFromString(res.text, "text/xml");
-    const parts = Array.from(doc.querySelectorAll("AbstractText"))
+    const texts = (sel: string) =>
+      Array.from(doc.querySelectorAll(sel))
+        .map((n) => (n.textContent || "").replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+    const abstract = Array.from(doc.querySelectorAll("AbstractText"))
       .map((n) => {
         const label = n.getAttribute("Label");
         const t = (n.textContent || "").replace(/\s+/g, " ").trim();
         return t && label ? `${label}: ${t}` : t;
       })
-      .filter(Boolean);
-    return parts.join("\n\n");
+      .filter(Boolean)
+      .join("\n\n");
+    return { abstract, descriptors: texts("MeshHeading > DescriptorName"), keywords: texts("KeywordList > Keyword") };
   } catch {
-    return "";
-  }
-}
-
-export interface MeshResult {
-  descriptors: string[]; // assigned NLM MeSH headings (empty when not yet indexed)
-  keywords: string[]; // author-supplied keywords
-}
-
-/** efetch the assigned MeSH descriptors and author keywords for a PMID (kept separate so an
- *  un-indexed paper with only author keywords still triggers the LLM MeSH fallback). */
-export async function fetchMeshTerms(pmid: string, apiKey?: string, email?: string): Promise<MeshResult> {
-  const a = auth(apiKey, email);
-  try {
-    const res = await requestUrl({
-      url: `${EUTILS}/efetch.fcgi?db=pubmed&id=${pmid}&retmode=xml&rettype=abstract${a}`,
-    });
-    const doc = new DOMParser().parseFromString(res.text, "text/xml");
-    const descriptors = Array.from(doc.querySelectorAll("MeshHeading > DescriptorName"))
-      .map((n) => n.textContent?.trim() || "")
-      .filter(Boolean);
-    const keywords = Array.from(doc.querySelectorAll("KeywordList > Keyword"))
-      .map((n) => n.textContent?.trim() || "")
-      .filter(Boolean);
-    return { descriptors, keywords };
-  } catch {
-    return { descriptors: [], keywords: [] };
+    return { abstract: "", descriptors: [], keywords: [] };
   }
 }
 

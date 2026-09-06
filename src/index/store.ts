@@ -18,6 +18,8 @@ export interface StoredMeta {
   count: number;
   /** note path → citekey (optional: absent in pre-0.3.1 metas). */
   paths?: Record<string, string>;
+  /** note path → hash of its embedded chunk text (optional: absent in pre-0.4.1 metas). */
+  hashes?: Record<string, string>;
 }
 
 export interface SearchHit {
@@ -44,6 +46,8 @@ export class VectorStore {
   chunkIds: Record<string, string[]> = {};
   /** note path → citekey, so deletes/renames can resolve chunks even when filename ≠ citekey. */
   paths: Record<string, string> = {};
+  /** note path → chunk-text hash, so a frontmatter-only write doesn't re-embed the note. */
+  hashes: Record<string, string> = {};
 
   get ready(): boolean {
     return this.db !== null;
@@ -56,6 +60,7 @@ export class VectorStore {
     this.modelId = "";
     this.chunkIds = {};
     this.paths = {};
+    this.hashes = {};
   }
 
   /** Create a fresh DB for a given vector dimension + model id. Clears content. */
@@ -64,6 +69,7 @@ export class VectorStore {
     this.modelId = modelId;
     this.chunkIds = {};
     this.paths = {};
+    this.hashes = {};
     this.db = create({
       schema: {
         id: "string",
@@ -108,17 +114,25 @@ export class VectorStore {
     if (ids && ids.length) await removeMultiple(this.db, ids);
     delete this.chunkIds[citekey];
     for (const [p, ck] of Object.entries(this.paths)) {
-      if (ck === citekey) delete this.paths[p];
+      if (ck === citekey) {
+        delete this.paths[p];
+        delete this.hashes[p];
+      }
     }
   }
 
-  /** Record which note path holds a citekey's chunks. */
-  setPath(path: string, citekey: string): void {
+  /** Record which note path holds a citekey's chunks (and the hash of the text embedded). */
+  setPath(path: string, citekey: string, hash?: string): void {
     this.paths[path] = citekey;
+    if (hash) this.hashes[path] = hash;
   }
 
   citekeyForPath(path: string): string | undefined {
     return this.paths[path];
+  }
+
+  hashForPath(path: string): string | undefined {
+    return this.hashes[path];
   }
 
   async search(
@@ -172,6 +186,7 @@ export class VectorStore {
       chunkIds: this.chunkIds,
       count: this.count,
       paths: this.paths,
+      hashes: this.hashes,
     };
     return { data, meta };
   }
@@ -189,5 +204,6 @@ export class VectorStore {
     this.modelId = meta.modelId;
     this.chunkIds = meta.chunkIds || {};
     this.paths = meta.paths || {};
+    this.hashes = meta.hashes || {};
   }
 }

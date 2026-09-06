@@ -56,7 +56,8 @@ export interface PdfHighlight {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function quadRects(ann: any): number[][] {
-  const q = ann.quadPoints;
+  // pdfjs ≥ 4 hands quadPoints over as a Float32Array (flat x/y octets); older builds as an Array.
+  const q = ArrayBuffer.isView(ann.quadPoints) ? Array.from(ann.quadPoints as ArrayLike<number>) : ann.quadPoints;
   const rects: number[][] = [];
   if (Array.isArray(q) && q.length) {
     if (typeof q[0] === "number") {

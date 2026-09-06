@@ -10,16 +10,24 @@ import * as path from "path";
 import * as http from "http";
 import * as yaml from "js-yaml";
 
-import { detectId, fetchMetadata } from "../src/ingest/metadata";
+import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
+import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote } from "../src/data/reference";
-import { chunkReference, stripFrontmatter, yearFromIssued } from "../src/index/chunker";
+import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
 import { VectorStore } from "../src/index/store";
 import { OllamaProvider } from "../src/index/providers/ollama";
 import { LLMClient } from "../src/llm/client";
 import { formatCitation } from "../src/cite/format";
 import { CitationGraph } from "../src/graph/citations";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
-import { extractCitekeys, buildBibliography, inTextLabel } from "../src/cite/bibliography";
+import {
+  extractCitekeys,
+  buildBibliography,
+  inTextLabel,
+  citePattern,
+  keysInCite,
+  splitAtReferences,
+} from "../src/cite/bibliography";
 import { Ontology } from "../src/ontology/pack";
 import { SAMPLE_PACK } from "../src/ontology/sample";
 import { ScholarRagSettings, DEFAULT_SETTINGS, CSLItem } from "../src/types";
@@ -269,7 +277,15 @@ async function main() {
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stubLib: any = {
-      list: () => seeds.map((s) => ({ citekey: s.citekey, file: { path: `References/${s.citekey}.md` }, title: s.title, authors: "", year: "" })),
+      entries: () =>
+        seeds.map((s) => ({
+          citekey: s.citekey,
+          item: seedMap.get(s.citekey)!,
+          file: { path: `References/${s.citekey}.md` },
+          title: s.title,
+          authors: "",
+          year: "",
+        })),
       getItem: (ck: string) => seedMap.get(ck) ?? null,
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -323,6 +339,24 @@ async function main() {
     ok(bib.split("\n").length >= 2, "bibliography rendered");
     const label = inTextLabel(items.get(keys[0])!);
     ok(/\(LeCun, 2015\)/.test(label), `inTextLabel: ${label}`);
+
+    // Pandoc grammar shared by extractCitekeys, reading-view rendering and compile:
+    // multi-key clusters, locators, suppress-author, prefixes — and code is skipped.
+    const grammar = "[@a; @b] [@c, p. 23] [-@d] [see @e] `[@code]` [mail@example.com]";
+    const brackets = [...grammar.matchAll(citePattern())].map((m) => keysInCite(m[1]));
+    ok(
+      JSON.stringify(brackets) === JSON.stringify([["a", "b"], ["c"], ["d"], ["e"], ["code"], ["example.com"]]),
+      `citePattern+keysInCite: ${JSON.stringify(brackets)}`
+    );
+    ok(extractCitekeys(grammar).join() === "a,b,c,d,e,example.com", "extractCitekeys skips code spans");
+
+    // "## References" on the first line / without a trailing newline / with a later section.
+    const s1 = splitAtReferences("Intro [@a]\n\n## References");
+    ok(s1.base === "Intro [@a]" && s1.tail === "", `splitAtReferences (no trailing \\n): ${JSON.stringify(s1)}`);
+    const s2 = splitAtReferences("## References\n\n- old\n");
+    ok(s2.base === "" && s2.tail === "", `splitAtReferences (first line): ${JSON.stringify(s2)}`);
+    const s3 = splitAtReferences("Body\n\n## References\n\n- old\n\n# Appendix\nkeep\n");
+    ok(s3.base === "Body" && s3.tail === "\n# Appendix\nkeep\n", `splitAtReferences (tail kept): ${JSON.stringify(s3)}`);
   }
 
   // ---- 11. ontology pack (link + IS_A traversal) ----
@@ -342,6 +376,23 @@ async function main() {
     ok(desc.includes("PLIF") && desc.includes("TLIF"), `descendants(FUSION): ${desc.join(", ")}`);
     const exp = onto.expand("STENOSIS");
     ok(exp.includes("Lumbar spinal stenosis"), `expand(STENOSIS): ${exp.length} labels incl descendants`);
+  }
+
+  // ---- 12. small pure helpers touched by the src/ review ----
+  log("\n[12] Helpers");
+  {
+    const pm = detectId("https://pubmed.ncbi.nlm.nih.gov/26017442/");
+    ok(pm.kind === "pmid" && pm.value === "26017442", `detectId(pubmed URL) → ${pm.kind}:${pm.value}`);
+    ok(JSON.stringify(parsePubDate("2020 Mar 15")) === '{"date-parts":[[2020,3,15]]}', "parsePubDate keeps the day");
+    ok(JSON.stringify(parsePubDate("2020")) === '{"date-parts":[[2020]]}', "parsePubDate year only");
+    const numericPage = { ...items.get([...items.keys()][0])!, page: 155 as unknown as string };
+    const bib = exportRefs([{ citekey: "x", item: numericPage }], "bibtex");
+    const ris = exportRefs([{ citekey: "x", item: numericPage }], "ris");
+    ok(/pages\s*=\s*\{155\}/.test(bib) && /SP {2}- 155/.test(ris), "export tolerates numeric page");
+    const c1 = chunkReference({ citekey: "k", title: "T", year: 2020, tags: ["a"], body: "same body" }, 800);
+    const c2 = chunkReference({ citekey: "k", title: "T", year: 2020, tags: ["a"], body: "same body" }, 800);
+    const c3 = chunkReference({ citekey: "k", title: "T", year: 2021, tags: ["a"], body: "same body" }, 800);
+    ok(chunkHash(c1) === chunkHash(c2) && chunkHash(c1) !== chunkHash(c3), "chunkHash: stable, and sees a prefix change");
   }
 
   log("\nDONE.");

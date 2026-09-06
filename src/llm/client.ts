@@ -9,6 +9,8 @@ export interface ChatMessage {
 export interface ChatOpts {
   /** OpenAI-style reasoning effort; on Gemini 3.x this maps to the thinking level. */
   reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  /** Output cap for this call (Anthropic); defaults to `settings.llmMaxTokens`. */
+  maxTokens?: number;
 }
 
 /** Provider-agnostic chat completion via requestUrl (CORS-safe, desktop + mobile). */
@@ -23,11 +25,11 @@ export class LLMClient {
         return this.ollama(messages, system);
       case "anthropic":
       default:
-        return this.anthropic(messages, system);
+        return this.anthropic(messages, system, opts);
     }
   }
 
-  private async anthropic(messages: ChatMessage[], system: string): Promise<string> {
+  private async anthropic(messages: ChatMessage[], system: string, opts: ChatOpts = {}): Promise<string> {
     const key = this.settings.anthropicApiKey;
     if (!key) throw new Error("Anthropic API key not set (Settings → RAG Obsidian)");
     const res = await requestUrl({
@@ -40,7 +42,7 @@ export class LLMClient {
       },
       body: JSON.stringify({
         model: this.settings.llmModel,
-        max_tokens: this.settings.llmMaxTokens,
+        max_tokens: opts.maxTokens ?? this.settings.llmMaxTokens,
         system,
         messages,
       }),
@@ -60,7 +62,10 @@ export class LLMClient {
       model: this.settings.llmModel,
       messages: [{ role: "system", content: system }, ...messages],
     };
-    if (opts.reasoningEffort) body.reasoning_effort = opts.reasoningEffort;
+    // Only reasoning models accept it — gpt-4o-class models answer 400 "Unsupported parameter".
+    if (opts.reasoningEffort && /^(o\d|gpt-5)/i.test(this.settings.llmModel)) {
+      body.reasoning_effort = opts.reasoningEffort;
+    }
     const res = await requestUrl({
       url: `${this.settings.openaiBaseUrl.replace(/\/+$/, "")}/chat/completions`,
       method: "POST",

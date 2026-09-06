@@ -1,7 +1,7 @@
 import { Plugin, WorkspaceLeaf, TFile, TAbstractFile, Notice, SecretStorage } from "obsidian";
 import { ScholarRagSettings, DEFAULT_SETTINGS, SECRET_FIELDS, SecretField } from "./src/types";
 import { ScholarRagSettingTab } from "./src/settings";
-import { Library } from "./src/data/library";
+import { Library, normDoi, normTitle } from "./src/data/library";
 import { IndexManager } from "./src/index/manager";
 import { AddReferenceModal } from "./src/ui/AddReferenceModal";
 import { PubmedSearchModal } from "./src/ui/PubmedSearchModal";
@@ -12,7 +12,14 @@ import { RelatedView, VIEW_TYPE_RELATED } from "./src/ui/RelatedView";
 import { CitationGraph } from "./src/graph/citations";
 import { ImportPdfModal } from "./src/ui/ImportPdfModal";
 import { CitationSuggest } from "./src/cite/suggest";
-import { extractCitekeys, buildBibliography, inTextLabel } from "./src/cite/bibliography";
+import {
+  extractCitekeys,
+  buildBibliography,
+  inTextLabel,
+  citePattern,
+  keysInCite,
+  splitAtReferences,
+} from "./src/cite/bibliography";
 import { CiteEngine } from "./src/cite/csl";
 import { ImportModal } from "./src/ui/ImportModal";
 import { exportRefs, ExportFormat, ExportRef } from "./src/cite/export";
@@ -81,7 +88,7 @@ export default class ScholarRagPlugin extends Plugin {
     this.addCommand({
       id: "rebuild-index",
       name: "Rebuild search index",
-      callback: () => void this.activateView(VIEW_TYPE_SEARCH),
+      callback: () => void this.rebuildIndex(),
     });
     this.addCommand({
       id: "chat",
@@ -238,7 +245,8 @@ export default class ScholarRagPlugin extends Plugin {
     this.registerEvent(
       this.app.metadataCache.on("changed", (file) => {
         if (file instanceof TFile) this.indexManager.enqueue(file);
-        this.citeCache.clear(); // citation numbering may have shifted
+        if (file.path.startsWith(this.library.folder() + "/")) this.citeCache.clear(); // reference data changed
+        else this.citeCache.delete(file.path); // citation numbering in this note may have shifted
       })
     );
     this.registerEvent(
@@ -271,11 +279,12 @@ export default class ScholarRagPlugin extends Plugin {
     let migrated = false;
     for (const field of SECRET_FIELDS) {
       const stored = store.getSecret(this.secretId(field));
-      if (stored) {
+      if (stored && !this.settings[field]) {
         // Empty string means "never set / blanked" — don't let it shadow a key in data.json.
         this.settings[field] = stored;
       } else if (this.settings[field]) {
-        // One-time migration: move the plaintext key from data.json into secretStorage.
+        // Plaintext key in data.json: first run (migrate) — or, after migration, one pasted or
+        // synced in from another device, which is newer than the keychain copy. Adopt it.
         try {
           store.setSecret(this.secretId(field), this.settings[field]);
           migrated = true;
@@ -306,10 +315,22 @@ export default class ScholarRagPlugin extends Plugin {
       await this.saveData(this.settings);
     }
     this.citeCache.clear(); // style may have changed
-    if (this.library) this.library.settings = this.settings;
-    if (this.indexManager) this.indexManager.settings = this.settings;
-    if (this.citationGraph) this.citationGraph.settings = this.settings;
-    if (this.ontologyManager) this.ontologyManager.settings = this.settings;
+  }
+
+  /** Full index rebuild with a progress notice (command palette + SearchView button). */
+  async rebuildIndex(): Promise<void> {
+    const notice = new Notice("Building index…", 0);
+    try {
+      const n = await this.indexManager.rebuild((done, total) =>
+        notice.setMessage(`Embedding ${done}/${total} chunks…`)
+      );
+      new Notice(`Index built: ${n} chunks`);
+    } catch (e) {
+      console.error("[RAG Obsidian] rebuild failed", e);
+      new Notice(`Rebuild failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      notice.hide();
+    }
   }
 
   /** Scan the active note for [@citekey] and insert/refresh a "## References" section. */
@@ -348,12 +369,13 @@ export default class ScholarRagPlugin extends Plugin {
     }
     const section = `## References\n\n${bib}\n`;
     const { base, tail } = splitAtReferences(content);
-    await this.app.vault.modify(file, `${base}\n\n${section}${tail}`);
+    await this.app.vault.modify(file, `${base ? base + "\n\n" : ""}${section}${tail}`);
     new Notice(`Bibliography updated: ${keys.length} reference(s)`);
   }
 
-  // Per-file [@citekey] → in-text label map (CSL), cached; cleared on edit / settings change.
-  private citeCache = new Map<string, Record<string, string>>();
+  // Per-file [@citekey] → in-text label map (CSL). The in-flight promise is cached so
+  // concurrent post-processor blocks share one engine build; a failed render is evicted.
+  private citeCache = new Map<string, Promise<Record<string, string>>>();
 
   /** Citation style for a note: its `csl` / `citation-style` frontmatter, else the global setting. */
   styleForNote(file: TFile | null): string {
@@ -366,25 +388,24 @@ export default class ScholarRagPlugin extends Plugin {
   }
 
   /** Whole-note CSL in-text labels for a file (numbered styles need document order). */
-  private async citeMapFor(sourcePath: string): Promise<Record<string, string>> {
-    const cached = this.citeCache.get(sourcePath);
-    if (cached) return cached;
+  private citeMapFor(sourcePath: string): Promise<Record<string, string>> {
+    let p = this.citeCache.get(sourcePath);
+    if (!p) {
+      p = this.computeCiteMap(sourcePath);
+      this.citeCache.set(sourcePath, p);
+      p.catch(() => this.citeCache.delete(sourcePath));
+    }
+    return p.catch(() => ({}));
+  }
+
+  private async computeCiteMap(sourcePath: string): Promise<Record<string, string>> {
     const file = this.app.vault.getAbstractFileByPath(sourcePath);
     if (!(file instanceof TFile)) return {};
     const styleId = this.styleForNote(file);
-    let map: Record<string, string> = {};
-    if (styleId) {
-      const keys = extractCitekeys(await this.app.vault.cachedRead(file));
-      if (keys.length) {
-        try {
-          map = (await this.citeEngine.renderNote(styleId, keys, (k) => this.library.getItem(k))).inText;
-        } catch {
-          map = {};
-        }
-      }
-    }
-    this.citeCache.set(sourcePath, map);
-    return map;
+    if (!styleId) return {};
+    const keys = extractCitekeys(await this.app.vault.cachedRead(file));
+    if (!keys.length) return {};
+    return (await this.citeEngine.renderNote(styleId, keys, (k) => this.library.getItem(k))).inText;
   }
 
   /** Replace [@citekey] text nodes with clickable, styled in-text labels in reading view. */
@@ -393,29 +414,37 @@ export default class ScholarRagPlugin extends Plugin {
     const targets: Text[] = [];
     let node: Node | null;
     while ((node = walker.nextNode())) {
-      if (node.nodeValue && node.nodeValue.includes("[@")) targets.push(node as Text);
+      if (!node.nodeValue || !node.nodeValue.includes("@")) continue;
+      if (node.parentElement?.closest("code, pre")) continue; // extractCitekeys skips code too
+      targets.push(node as Text);
     }
     if (!targets.length) return;
     const cslMap = sourcePath ? await this.citeMapFor(sourcePath) : null;
     for (const text of targets) {
       const value = text.nodeValue ?? "";
-      if (!/\[@[^\]]+\]/.test(value)) continue;
       const frag = document.createDocumentFragment();
       let last = 0;
-      const re = /\[@([^\]]+)\]/g;
+      let touched = false;
+      const re = citePattern();
       let m: RegExpExecArray | null;
       while ((m = re.exec(value)) !== null) {
+        const keys = keysInCite(m[1]).filter((k) => this.library.getItem(k) || (cslMap && cslMap[k]));
+        if (!keys.length) continue; // not a citation we know (e.g. an e-mail in brackets)
         if (m.index > last) frag.appendChild(document.createTextNode(value.slice(last, m.index)));
-        const first = m[1].split(";")[0].trim().replace(/^@/, "");
-        const item = this.library.getItem(first);
-        const span = document.createElement("span");
-        span.className = "srag-cite";
-        if (cslMap && cslMap[first]) setCiteLabel(span, cslMap[first]);
-        else span.textContent = item ? inTextLabel(item) : m[0];
-        if (item) span.onclick = () => void this.openCitekey(first);
-        frag.appendChild(span);
+        keys.forEach((k, i) => {
+          if (i) frag.appendChild(document.createTextNode("; "));
+          const item = this.library.getItem(k);
+          const span = document.createElement("span");
+          span.className = "srag-cite";
+          if (cslMap && cslMap[k]) setCiteLabel(span, cslMap[k]);
+          else span.textContent = item ? inTextLabel(item) : `[@${k}]`;
+          if (item) span.onclick = () => void this.openCitekey(k);
+          frag.appendChild(span);
+        });
         last = m.index + m[0].length;
+        touched = true;
       }
+      if (!touched) continue;
       if (last < value.length) frag.appendChild(document.createTextNode(value.slice(last)));
       text.replaceWith(frag);
     }
@@ -429,7 +458,12 @@ export default class ScholarRagPlugin extends Plugin {
   /** Write `content` to `path` (create or overwrite) and open it. vault.create/modify register
    *  the file synchronously — adapter.write + getAbstractFileByPath can race the vault index
    *  and return null for a just-created file, silently skipping the open. */
-  private async writeAndOpen(path: string, content: string): Promise<void> {
+  private async writeAndOpen(rawPath: string, content: string): Promise<void> {
+    // Basenames are built from citekeys / titles: strip the characters Obsidian rejects in
+    // file names (and `[]#^|` that would break the link to the new note).
+    const slash = rawPath.lastIndexOf("/");
+    const base = rawPath.slice(slash + 1).replace(/[\\/:*?"<>|#^[\]]+/g, "-").replace(/^\.+/, "");
+    const path = normalizePath(rawPath.slice(0, slash + 1) + (base || "untitled.md"));
     const existing = this.app.vault.getAbstractFileByPath(path);
     let file: TFile;
     if (existing instanceof TFile) {
@@ -443,11 +477,7 @@ export default class ScholarRagPlugin extends Plugin {
 
   /** Write the whole library to a bibliographic file at the vault root and open it. */
   async exportLibrary(format: ExportFormat): Promise<void> {
-    const refs: ExportRef[] = [];
-    for (const e of this.library.list()) {
-      const item = this.library.getItem(e.citekey);
-      if (item) refs.push({ citekey: e.citekey, item });
-    }
+    const refs: ExportRef[] = this.library.entries().map((e) => ({ citekey: e.citekey, item: e.item }));
     if (!refs.length) {
       new Notice("Library is empty");
       return;
@@ -460,23 +490,19 @@ export default class ScholarRagPlugin extends Plugin {
 
   /** Resolve each reference on OpenAlex and write `cited_by_count` (+ `openalex_id`). */
   async backfillCitationCounts(): Promise<void> {
-    const entries = this.library.list();
+    const entries = this.library.entries();
     const notice = new Notice(`Citation counts 0/${entries.length}…`, 0);
     let done = 0;
     let updated = 0;
     try {
-      for (const e of entries) {
-        const item = this.library.getItem(e.citekey);
-        const file = this.library.getFile(e.citekey);
-        if (item && file) {
-          const w = await resolveWork(item, this.settings.openalexMailto);
-          if (w) {
-            await this.app.fileManager.processFrontMatter(file, (fm) => {
-              fm.cited_by_count = w.citedByCount;
-              if (!fm.openalex_id) fm.openalex_id = w.openalexId;
-            });
-            updated++;
-          }
+      for (const { item, file } of entries) {
+        const w = await resolveWork(item, this.settings.openalexMailto);
+        if (w) {
+          await this.app.fileManager.processFrontMatter(file, (fm) => {
+            fm.cited_by_count = w.citedByCount;
+            if (!fm.openalex_id) fm.openalex_id = w.openalexId;
+          });
+          updated++;
         }
         done++;
         notice.setMessage(`Citation counts ${done}/${entries.length}…`);
@@ -498,17 +524,24 @@ export default class ScholarRagPlugin extends Plugin {
       new Notice("Open a reference note that has a DOI");
       return;
     }
-    const oa = await findOpenAccess(String(doi), this.settings.openalexMailto);
+    let oa: Awaited<ReturnType<typeof findOpenAccess>>;
+    try {
+      oa = await findOpenAccess(String(doi), this.settings.openalexMailto);
+    } catch (e) {
+      new Notice(`Unpaywall lookup failed: ${e instanceof Error ? e.message : e}`);
+      return;
+    }
     if (!oa || !oa.isOA) {
       new Notice("No open-access copy found");
       return;
     }
     const url = oa.pdfUrl || oa.landingUrl || "";
+    const version = oa.version;
     await this.app.fileManager.processFrontMatter(file, (f) => {
       f.oa_url = url;
-      if (oa.version) f.oa_version = oa.version;
+      if (version) f.oa_version = version;
     });
-    new Notice(`Open access (${oa.version || "OA"}): ${url}`);
+    new Notice(`Open access (${version || "OA"}): ${url}`);
   }
 
   /** Produce a sibling "(compiled)" note: [@citekey] resolved to in-text labels + a References list. */
@@ -528,9 +561,9 @@ export default class ScholarRagPlugin extends Plugin {
     let body = content;
     let refsBlock = "";
     const replaceKey = (raw: string, render: (k: string) => string | null): string =>
-      raw.replace(/\[@([^\]]+)\]/g, (mm, g) => {
-        const k = String(g).split(";")[0].trim().replace(/^@/, "");
-        return render(k) ?? mm;
+      raw.replace(citePattern(), (mm, g) => {
+        const labels = keysInCite(String(g)).map(render);
+        return labels.length && labels.every((l) => l) ? labels.join("; ") : mm;
       });
     if (styleId) {
       try {
@@ -553,7 +586,7 @@ export default class ScholarRagPlugin extends Plugin {
       refsBlock = buildBibliography(keys, this.library, this.settings.citeStyle);
     }
     const { base, tail } = splitAtReferences(body);
-    const out = `${base}\n\n## References\n\n${refsBlock}\n${tail}`;
+    const out = `${base ? base + "\n\n" : ""}## References\n\n${refsBlock}\n${tail}`;
     const outPath = normalizePath(file.path.replace(/\.md$/i, "") + " (compiled).md");
     await this.writeAndOpen(outPath, out);
     new Notice(`Compiled → ${outPath}`);
@@ -621,10 +654,11 @@ export default class ScholarRagPlugin extends Plugin {
     const groups = new Map<string, string[]>();
     for (const e of this.library.entries()) {
       const it = e.item;
-      const sig =
-        (it.DOI && `doi:${String(it.DOI).toLowerCase()}`) ||
-        (it.PMID && `pmid:${it.PMID}`) ||
-        `title:${String(it.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`;
+      const doi = normDoi(it.DOI);
+      const title = normTitle(it.title);
+      // Same signature as Library.findDuplicate (short titles like "Editorial" are not a match).
+      const sig = doi ? `doi:${doi}` : it.PMID ? `pmid:${it.PMID}` : title.length > 12 ? `title:${title}` : "";
+      if (!sig) continue;
       (groups.get(sig) ?? groups.set(sig, []).get(sig)!).push(e.file.basename);
     }
     const dups = [...groups.values()].filter((g) => g.length > 1);
@@ -680,7 +714,7 @@ export default class ScholarRagPlugin extends Plugin {
     if (styleId) {
       try {
         const { bibliography } = await this.citeEngine.renderNote(styleId, [key], (k) => this.library.getItem(k));
-        text = bibliography[0] || "";
+        text = (bibliography[0] || "").replace(/^\d+[.)]\s+/, ""); // numeric styles prefix "1. "
       } catch {
         /* fall back below */
       }
@@ -709,13 +743,20 @@ export default class ScholarRagPlugin extends Plugin {
       new Notice("Need a DOI or PMID to check");
       return;
     }
-    const res = await checkRetraction(item, this.settings.openalexMailto);
+    let res: Awaited<ReturnType<typeof checkRetraction>>;
+    try {
+      res = await checkRetraction(item, this.settings.openalexMailto);
+    } catch (e) {
+      new Notice(`Retraction lookup failed: ${e instanceof Error ? e.message : e}`);
+      return;
+    }
     if (!res) {
       new Notice("Retraction lookup failed");
       return;
     }
-    await this.app.fileManager.processFrontMatter(r.file, (fm) => (fm.retracted = res.retracted));
-    new Notice(res.retracted ? "⚠ RETRACTED — flagged in frontmatter" : "No retraction found");
+    const retracted = res.retracted;
+    await this.app.fileManager.processFrontMatter(r.file, (fm) => (fm.retracted = retracted));
+    new Notice(retracted ? "⚠ RETRACTED — flagged in frontmatter" : "No retraction found");
   }
 
   async downloadOaPdf(): Promise<void> {
@@ -723,8 +764,12 @@ export default class ScholarRagPlugin extends Plugin {
     if (!r) return;
     let url = r.fm.oa_url ? String(r.fm.oa_url) : "";
     if (!url && r.fm.DOI) {
-      const oa = await findOpenAccess(String(r.fm.DOI), this.settings.openalexMailto);
-      url = oa?.pdfUrl || "";
+      try {
+        url = (await findOpenAccess(String(r.fm.DOI), this.settings.openalexMailto))?.pdfUrl || "";
+      } catch (e) {
+        new Notice(`Unpaywall lookup failed: ${e instanceof Error ? e.message : e}`);
+        return;
+      }
     }
     if (!url) {
       new Notice("No open-access PDF found (try 'Find open-access PDF' first)");
@@ -741,10 +786,23 @@ export default class ScholarRagPlugin extends Plugin {
       return;
     }
     const notice = new Notice("Downloading PDF…", 0);
-    const res = await requestUrl({ url, throw: false });
-    notice.hide();
+    let res: Awaited<ReturnType<typeof requestUrl>>;
+    try {
+      res = await requestUrl({ url, throw: false }); // throw:false covers 4xx/5xx only, not network errors
+    } catch (e) {
+      new Notice(`Download failed: ${e instanceof Error ? e.message : e}`);
+      return;
+    } finally {
+      notice.hide();
+    }
     if (res.status >= 400 || !res.arrayBuffer) {
       new Notice(`Download failed (${res.status})`);
+      return;
+    }
+    // `oa_url` may be a landing page (Unpaywall had no url_for_pdf) — don't save HTML as .pdf.
+    const magic = String.fromCharCode(...new Uint8Array(res.arrayBuffer.slice(0, 5)));
+    if (magic !== "%PDF-") {
+      new Notice("URL did not return a PDF (landing page?) — open it in the browser instead");
       return;
     }
     const dir = normalizePath("PDFs");
@@ -784,8 +842,7 @@ export default class ScholarRagPlugin extends Plugin {
         return `- ${w.title || w.id} — _${w.citedByCount} citations_ · [OpenAlex](https://openalex.org/${w.id})${have ? `  ✓ already in library (${have})` : ""}`;
       });
     const out = `# Related to ${r.fm.citekey}\n\n${rel.length} related works (OpenAlex), most-cited first:\n\n${lines.join("\n")}\n`;
-    const path = normalizePath(`Related to ${r.fm.citekey}.md`);
-    await this.writeAndOpen(path, out);
+    await this.writeAndOpen(`Related to ${r.fm.citekey}.md`, out);
   }
 
   /** Export a styled citation + its summary for each reference (active note's citations, else whole library). */
@@ -802,26 +859,34 @@ export default class ScholarRagPlugin extends Plugin {
     const styleId = active ? this.styleForNote(active) : this.settings.cslStyleId;
     const notice = new Notice(`Building annotated bibliography (${keys.length})…`, 0);
     const blocks: string[] = [];
-    for (const k of keys) {
-      const item = this.library.getItem(k);
-      if (!item) continue;
-      let cite = "";
+    try {
+      // One citeproc pass for the whole list (an engine per key froze the UI on big libraries);
+      // entries come back in the style's own order, so numbered styles read 1..N.
+      let ordered: { key: string; cite: string }[] = [];
       if (styleId) {
         try {
-          cite = (await this.citeEngine.renderNote(styleId, [k], (x) => this.library.getItem(x))).bibliography[0] || "";
-        } catch {
-          /* fall back */
+          const r = await this.citeEngine.renderNote(styleId, keys, (x) => this.library.getItem(x));
+          ordered = r.entryIds.map((key, i) => ({ key, cite: r.bibliography[i] }));
+        } catch (e) {
+          new Notice(`Style "${styleId}" failed; using ${this.settings.citeStyle}. ${e instanceof Error ? e.message : ""}`);
         }
       }
-      if (!cite) cite = formatCitation(item, this.settings.citeStyle);
-      const file = this.library.getFile(k);
-      const summary = file ? extractSummary(await this.app.vault.cachedRead(file)) : "";
-      blocks.push(`### ${cite}\n\n${summary || "_(no summary)_"}\n`);
+      if (!ordered.length) {
+        ordered = keys.flatMap((key) => {
+          const item = this.library.getItem(key);
+          return item ? [{ key, cite: formatCitation(item, this.settings.citeStyle) }] : [];
+        });
+      }
+      for (const { key, cite } of ordered) {
+        const file = this.library.getFile(key);
+        const summary = file ? extractSummary(await this.app.vault.cachedRead(file)) : "";
+        blocks.push(`### ${cite}\n\n${summary || "_(no summary)_"}\n`);
+      }
+    } finally {
+      notice.hide();
     }
-    notice.hide();
     const title = wholeLib ? "Annotated bibliography (library)" : `Annotated bibliography — ${active?.basename}`;
-    const path = normalizePath(`${title}.md`);
-    await this.writeAndOpen(path, `# ${title}\n\n${blocks.join("\n")}`);
+    await this.writeAndOpen(`${title}.md`, `# ${title}\n\n${blocks.join("\n")}`);
   }
 
   /** Read this reference's PDF annotations and write them into its ## Highlights section. */
@@ -858,7 +923,7 @@ export default class ScholarRagPlugin extends Plugin {
       .map((h) => `- ${h.text}${h.type === "note" ? " _(note)_" : ""} _(p.${h.page})_`)
       .join("\n");
     const content = await this.app.vault.read(r.file);
-    const re = /(##\s+Highlights\s*\n)[\s\S]*?(?=\n##\s|$)/i;
+    const re = /(##\s+Highlights\s*\n)[\s\S]*?(?=\n#{1,2}\s|$)/i;
     // Function replacement: `block` may contain `$` (e.g. "$5"), which a string
     // replacement would mis-read as a backreference.
     const next = re.test(content)
@@ -922,20 +987,24 @@ export default class ScholarRagPlugin extends Plugin {
       done++;
       notice.setMessage(`Enriching ${done}/${entries.length}…`);
       const needs = !item.abstract || !item["container-title"] || !item.author || !item.author.length;
-      const idStr = item.DOI || (item.PMID ? `pmid:${item.PMID}` : "");
+      // Crossref usually omits abstracts — prefer PubMed when that is the gap.
+      const pmid = item.PMID ? `pmid:${item.PMID}` : "";
+      const idStr = !item.abstract && pmid ? pmid : item.DOI || pmid;
       if (!needs || !idStr) continue;
       try {
         const fresh = await fetchMetadata(detectId(idStr), this.settings.pubmedApiKey);
+        let changed = false;
         await this.app.fileManager.processFrontMatter(file, (fm) => {
-          if (!fm.abstract && fresh.abstract) fm.abstract = fresh.abstract;
-          if (!fm["container-title"] && fresh["container-title"]) fm["container-title"] = fresh["container-title"];
-          if ((!fm.author || (Array.isArray(fm.author) && !fm.author.length)) && fresh.author) fm.author = fresh.author;
-          if (!fm.volume && fresh.volume) fm.volume = fresh.volume;
-          if (!fm.issue && fresh.issue) fm.issue = fresh.issue;
-          if (!fm.page && fresh.page) fm.page = fresh.page;
-          if (!fm.DOI && fresh.DOI) fm.DOI = fresh.DOI;
+          const set = (k: string, v: unknown) => ((fm[k] = v), (changed = true));
+          if (!fm.abstract && fresh.abstract) set("abstract", fresh.abstract);
+          if (!fm["container-title"] && fresh["container-title"]) set("container-title", fresh["container-title"]);
+          if ((!fm.author || (Array.isArray(fm.author) && !fm.author.length)) && fresh.author) set("author", fresh.author);
+          if (!fm.volume && fresh.volume) set("volume", fresh.volume);
+          if (!fm.issue && fresh.issue) set("issue", fresh.issue);
+          if (!fm.page && fresh.page) set("page", fresh.page);
+          if (!fm.DOI && fresh.DOI) set("DOI", fresh.DOI);
         });
-        filled++;
+        if (changed) filled++;
       } catch {
         /* skip on fetch error */
       }
@@ -973,20 +1042,6 @@ export default class ScholarRagPlugin extends Plugin {
   }
 }
 
-/** Split a note around its "## References" section: `base` is everything before the heading
- *  (trailing whitespace trimmed), `tail` is any later same-or-higher-level section
- *  (e.g. "## Appendix") to reattach after the freshly built bibliography. */
-function splitAtReferences(content: string): { base: string; tail: string } {
-  const m = content.match(/\n##\s+References\s*\n/i);
-  if (!m || m.index === undefined) return { base: content.replace(/\s+$/, ""), tail: "" };
-  const rest = content.slice(m.index + m[0].length);
-  const next = rest.search(/\n#{1,2} /);
-  return {
-    base: content.slice(0, m.index).replace(/\s+$/, ""),
-    tail: next >= 0 ? rest.slice(next) : "",
-  };
-}
-
 /** Render a citeproc in-text label (e.g. `<sup>1</sup>`, `[1]`, `(Park et al., 2022)`) into a span. */
 function setCiteLabel(span: HTMLElement, html: string): void {
   const sup = html.match(/^\s*<sup>([\s\S]*?)<\/sup>\s*$/i);
@@ -1006,9 +1061,9 @@ function plainText(html: string): string {
 
 /** Pull the EN summary (else KR) section body out of a reference note. */
 function extractSummary(content: string): string {
-  const en = content.match(/##\s+Summary \(EN\)\s*\n([\s\S]*?)(?=\n##\s|$)/i);
+  const en = content.match(/##\s+Summary \(EN\)\s*\n([\s\S]*?)(?=\n#{1,2}\s|$)/i);
   if (en && en[1].trim()) return en[1].trim();
-  const kr = content.match(/##\s+요약 \(KR\)\s*\n([\s\S]*?)(?=\n##\s|$)/);
+  const kr = content.match(/##\s+요약 \(KR\)\s*\n([\s\S]*?)(?=\n#{1,2}\s|$)/);
   return kr ? kr[1].trim() : "";
 }
 

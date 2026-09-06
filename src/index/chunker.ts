@@ -100,3 +100,17 @@ export function chunkReference(input: ChunkInput, maxChars: number): Chunk[] {
   }
   return chunks;
 }
+
+/** FNV-1a over a note's embedded chunk text (+ tags): cheap "did the content change" check. */
+export function chunkHash(chunks: Chunk[]): string {
+  let h = 0x811c9dc5;
+  const mix = (s: string) => {
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
+    h = Math.imul(h ^ 0x1f, 0x01000193) >>> 0; // field separator
+  };
+  for (const c of chunks) {
+    mix(c.embedText);
+    mix(c.tags.join(","));
+  }
+  return h.toString(16);
+}

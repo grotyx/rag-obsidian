@@ -174,7 +174,7 @@ csl: european-spine-journal
 npm run dev        # esbuild watch → main.js
 npm run deploy     # build + copy into the vault (VAULT_PLUGIN_DIR in .env)
 npm run build      # tsc + esbuild production
-npm test           # live integration suite (40 checks)
+npm test           # live integration suite (50 checks)
 ```
 
 Helper scripts (terminal, no Obsidian needed) — keys/paths from `.env`:

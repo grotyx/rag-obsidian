@@ -61,23 +61,21 @@ export class CitationGraph {
 
   /** Build the graph over the whole library (1 OpenAlex request per paper). */
   async build(onProgress?: (done: number, total: number) => void): Promise<number> {
-    const entries = this.library.list();
+    const entries = this.library.entries(); // one vault pass (list()+getItem() per note was O(n²))
     const data: GraphData = { byCitekey: {}, idToCitekey: {} };
     let done = 0;
     for (const e of entries) {
-      const item = this.library.getItem(e.citekey);
-      if (item) {
-        const w = await resolveWork(item, this.settings.openalexMailto);
-        if (w && w.openalexId) {
-          data.byCitekey[e.citekey] = { openalexId: w.openalexId, refs: w.referencedWorks };
-          data.idToCitekey[w.openalexId] = e.citekey;
-          await this.backfillId(e.file, w.openalexId);
-        } else if (this.data.byCitekey[e.citekey]) {
-          // Transient failure (e.g. 429): keep the previously resolved node.
-          const prev = this.data.byCitekey[e.citekey];
-          data.byCitekey[e.citekey] = prev;
-          data.idToCitekey[prev.openalexId] = e.citekey;
-        }
+      const w = await resolveWork(e.item, this.settings.openalexMailto);
+      if (w && w.openalexId) {
+        data.byCitekey[e.citekey] = { openalexId: w.openalexId, refs: w.referencedWorks };
+        data.idToCitekey[w.openalexId] = e.citekey;
+        // Frontmatter-only write: the indexer's content hash keeps this from re-embedding the note.
+        await this.backfillId(e.file, w.openalexId);
+      } else if (this.data.byCitekey[e.citekey]) {
+        // Transient failure (e.g. 429): keep the previously resolved node.
+        const prev = this.data.byCitekey[e.citekey];
+        data.byCitekey[e.citekey] = prev;
+        data.idToCitekey[prev.openalexId] = e.citekey;
       }
       onProgress?.(++done, entries.length);
     }

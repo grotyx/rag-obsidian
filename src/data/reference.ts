@@ -163,7 +163,7 @@ export function buildNote(item: CSLItem, citekey: string, opts: BuildNoteOpts = 
 
   // plugin-managed fields
   fm.status = "unread";
-  fm.added = new Date().toISOString().slice(0, 10);
+  fm.added = localDate(); // not toISOString(): that is the UTC date (yesterday before 09:00 KST)
   if (opts.summarySource) fm.summary_source = opts.summarySource;
   if (opts.tags && opts.tags.length) fm.tags = opts.tags;
 
@@ -177,4 +177,10 @@ export function buildNote(item: CSLItem, citekey: string, opts: BuildNoteOpts = 
   if (opts.summary) lines.push(...summaryBlock(opts.summary));
   lines.push("## Notes", "", "## Highlights", "");
   return `---\n${yaml}\n---\n${lines.join("\n")}`;
+}
+
+/** Today as YYYY-MM-DD in the user's local time zone. */
+export function localDate(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }

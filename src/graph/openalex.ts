@@ -22,7 +22,7 @@ function withMailto(url: string, mailto: string): string {
 }
 
 /** Strip doi.org/doi: prefixes so the bare DOI can be safely encoded into a URL path. */
-function normalizeDoi(doi: string): string {
+export function normalizeDoi(doi: string): string {
   return doi.trim().replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").replace(/^doi:/i, "");
 }
 

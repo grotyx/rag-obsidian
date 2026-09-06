@@ -3,7 +3,7 @@
 > Display name: **Academic Paper Obsidian Citation Manager** · plugin id stays `rag-obsidian`
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.0 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (40 integration checks green)
+**Version**: 0.4.0 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (50 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -57,14 +57,15 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `ingest/pdfImport.ts` | PDF → text → metadata (id-fetch or LLM) → note + stash text |
 | `index/embedding.ts` | `EmbeddingProvider` interface + factory |
 | `index/providers/{ollama,openai,transformers}.ts` | embedding backends |
-| `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers |
+| `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers, `chunkHash` (reindex change detector) |
 | `index/store.ts` | Orama hybrid index wrapper + JSON persist/restore |
-| `index/manager.ts` | build / incremental reindex / search / persist orchestration |
+| `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding) |
 | `graph/openalex.ts` | OpenAlex client (`resolveWork`, `fetchTitles`) |
 | `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` |
 | `llm/client.ts` | provider-agnostic chat (Anthropic / OpenAI / Ollama) via `requestUrl` |
 | `chat/rag.ts` | retrieve → number sources → [n] grounded answer → resolve citations |
-| `cite/format.ts` | CSL-JSON → APA / Vancouver / Plain (lightweight; citeproc-js is future) |
+| `cite/csl.ts` | citeproc-js rendering: bundled styles + CSL-repo fetch/cache, per-note `csl:` override |
+| `cite/format.ts` | CSL-JSON → APA / Vancouver / Plain (lightweight fallback; `cite/csl.ts` is primary) |
 | `cite/bibliography.ts` | `extractCitekeys`, `buildBibliography`, `inTextLabel` |
 | `cite/suggest.ts` | `@`-autocomplete EditorSuggest → inserts `[@citekey]` |
 | `ontology/pack.ts` | `Ontology`: alias linking + IS_A ancestors/descendants/expand |
@@ -81,7 +82,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (40 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (50 checks)
 ```
 
 ## Testing approach (important)
@@ -131,14 +132,17 @@ bibliography, ontology link/IS_A.
 - Obsidian Properties UI may warn on nested CSL frontmatter (`author`/`issued`) — data is valid.
 - Cross-identifier dedup on add: session registry + normalized-DOI/PMID/title match in
   `findDuplicate`; bare-digit PMID input requires a confirm click in the Add modal.
+- secretStorage vs sync: `data.json` (keys blanked) syncs, the OS keychain doesn't. A device
+  without `secretStorage` keeps its key in `data.json`; a non-empty key found there is adopted
+  as newer on load, but every save re-blanks it, so mixed setups must re-enter keys per device.
 
 ## Roadmap / next (see PLAN.md)
 
-1. **citeproc-js full CSL** (10k+ styles) replacing the lightweight `cite/format.ts`.
-2. **Ontology-aware retrieval** (Tier 3: IS_A query expansion in `index/manager.search`).
-3. Mobile QA; community-store submission (BRAT beta first).
+1. **Ontology-aware retrieval** (Tier 3: IS_A query expansion in `index/manager.search`).
+2. Mobile QA; community-store submission (BRAT beta first).
+3. Large-library index engine (sqlite-vec) — Orama index is in-memory.
 
-Done (v0.3.x): cross-identifier dedup on add · secretStorage migration for API keys.
+Done: citeproc-js full CSL (v0.3.0) · cross-identifier dedup on add · secretStorage for API keys (v0.4.0).
 
 ## Resuming from another folder
 
@@ -154,7 +158,8 @@ npm run dev
 Update **all three** on a release: `manifest.json`, `package.json`, `versions.json` (+ a
 CHANGELOG.md entry + the Version line in this file and README). Then commit `vX.Y.Z: summary`.
 The deck (`presentation/build_deck.py`) reads its version from `manifest.json`, but the prose
-docs (`lecture_script.md`, `slides_content.md`) hardcode it — grep `v0.X` under `presentation/`.
+docs (`lecture_script.md`, `slides_content.md`, `lecture_script_tts.md`) hardcode it — grep `v0.X`
+under `presentation/`; the TTS script spells it in Hangul (`영 점 사`), grep `점` there.
 
 ## Git
 

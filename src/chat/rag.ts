@@ -49,10 +49,12 @@ export class RagChat {
     // Each source is wrapped in explicit <source> delimiters so the model can treat note
     // content as quoted data — a note containing instruction-like text can't escape into
     // the prompt's instruction channel (see matching guard in the system prompt).
+    // A note containing "</source>" must not be able to close the data block early.
+    const q = (s: string) => s.replace(/<(\/?\s*source)/gi, "&lt;$1");
     const context = hits
       .map((h) => {
         const n = numOf(h.citekey);
-        return `<source n="${n}">\n[${n}] (${h.title}, ${h.year || "n.d."}) ${h.text}\n</source>`;
+        return `<source n="${n}">\n[${n}] (${q(h.title)}, ${h.year || "n.d."}) ${q(h.text)}\n</source>`;
       })
       .join("\n\n");
 

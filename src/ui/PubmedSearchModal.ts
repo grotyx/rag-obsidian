@@ -6,9 +6,8 @@ import { LLMClient } from "../llm/client";
 import { summarizeSource } from "../ingest/summarize";
 import {
   searchPubmed,
-  fetchAbstractText,
+  fetchPubmedRecord,
   fetchPmcFullText,
-  fetchMeshTerms,
   canonicalizeMeshTerms,
   PubmedHit,
 } from "../ingest/pubmedSearch";
@@ -166,13 +165,11 @@ export class PubmedSearchModal extends Modal {
           notice.setMessage(`Adding ${added + skipped}/${chosen.length}… (skipping duplicates)`);
           continue;
         }
-        const abstract = await fetchAbstractText(hit.pmid, apiKey, email);
+        // One efetch: abstract + real PubMed MeSH (authoritative; LLM-generated MeSH fills the gap below).
+        const { abstract, descriptors, keywords } = await fetchPubmedRecord(hit.pmid, apiKey, email);
         if (abstract) item.abstract = abstract.replace(/\s+/g, " ").trim().slice(0, 6000);
 
         const opts: BuildNoteOpts = {};
-
-        // Real PubMed MeSH first (authoritative); LLM-generated MeSH fills the gap below.
-        const { descriptors, keywords } = await fetchMeshTerms(hit.pmid, apiKey, email);
 
         if (this.summarize) {
           let src = abstract;

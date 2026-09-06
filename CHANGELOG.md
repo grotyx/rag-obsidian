@@ -3,6 +3,79 @@
 All notable changes to Academic Paper Obsidian Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [Unreleased]
+
+Code-review pass over `main.ts` (15 findings, all fixed).
+
+### Fixed
+
+- **"Rebuild search index" command now rebuilds** (it only opened the Search view).
+- **Citation syntax is one grammar everywhere** — reading view and "Compile manuscript" now
+  use the same Pandoc rules as `extractCitekeys`: `[@a; @b]` renders both keys,
+  `[@key, p. 23]` / `[-@key]` / `[see @key]` resolve, `[@key]` inside code spans / fenced
+  blocks is left alone, and unknown brackets (e.g. an e-mail) are not turned into spans.
+- **Open-access PDF download** refuses non-PDF bodies (a landing page stored in `oa_url` was
+  saved as `PDFs/<citekey>.pdf`), and network failures in Unpaywall / Crossref-retraction /
+  download show a notice instead of a stuck "Downloading…" toast and an unhandled rejection.
+- **"Update bibliography" / "Compile manuscript"** recognise `## References` on the first
+  line and without a trailing newline (no more duplicated sections).
+- **"Extract PDF highlights"** no longer swallows a following `# H1` section on re-extraction.
+- **"Find duplicates"** uses the same DOI/title normalisation as add-time dedup (no more
+  false groups for short titles like "Editorial", `doi.org/` prefixes now match).
+- **"Enrich metadata"** counts only notes it actually changed and asks PubMed first when the
+  gap is the abstract (Crossref rarely has one).
+- Generated notes ("Related to …", "Annotated bibliography — …") sanitise citekey-derived
+  file names in one place (`writeAndOpen`).
+- A key pasted or synced into `data.json` after the secretStorage migration is adopted
+  (it was silently discarded in favour of the keychain copy).
+
+### Changed
+
+- **Annotated bibliography** renders the whole list in one citeproc pass (was one engine
+  build per reference — seconds of UI freeze on big libraries) and lists entries in the
+  style's order; "Copy citation" strips the `1. ` prefix of numeric styles.
+- Export / citation-count backfill use the single-pass `Library.entries()` (no per-note
+  vault scans).
+- Reading-view citation cache is invalidated per note (whole cache only when a reference
+  note changes), shares one in-flight render between blocks, and never caches a failed render.
+- 45 integration checks (citation grammar + `splitAtReferences` cases added).
+
+Code-review pass over `src/` (15 findings, all fixed).
+
+### Fixed
+
+- **Clicking a search hit / chat source / related-paper row opens the note again** — the
+  views built `<folder>/<citekey>.md`, but notes are named `YYYY-Journal-Author-Word.md`
+  since 0.3.x; they now resolve through `Library.getFile`.
+- **Re-adding a paper deleted earlier in the session** no longer reports "Already in
+  library" (session dedup entries are ignored once their note is gone).
+- **Index persistence can no longer corrupt itself** — rebuild, debounced reindex and
+  delete/rename are serialized, and a burst of edits persists once instead of per note.
+- **PDF highlight extraction** honours `quadPoints` (pdfjs ≥ 4 returns a `Float32Array`),
+  so multi-line highlights no longer pull in whole lines / the neighbouring column.
+- **Retraction check** flags only `is_retracted` or "RETRACTED:" / "Retracted article:"
+  titles (a paper *about* retractions is not retracted); DOIs are normalized + encoded.
+- **OpenAI summaries** — `reasoning_effort` is only sent to reasoning models
+  (`gpt-4o-*` answered 400); **Anthropic summaries** get a 4096-token cap so the KR summary
+  and MeSH sections are no longer truncated away.
+- **BibTeX / RIS export** tolerates numeric `page:` / `volume:` frontmatter.
+- **Import PDF** dedups like every other add path; a PDF of a paper already in the library
+  is attached to the existing note (text appended once).
+- `detectId` accepts PubMed article URLs; PubMed dates keep the day in both add paths.
+- Chat context escapes `</source>` inside retrieved passages (prompt-injection boundary).
+- `added:` is the local calendar date, not UTC.
+
+### Changed
+
+- **Citation-graph build** no longer re-embeds every note: writing `openalex_id` (or any
+  other plugin-managed frontmatter) leaves the chunk text unchanged and the indexer skips it
+  (content hash stored in `meta.json`). One vault pass instead of `getItem()` per note.
+- Embedding provider instance is cached per `provider:model` (Transformers.js kept
+  rebuilding its ONNX pipeline on every search).
+- PubMed add fetches each record's XML once (abstract + MeSH + keywords) and shares the
+  name/date parsers with `metadata.ts`.
+- 50 integration checks.
+
 ## [0.4.0] — 2026-06-10
 
 Stability & security release: a deep code review pass (bug fixes), key storage migration,

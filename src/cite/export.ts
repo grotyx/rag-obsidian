@@ -34,7 +34,7 @@ function bibtexOf(ref: ExportRef): string {
   if (it["container-title"]) f.push(["journal", `{${it["container-title"]}}`]);
   if (it.volume) f.push(["volume", `{${it.volume}}`]);
   if (it.issue) f.push(["number", `{${it.issue}}`]);
-  if (it.page) f.push(["pages", `{${it.page.replace(/-/g, "--")}}`]);
+  if (it.page) f.push(["pages", `{${String(it.page).replace(/-/g, "--")}}`]); // YAML `page: 155` is a number
   if (it.DOI) f.push(["doi", `{${it.DOI}}`]);
   if (it.URL) f.push(["url", `{${it.URL}}`]);
   if (it.publisher) f.push(["publisher", `{${it.publisher}}`]);
@@ -63,7 +63,7 @@ function risOf(ref: ExportRef): string {
   if (it.volume) lines.push(`VL  - ${it.volume}`);
   if (it.issue) lines.push(`IS  - ${it.issue}`);
   if (it.page) {
-    const [sp, ep] = it.page.split(/[-–]/);
+    const [sp, ep] = String(it.page).split(/[-–]/);
     if (sp) lines.push(`SP  - ${sp.trim()}`);
     if (ep) lines.push(`EP  - ${ep.trim()}`);
   }

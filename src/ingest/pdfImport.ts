@@ -31,13 +31,19 @@ export class PdfImporter {
     if (!item) item = await this.llmExtract(text);
     if (!item.title) item.title = pdf.basename;
 
-    const note = await this.library.createReference(item);
+    // Same paper already in the library (added by DOI earlier, or the PDF imported twice):
+    // attach the PDF + text to the existing note instead of creating a duplicate.
+    const dup = this.library.findDuplicate(item);
+    const note = (dup && this.library.getFile(dup)) || (await this.library.createReference(item));
     await this.attach(note, pdf, text);
     return note;
   }
 
   private async attach(note: TFile, pdf: TFile, text: string): Promise<void> {
-    await this.app.vault.append(note, `\n## Full text (extracted)\n\n${text.slice(0, 20000)}\n`);
+    const marker = "## Full text (extracted)";
+    if (!(await this.app.vault.read(note)).includes(marker)) {
+      await this.app.vault.append(note, `\n${marker}\n\n${text.slice(0, 20000)}\n`);
+    }
     await this.app.fileManager.processFrontMatter(note, (fm) => {
       fm.pdf = `[[${pdf.path}]]`;
     });

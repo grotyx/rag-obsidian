@@ -102,14 +102,14 @@ export class CiteEngine {
     styleId: string,
     keys: string[],
     getItem: (key: string) => CSLItem | null
-  ): Promise<{ bibliography: string[]; inText: Record<string, string> }> {
+  ): Promise<{ bibliography: string[]; inText: Record<string, string>; entryIds: string[] }> {
     const items = keys
       .map((k) => {
         const it = getItem(k);
         return it ? ({ ...(it as CSLItem), id: k } as CSLItem & { id: string }) : null;
       })
       .filter((x): x is CSLItem & { id: string } => !!x);
-    if (!items.length) return { bibliography: [], inText: {} };
+    if (!items.length) return { bibliography: [], inText: {}, entryIds: [] };
 
     const styleXml = await this.style(styleId);
     const localeXml = await this.locales();
@@ -134,8 +134,12 @@ export class CiteEngine {
     });
 
     const bibRes = engine.makeBibliography();
-    const bibliography: string[] = (bibRes && bibRes[1] ? bibRes[1] : []).map(htmlToMarkdown).filter(Boolean);
-    return { bibliography, inText };
+    const ids: string[] = ((bibRes?.[0]?.entry_ids as string[][] | undefined) ?? []).map((a) => a[0]);
+    const entries = ((bibRes?.[1] as string[] | undefined) ?? [])
+      .map((h, i) => ({ id: ids[i] ?? "", text: htmlToMarkdown(h) }))
+      .filter((e) => e.text);
+    // `bibliography[i]` is the entry for citekey `entryIds[i]` (style's own order).
+    return { bibliography: entries.map((e) => e.text), inText, entryIds: entries.map((e) => e.id) };
   }
 }
 

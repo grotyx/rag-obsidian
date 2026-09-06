@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, Notice, TFile, normalizePath } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { SearchHit } from "../index/store";
 
@@ -70,19 +70,7 @@ export class SearchView extends ItemView {
   }
 
   private async rebuild(): Promise<void> {
-    const m = this.plugin.indexManager;
-    const notice = new Notice("Building index…", 0);
-    try {
-      const n = await m.rebuild((done, total) =>
-        notice.setMessage(`Embedding ${done}/${total} chunks…`)
-      );
-      notice.hide();
-      new Notice(`Index built: ${n} chunks`);
-    } catch (e) {
-      notice.hide();
-      console.error("[RAG Obsidian] rebuild failed", e);
-      new Notice(`Rebuild failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    await this.plugin.rebuildIndex();
     this.updateStatus();
   }
 
@@ -123,12 +111,8 @@ export class SearchView extends ItemView {
   }
 
   private async openCitekey(citekey: string): Promise<void> {
-    const path = normalizePath(`${this.plugin.settings.referencesFolder}/${citekey}.md`);
-    const file = this.app.vault.getAbstractFileByPath(path);
-    if (file instanceof TFile) {
-      await this.app.workspace.getLeaf(false).openFile(file);
-    } else {
-      new Notice(`Note not found: ${citekey}`);
-    }
+    const file = this.plugin.library.getFile(citekey); // note filename ≠ citekey
+    if (file) await this.app.workspace.getLeaf(false).openFile(file);
+    else new Notice(`Note not found: ${citekey}`);
   }
 }

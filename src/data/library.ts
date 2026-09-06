@@ -24,25 +24,34 @@ export class Library {
     }
   }
 
-  // Citekeys created this session, so a batch add (PubMed modal loop) stays unique
-  // even before the metadata cache catches up.
-  private createdCitekeys = new Set<string>();
+  // Citekeys created this session (citekey → note path), so a batch add (PubMed modal loop)
+  // stays unique even before the metadata cache catches up.
+  private createdCitekeys = new Map<string, string>();
 
-  // Identifiers (normalized DOI / PMID / normalized title → citekey) of references created
+  // Identifiers (normalized DOI / PMID / normalized title → created note) of references created
   // this session — metadataCache lags vault.create, so rapid double-adds or DOI-then-PMID
   // adds of the same work would slip past the cache scan in findDuplicate.
-  private createdIds = new Map<string, string>();
+  // Entries whose note is gone (deleted this session) are ignored, so a re-add after a
+  // delete is not reported as a duplicate of a note that no longer exists.
+  private createdIds = new Map<string, { citekey: string; path: string }>();
 
-  private rememberIds(item: CSLItem, citekey: string): void {
+  private rememberIds(item: CSLItem, citekey: string, path: string): void {
+    const hit = { citekey, path };
     const doi = normDoi(item.DOI);
-    if (doi) this.createdIds.set(`doi:${doi}`, citekey);
-    if (item.PMID) this.createdIds.set(`pmid:${item.PMID}`, citekey);
+    if (doi) this.createdIds.set(`doi:${doi}`, hit);
+    if (item.PMID) this.createdIds.set(`pmid:${item.PMID}`, hit);
     const title = normTitle(item.title);
-    if (title.length > 12) this.createdIds.set(`title:${title}`, citekey);
+    if (title.length > 12) this.createdIds.set(`title:${title}`, hit);
+  }
+
+  /** The vault index is synchronous, so a just-created (or just-deleted) note is visible here. */
+  private exists(path: string): boolean {
+    return this.app.vault.getAbstractFileByPath(path) instanceof TFile;
   }
 
   private knownCitekeys(): Set<string> {
-    const s = new Set(this.createdCitekeys);
+    const s = new Set<string>();
+    for (const [ck, path] of this.createdCitekeys) if (this.exists(path)) s.add(ck);
     for (const e of this.list()) s.add(e.citekey);
     return s;
   }
@@ -75,11 +84,11 @@ export class Library {
   async createReference(item: CSLItem, opts: BuildNoteOpts = {}): Promise<TFile> {
     await this.ensureFolder();
     const citekey = this.uniqueCitekey(generateCitekey(item, this.settings));
-    this.createdCitekeys.add(citekey);
-    this.rememberIds(item, citekey);
     const filename = this.uniqueFilename(generateFilename(item));
-    const content = buildNote(item, citekey, opts);
     const path = normalizePath(`${this.folder()}/${filename}.md`);
+    this.createdCitekeys.set(citekey, path);
+    this.rememberIds(item, citekey, path);
+    const content = buildNote(item, citekey, opts);
     return this.app.vault.create(path, content);
   }
 
@@ -114,7 +123,7 @@ export class Library {
       (pmid && this.createdIds.get(`pmid:${pmid}`)) ||
       (title.length > 12 && this.createdIds.get(`title:${title}`)) ||
       null;
-    if (session) return session;
+    if (session && this.exists(session.path)) return session.citekey;
     const prefix = this.folder() + "/";
     for (const file of this.app.vault.getMarkdownFiles()) {
       if (!file.path.startsWith(prefix)) continue;
@@ -172,7 +181,7 @@ export class Library {
 
 /** Normalize a DOI for comparison: lowercase, strip doi.org URL / "doi:" prefixes
  *  (CSL DOI casing and prefixing vary by source — Crossref vs PubMed vs pasted URLs). */
-function normDoi(d: unknown): string {
+export function normDoi(d: unknown): string {
   return String(d || "")
     .trim()
     .toLowerCase()
@@ -180,7 +189,7 @@ function normDoi(d: unknown): string {
     .replace(/^doi:\s*/, "");
 }
 
-function normTitle(t: unknown): string {
+export function normTitle(t: unknown): string {
   return String(t || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
