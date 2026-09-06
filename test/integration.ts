@@ -21,6 +21,7 @@ import { RagChat } from "../src/chat/rag";
 import { formatCitation } from "../src/cite/format";
 import { CitationGraph } from "../src/graph/citations";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
+import { findOpenAccess } from "../src/ingest/unpaywall";
 import {
   extractCitekeys,
   buildBibliography,
@@ -344,6 +345,18 @@ async function main() {
   }));
   const ex = await extractPdfText(new ArrayBuffer(8));
   ok(ex.pages === 2 && /Hello world/.test(ex.text), `extractPdfText: ${ex.pages}p "${ex.text.replace(/\n/g, " ").trim()}"`);
+
+  // Unpaywall rejects placeholder addresses; say so instead of reporting "no OA copy".
+  {
+    let msg = "";
+    await findOpenAccess("10.1038/nature14539", "").catch((e) => (msg = String(e.message)));
+    let msg2 = "";
+    await findOpenAccess("10.1038/nature14539", "anonymous@example.com").catch((e) => (msg2 = String(e.message)));
+    ok(
+      /contact e-mail/i.test(msg) && /contact e-mail/i.test(msg2),
+      `findOpenAccess demands a real contact address: ${msg.slice(0, 60)}`
+    );
+  }
 
   // ---- 10. bibliography / citations (Phase 5) ----
   log("\n[10] Bibliography / citations");

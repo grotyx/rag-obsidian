@@ -7,6 +7,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Fixed
 
+- **Open-access lookup works once you set your e-mail, and says so when you have not** — the
+  hardcoded `anonymous@example.com` fallback made Unpaywall answer 422 for every request, so
+  "Find open-access PDF" always reported "No open-access copy found". It now asks for the
+  OpenAlex contact e-mail instead.
 - **"Compile manuscript" no longer rewrites citations inside code** — a manuscript that
   documents the `[@citekey]` syntax had its code spans and fenced blocks replaced with
   rendered citations. Reading view already skipped code; compile now shares that rule.

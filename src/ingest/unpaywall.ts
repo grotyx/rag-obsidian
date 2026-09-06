@@ -12,7 +12,13 @@ export interface OAResult {
 export async function findOpenAccess(doi: string, email: string): Promise<OAResult | null> {
   const clean = doi.replace(/^https?:\/\/doi\.org\//, "").trim();
   if (!clean) return null;
-  const mail = email || "anonymous@example.com";
+  // Unpaywall answers 422 ("Please use your own email address") to placeholder addresses, so
+  // the old `anonymous@example.com` fallback failed every lookup and the caller reported
+  // "No open-access copy found" — wrong, and it hid the one thing the user had to fix.
+  const mail = email.trim();
+  if (!mail || /@example\.(com|org|net)$/i.test(mail)) {
+    throw new Error('Unpaywall needs your contact e-mail — set "OpenAlex contact email" in the plugin settings.');
+  }
   const res = await requestUrl({
     url: `https://api.unpaywall.org/v2/${encodeURIComponent(clean)}?email=${encodeURIComponent(mail)}`,
     throw: false,
