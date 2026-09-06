@@ -3,6 +3,16 @@
 All notable changes to Academic Paper Obsidian Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [Unreleased]
+
+### Changed
+
+- Docs: CLAUDE.md module map covers the 0.3.x/0.4.x modules (PubMed search, summarize,
+  Unpaywall, retraction, import, export) and records the plugin-managed frontmatter, the
+  `CONTACT_EMAIL` test variable, and the in-app CDP testing notes. READMEs list the two
+  commands the tables had missed (find open-access PDF, tag with ontology concepts) and the
+  Korean one gains the contact-e-mail note.
+
 ## [0.4.3] — 2026-09-07
 
 Correctness release: three review passes over the 0.4.1/0.4.2 work plus in-vault testing

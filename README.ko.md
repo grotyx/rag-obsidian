@@ -167,8 +167,8 @@ csl: european-spine-journal
 | 그룹 | 명령 |
 |---|---|
 | **추가** | Search PubMed · DOI / PMID / arXiv / 제목 추가 · Import(BibTeX / RIS / nbib / CSL-JSON) · Import PDF |
-| **독서** | 읽기 상태(unread / reading / read) · Reading queue · OA PDF 다운로드 · PDF 형광펜 추출 · 온라인으로 열기 |
-| **정리** | 대시보드 · 중복 찾기 · 인용수 채우기 · 철회 확인 · 태그 변경 · 메타데이터 보강 · 관련 논문 추천 · 인용 네트워크 내보내기 |
+| **독서** | 읽기 상태(unread / reading / read) · Reading queue · OA PDF 찾기 · OA PDF 다운로드 · PDF 형광펜 추출 · 온라인으로 열기 |
+| **정리** | 대시보드 · 중복 찾기 · 인용수 채우기 · 철회 확인 · 태그 변경 · 메타데이터 보강 · 관련 논문 추천 · 온톨로지 개념 태깅 · 인용 네트워크 내보내기 |
 | **집필** | `@` 자동완성 · Update bibliography · Compile manuscript · 인용 복사 · 주석 참고문헌 |
 | **검색** | 의미 검색 · 챗 · 관련 논문 · 인덱스 재생성 |
 | **내보내기** | 라이브러리 → BibTeX / RIS / CSL-JSON |
@@ -204,6 +204,8 @@ node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled 
   `citekey:`가 `[@cite]` 핸들.
 - `.docx` 변환은 **Pandoc** 필요; PDF 형광펜 추출은 주석이 있는 PDF 필요.
 - Obsidian Properties 패널이 중첩 CSL frontmatter에 경고할 수 있음 — 데이터는 유효함.
+- 설정의 **Contact e-mail**을 채워 두세요. OpenAlex·Unpaywall·PubMed가 같이 쓰는 값이고,
+  오픈액세스 PDF 조회는 이 값이 없으면 동작하지 않습니다.
 - `styles/`의 번들 CSL 스타일은 CC BY-SA 3.0 (`styles/README.md` 참고); 플러그인 코드는 MIT.
 
 ## 👤 저자

@@ -51,10 +51,15 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `types.ts` | `ScholarRagSettings`, `DEFAULT_SETTINGS`, CSL-JSON types, enums |
 | `settings.ts` | Settings tab UI (Library / Retrieval / Chat / Citation graph / Writing / Ontology) |
 | `data/reference.ts` | citekey generation, CSL-JSON → markdown note builder |
-| `data/library.ts` | CRUD over `References/`, `getItem`, `list` (via metadataCache) |
+| `data/library.ts` | CRUD over `References/`, `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` |
 | `ingest/metadata.ts` | `detectId` + Crossref / PubMed / arXiv fetchers → CSLItem |
 | `ingest/pdf.ts` | pdfjs (CDN runtime load, injectable) text extraction + `findIdentifier` |
-| `ingest/pdfImport.ts` | PDF → text → metadata (id-fetch or LLM) → note + stash text |
+| `ingest/pdfImport.ts` | PDF → text → metadata (id-fetch or LLM) → dedup → note + stash text |
+| `ingest/pubmedSearch.ts` | esearch/esummary + one `fetchPubmedRecord` efetch (abstract + MeSH + keywords), PMC full text, MeSH canonicalization |
+| `ingest/summarize.ts` | EN sections + KR summary + MeSH terms from an LLM (`maxTokens` 8192) |
+| `ingest/unpaywall.ts` | `findOpenAccess` — scans every `oa_locations` entry for a PDF; requires a contact e-mail |
+| `ingest/retraction.ts` | `checkRetraction` via OpenAlex `is_retracted` (+ "RETRACTED:" title guard) |
+| `ingest/import.ts` | BibTeX / RIS / `.nbib` / CSL-JSON parsing → CSLItem[] |
 | `index/embedding.ts` | `EmbeddingProvider` interface + factory |
 | `index/providers/{ollama,openai,transformers}.ts` | embedding backends |
 | `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers, `chunkHash` (reindex change detector) |
@@ -66,13 +71,14 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `chat/rag.ts` | retrieve → number sources → [n] grounded answer → resolve citations |
 | `cite/csl.ts` | citeproc-js rendering: bundled styles + CSL-repo fetch/cache, per-note `csl:` override |
 | `cite/format.ts` | CSL-JSON → APA / Vancouver / Plain (lightweight fallback; `cite/csl.ts` is primary) |
-| `cite/bibliography.ts` | `extractCitekeys`, `buildBibliography`, `inTextLabel` |
+| `cite/bibliography.ts` | citation grammar shared by every renderer: `extractCitekeys`, `citePattern`/`keysInCite`, `replaceCitations` (skips code), `resolveCluster` (all keys or none), `splitAtReferences`, `buildBibliography`, `inTextLabel` |
+| `cite/export.ts` | library → BibTeX / RIS / CSL-JSON |
 | `cite/suggest.ts` | `@`-autocomplete EditorSuggest → inserts `[@citekey]` |
 | `ontology/pack.ts` | `Ontology`: alias linking + IS_A ancestors/descendants/expand |
 | `ontology/sample.ts` | built-in tiny spine pack |
 | `ontology/manager.ts` | load pack (user JSON or sample) + tag active note |
 | `ui/{LibraryView,SearchView,ChatView,RelatedView}.ts` | sidebar panes |
-| `ui/{AddReferenceModal,ImportPdfModal}.ts` | modals |
+| `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal}.ts` | modals |
 | `main.ts` | plugin lifecycle, views, commands, ribbons, events, bibliography + citation rendering |
 
 ## Commands (dev)
@@ -106,7 +112,16 @@ then drive the renderer over CDP (`http://127.0.0.1:9222/json/list` → `Runtime
 `app.commands.executeCommandById("rag-obsidian:update-bibliography")`,
 `app.plugins.plugins["rag-obsidian"].library.entries()`. This reaches the CDN-loaded paths and the
 real Obsidian API; the vault's plugin folder must hold copies of `main.js`/`manifest.json`/`styles.css`
-(a symlink to the repo makes Obsidian hang on "loading plugins").
+(a symlink to the repo makes Obsidian hang on "loading plugins"). A minimized window stops
+rendering (`document.visibilityState === "hidden"`, so reading-view checks return nothing) —
+restore it from the same console with
+`require("@electron/remote").getCurrentWindow().restore()`. Obsidian caches `manifest.json`, so
+a version bump needs `app.commands.executeCommandById("app:reload")`, not just a plugin toggle.
+
+**Environment**: `EMBED_MODEL` picks the Ollama model for the embedding section (default
+`qwen2.5:0.5b`; without a local Ollama it falls back to a deterministic embedder and still
+passes). `CONTACT_EMAIL` enables the live Unpaywall check — skipped when unset, so no personal
+address lives in the repo.
 
 **Test vault**: `_testvault/` is the hand-made click-test vault (plugin symlinked into
 `.obsidian/plugins/`); `npm test` builds its own throwaway `_testvault-auto/` and wipes it each
@@ -146,6 +161,11 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 - Obsidian Properties UI may warn on nested CSL frontmatter (`author`/`issued`) — data is valid.
 - Cross-identifier dedup on add: session registry + normalized-DOI/PMID/title match in
   `findDuplicate`; bare-digit PMID input requires a confirm click in the Add modal.
+- Plugin-managed frontmatter (`citekey`, `status`, `added`, `tags`, `concepts`, `pdf`,
+  `summary_source`, `oa_url`, `oa_pdf`, `oa_version`, `retracted`, `cited_by_count`,
+  `openalex_id`) shares the note with CSL-JSON fields and is stripped in `cite/csl.ts`
+  (`PLUGIN_FIELDS`) — CSL defines `status`, so leaving it in printed "Unread." in every entry.
+  `oa_url` is the record a human opens; `oa_pdf` is what the download command fetches.
 - secretStorage vs sync: `data.json` (keys blanked) syncs, the OS keychain doesn't. A device
   without `secretStorage` keeps its key in `data.json`; a non-empty key found there is adopted
   as newer on load, but every save re-blanks it, so mixed setups must re-enter keys per device.

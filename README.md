@@ -173,8 +173,8 @@ csl: european-spine-journal
 | Group | Commands |
 |---|---|
 | **Add** | Search PubMed · Add by DOI / PMID / arXiv / title · Import (BibTeX / RIS / nbib / CSL-JSON) · Import PDF |
-| **Read** | Mark unread / reading / read · Reading queue · Download open-access PDF · Extract PDF highlights · Open reference online |
-| **Organize** | Library dashboard · Find duplicates · Backfill citation counts · Check retraction · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
+| **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Extract PDF highlights · Open reference online |
+| **Organize** | Library dashboard · Find duplicates · Backfill citation counts · Check retraction · Rename tag · Enrich metadata · Suggest related papers · Tag note with ontology concepts · Export citation network |
 | **Write** | `@` autocomplete · Update bibliography · Compile manuscript · Copy citation · Export annotated bibliography |
 | **Search** | Search library (semantic) · Chat with library · Show related papers · Rebuild search index |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |
