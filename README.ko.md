@@ -96,6 +96,16 @@ vault를 열고 활성화만 — Node·빌드 불필요.
 - **LLM**(챗 + 요약): Anthropic · OpenAI / 호환 · Ollama(로컬).
 - **임베딩**(검색 + 챗): Ollama(로컬) · OpenAI / 호환 · Transformers.js.
 
+**OpenRouter 사용 시?** 채팅과 임베딩 모두 **OpenAI** provider를 고르면 됩니다. 키 하나, base URL 하나:
+
+| 설정 | 값 |
+|---|---|
+| 채팅 / 임베딩 provider | `OpenAI` |
+| OpenAI base URL (공용) | `https://openrouter.ai/api/v1` |
+| 채팅 모델 | OpenRouter 모델 id, 예: `deepseek/deepseek-v4-flash` |
+| 임베딩 모델 | `openai/text-embedding-3-small` |
+| OpenAI API 키 | OpenRouter 키 ([openrouter.ai/keys](https://openrouter.ai/keys)) |
+
 **Google Gemini 사용 시?** **OpenAI** provider를 고르고 base URL을 Google로:
 
 | 설정 | 값 |

@@ -3,6 +3,17 @@
 All notable changes to Academic Paper Obsidian Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [Unreleased]
+
+### Fixed
+
+- `reasoning_effort` is recognised on router-prefixed model ids too (OpenRouter's
+  `openai/gpt-5.1`), not only bare `o*` / `gpt-5*`.
+
+### Added
+
+- README: OpenRouter setup (one key + base URL drives both chat and embeddings).
+
 ## [0.4.1] — 2026-09-06
 
 Code-review release: two review passes (`main.ts`, then all of `src/`) — 30 findings, all

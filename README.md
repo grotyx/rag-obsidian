@@ -100,6 +100,17 @@ Pluggable, all through Obsidian's `requestUrl` (works on desktop and mobile):
 - **LLM** (chat + summaries): Anthropic · OpenAI / compatible · Ollama (local).
 - **Embeddings** (search + chat): Ollama (local) · OpenAI / compatible · Transformers.js.
 
+**Using OpenRouter?** Pick the **OpenAI** provider for both chat and embeddings — one key,
+one base URL, hundreds of models:
+
+| Setting | Value |
+|---|---|
+| Chat / Embedding provider | `OpenAI` |
+| OpenAI base URL (shared) | `https://openrouter.ai/api/v1` |
+| Chat model | any OpenRouter id, e.g. `deepseek/deepseek-v4-flash` |
+| Embedding model | `openai/text-embedding-3-small` |
+| OpenAI API key | your OpenRouter key ([openrouter.ai/keys](https://openrouter.ai/keys)) |
+
 **Using Google Gemini?** Pick the **OpenAI** provider and point it at Google's endpoint:
 
 | Setting | Value |

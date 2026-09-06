@@ -63,7 +63,8 @@ export class LLMClient {
       messages: [{ role: "system", content: system }, ...messages],
     };
     // Only reasoning models accept it — gpt-4o-class models answer 400 "Unsupported parameter".
-    if (opts.reasoningEffort && /^(o\d|gpt-5)/i.test(this.settings.llmModel)) {
+    // Ids may carry a router prefix (OpenRouter: `openai/gpt-5.1`), so match after any "/".
+    if (opts.reasoningEffort && /(^|\/)(o\d|gpt-5)/i.test(this.settings.llmModel)) {
       body.reasoning_effort = opts.reasoningEffort;
     }
     const res = await requestUrl({
