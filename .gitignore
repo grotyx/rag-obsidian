@@ -10,6 +10,7 @@ data.json
 # test artifacts
 _test.cjs
 _testvault/
+_testvault-auto/
 
 # runtime-fetched CSL styles (bundled ones are committed)
 styles/cache/

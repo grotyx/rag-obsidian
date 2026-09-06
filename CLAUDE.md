@@ -101,8 +101,9 @@ bibliography, ontology link/IS_A.
 **Needs in-vault (runtime-CDN, can't node-test)**: pdfjs loaded from CDN in the plugin (the
 *algorithm* is verified against the local build), Transformers.js embeddings from CDN.
 
-**Test vault**: a local Obsidian vault with the plugin deployed (see `.env` →
-`VAULT_PLUGIN_DIR`, and `npm run deploy`). Open in Obsidian to click-test.
+**Test vault**: `_testvault/` is the hand-made click-test vault (plugin symlinked into
+`.obsidian/plugins/`); `npm test` builds its own throwaway `_testvault-auto/` and wipes it each
+run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm run deploy`).
 
 ## Conventions
 
@@ -122,6 +123,9 @@ bibliography, ontology link/IS_A.
 - **Embeddings**: Ollama `nomic-embed-text` (default, needs `ollama pull` + server with embeddings) ·
   OpenAI/compatible · Transformers.js (experimental, CDN). Dimension auto-discovered from first response.
 - **LLM (chat)**: Anthropic `claude-haiku-4-5-20251001` (default, needs key) · OpenAI · Ollama.
+  `chatModel` (optional) overrides `llmModel` for "Chat with library" only. `llmMaxTokens`
+  (default 8192) caps the **Anthropic** body only; the OpenAI-compatible and Ollama bodies send
+  no cap. Reasoning models bill thinking against that budget — a low cap returns empty content.
 
 ## Known gotchas
 

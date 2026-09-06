@@ -220,9 +220,14 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Max answer tokens")
+      .setDesc(
+        "Anthropic only (OpenAI-compatible and Ollama endpoints use their own default). " +
+          "Reasoning models spend this budget on thinking before the answer, so keep it high — " +
+          "too low returns an empty reply."
+      )
       .addSlider((s) =>
         s
-          .setLimits(256, 4096, 128)
+          .setLimits(1024, 32768, 1024)
           .setDynamicTooltip()
           .setValue(this.plugin.settings.llmMaxTokens)
           .onChange(async (v) => {

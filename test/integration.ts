@@ -34,7 +34,7 @@ import { SAMPLE_PACK } from "../src/ontology/sample";
 import { ScholarRagSettings, DEFAULT_SETTINGS, CSLItem } from "../src/types";
 
 const MODEL = process.env.EMBED_MODEL || "qwen2.5:0.5b"; // any local Ollama model works for /api/embed
-const VAULT = path.resolve("_testvault");
+const VAULT = path.resolve("_testvault-auto"); // wiped on every run — keep `_testvault` for manual click-testing
 const REFS = path.join(VAULT, "References");
 
 function log(s: string) {

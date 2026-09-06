@@ -9,7 +9,8 @@ export interface ChatMessage {
 export interface ChatOpts {
   /** OpenAI-style reasoning effort; on Gemini 3.x this maps to the thinking level. */
   reasoningEffort?: "minimal" | "low" | "medium" | "high";
-  /** Output cap for this call (Anthropic); defaults to `settings.llmMaxTokens`. */
+  /** Output cap for this call (Anthropic only — the OpenAI-compatible and Ollama bodies send
+   *  no cap and take the endpoint default); defaults to `settings.llmMaxTokens`. */
   maxTokens?: number;
 }
 

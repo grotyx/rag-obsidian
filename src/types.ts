@@ -61,7 +61,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   llmModel: "claude-haiku-4-5-20251001",
   chatModel: "",
   anthropicApiKey: "",
-  llmMaxTokens: 1024,
+  llmMaxTokens: 8192,
   citeStyle: "apa",
   cslStyleId: "spine",
 

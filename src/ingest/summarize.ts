@@ -64,7 +64,7 @@ export async function summarizeSource(
   const user = header + sourceText.slice(0, 120000);
   const reply = await llm.chat([{ role: "user", content: user }], SYS_PROMPT, {
     reasoningEffort: "high",
-    maxTokens: 4096, // EN sections + KR + MESH overflow the 1024-token chat default (KR/MESH were lost)
+    maxTokens: 16384, // EN sections + KR + MESH, plus a reasoning model's thinking budget
   });
   const out = parseSections(reply);
   if (!out.background && !out.results && !out.kr) {

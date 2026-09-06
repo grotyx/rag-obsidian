@@ -18,6 +18,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 - README: OpenRouter setup (one key + base URL drives both chat and embeddings).
 - 52 integration checks (chat-model routing).
 
+### Changed
+
+- **Max answer tokens** default 1024 → 8192, slider range 1024–32768, and the setting now says
+  it applies to Anthropic only (OpenAI-compatible and Ollama endpoints use their own default).
+  Reasoning models spend the budget on thinking before they emit an answer, so 1024 could
+  return an empty reply; paper summaries ask for 16384 for the same reason.
+- The integration suite builds its throwaway vault in `_testvault-auto/`, so a hand-made
+  `_testvault/` for click-testing survives `npm test` (the suite wipes its vault each run).
+
 ## [0.4.1] — 2026-09-06
 
 Code-review release: two review passes (`main.ts`, then all of `src/`) — 30 findings, all
