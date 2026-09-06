@@ -171,19 +171,33 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     const llm = this.plugin.settings.llmProvider;
 
     new Setting(containerEl)
-      .setName("Chat model")
+      .setName("Default model")
       .setDesc(
-        llm === "anthropic"
+        (llm === "anthropic"
           ? "e.g. claude-haiku-4-5-20251001, claude-sonnet-4-6"
           : llm === "openai"
             ? "e.g. gpt-4o-mini, gpt-4o"
-            : "any local Ollama chat model, e.g. gemma3:4b, qwen2.5:32b"
+            : "any local Ollama chat model, e.g. gemma3:4b, qwen2.5:32b") +
+          " — used for paper summaries and PDF metadata extraction."
       )
       .addText((t) =>
         t.setValue(this.plugin.settings.llmModel).onChange(async (v) => {
           this.plugin.settings.llmModel = v.trim();
           await this.plugin.saveSettings();
         })
+      );
+
+    new Setting(containerEl)
+      .setName("Chat model (optional)")
+      .setDesc('Model for "Chat with library" answers. Leave empty to use the default model.')
+      .addText((t) =>
+        t
+          .setPlaceholder("same as default")
+          .setValue(this.plugin.settings.chatModel)
+          .onChange(async (v) => {
+            this.plugin.settings.chatModel = v.trim();
+            await this.plugin.saveSettings();
+          })
       );
 
     if (llm === "anthropic") {

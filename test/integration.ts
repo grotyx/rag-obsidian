@@ -17,6 +17,7 @@ import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../
 import { VectorStore } from "../src/index/store";
 import { OllamaProvider } from "../src/index/providers/ollama";
 import { LLMClient } from "../src/llm/client";
+import { RagChat } from "../src/chat/rag";
 import { formatCitation } from "../src/cite/format";
 import { CitationGraph } from "../src/graph/citations";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
@@ -246,6 +247,24 @@ async function main() {
     const openai = new LLMClient({ ...settings, llmProvider: "openai", llmModel: "mock", openaiApiKey: "x", openaiBaseUrl: `http://127.0.0.1:${port}` });
     const a2 = await openai.chat([{ role: "user", content: user }], system);
     ok(a2.includes("Deep learning"), `openai parse: ${a2.slice(0, 70)}`);
+
+    // "Chat with library" uses `chatModel` when set; everything else keeps `llmModel`.
+    const twoModel = {
+      ...settings,
+      llmProvider: "openai" as const,
+      llmModel: "default-model",
+      chatModel: "chat-model",
+      openaiApiKey: "x",
+      openaiBaseUrl: `http://127.0.0.1:${port}`,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const idx: any = { ready: true, search: async () => hitsC };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lib: any = { getItem: (ck: string) => items.get(ck) ?? null };
+    await new RagChat(idx, lib, twoModel).answer("what is deep learning?");
+    ok(lastBody().model === "chat-model", `RagChat used chatModel: ${lastBody().model}`);
+    await new LLMClient(twoModel).chat([{ role: "user", content: "x" }], "sys");
+    ok(lastBody().model === "default-model", `other calls used llmModel: ${lastBody().model}`);
 
     // resolve sources to formatted citations (the grounding payload the UI renders)
     const sources = order.map((ck, i) => ({

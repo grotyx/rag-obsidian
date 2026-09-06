@@ -83,7 +83,11 @@ export class RagChat {
     });
 
     const user = `Question: ${query}\n\nSources:\n${context}`;
-    const llm = new LLMClient(this.settings);
+    // "Chat with library" may run a stronger model than summaries / PDF metadata extraction.
+    const llm = new LLMClient({
+      ...this.settings,
+      llmModel: this.settings.chatModel || this.settings.llmModel,
+    });
     const raw = await llm.chat([...cleanHistory, { role: "user", content: user }], system);
 
     // Drop dangling anchors (n outside 1..sources) so the UI never maps them.

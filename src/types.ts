@@ -20,6 +20,9 @@ export interface ScholarRagSettings {
   // Phase 2 — chat
   llmProvider: LLMProviderId;
   llmModel: string;
+  /** Model for "Chat with library" only; "" = use `llmModel`. Answering over retrieved
+   *  passages rewards a stronger model than the summarize / metadata-extract calls. */
+  chatModel: string;
   anthropicApiKey: string;
   llmMaxTokens: number;
   citeStyle: CiteStyle; // lightweight fallback formatter (APA / Vancouver / Plain)
@@ -56,6 +59,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
 
   llmProvider: "anthropic",
   llmModel: "claude-haiku-4-5-20251001",
+  chatModel: "",
   anthropicApiKey: "",
   llmMaxTokens: 1024,
   citeStyle: "apa",

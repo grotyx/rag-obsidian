@@ -97,7 +97,9 @@ open the synced vault and enable the plugin — no Node, no build.
 
 Pluggable, all through Obsidian's `requestUrl` (works on desktop and mobile):
 
-- **LLM** (chat + summaries): Anthropic · OpenAI / compatible · Ollama (local).
+- **LLM** (chat + summaries): Anthropic · OpenAI / compatible · Ollama (local). *Chat model*
+  is optional and overrides the default model for **Chat with library** only — worth a stronger
+  model there, since summaries and PDF metadata extraction stay on the cheaper default.
 - **Embeddings** (search + chat): Ollama (local) · OpenAI / compatible · Transformers.js.
 
 **Using OpenRouter?** Pick the **OpenAI** provider for both chat and embeddings — one key,
@@ -185,7 +187,7 @@ csl: european-spine-journal
 npm run dev        # esbuild watch → main.js
 npm run deploy     # build + copy into the vault (VAULT_PLUGIN_DIR in .env)
 npm run build      # tsc + esbuild production
-npm test           # live integration suite (50 checks)
+npm test           # live integration suite (52 checks)
 ```
 
 Helper scripts (terminal, no Obsidian needed) — keys/paths from `.env`:

@@ -12,7 +12,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Added
 
+- **Separate chat model** — Settings → *Chat model (optional)*: "Chat with library" can run a
+  stronger model than paper summaries and PDF metadata extraction, which keep the default
+  model. Empty means "same as default", so nothing changes for existing setups.
 - README: OpenRouter setup (one key + base URL drives both chat and embeddings).
+- 52 integration checks (chat-model routing).
 
 ## [0.4.1] — 2026-09-06
 
