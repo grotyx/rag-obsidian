@@ -3,11 +3,14 @@
 All notable changes to Academic Paper Obsidian Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
-## [Unreleased]
+## [0.4.1] — 2026-09-06
 
-Code-review pass over `main.ts` (15 findings, all fixed).
+Code-review release: two review passes (`main.ts`, then all of `src/`) — 30 findings, all
+fixed, no breaking changes. The index `meta.json` gains per-note content hashes: run
+**"Rebuild search index" once** after upgrading; until then each note re-embeds once on its
+first edit (as before) and then settles.
 
-### Fixed
+### Fixed (main.ts)
 
 - **"Rebuild search index" command now rebuilds** (it only opened the Search view).
 - **Citation syntax is one grammar everywhere** — reading view and "Compile manuscript" now
@@ -29,7 +32,7 @@ Code-review pass over `main.ts` (15 findings, all fixed).
 - A key pasted or synced into `data.json` after the secretStorage migration is adopted
   (it was silently discarded in favour of the keychain copy).
 
-### Changed
+### Changed (main.ts)
 
 - **Annotated bibliography** renders the whole list in one citeproc pass (was one engine
   build per reference — seconds of UI freeze on big libraries) and lists entries in the
@@ -40,9 +43,7 @@ Code-review pass over `main.ts` (15 findings, all fixed).
   note changes), shares one in-flight render between blocks, and never caches a failed render.
 - 45 integration checks (citation grammar + `splitAtReferences` cases added).
 
-Code-review pass over `src/` (15 findings, all fixed).
-
-### Fixed
+### Fixed (src/)
 
 - **Clicking a search hit / chat source / related-paper row opens the note again** — the
   views built `<folder>/<citekey>.md`, but notes are named `YYYY-Journal-Author-Word.md`
@@ -65,7 +66,7 @@ Code-review pass over `src/` (15 findings, all fixed).
 - Chat context escapes `</source>` inside retrieved passages (prompt-injection boundary).
 - `added:` is the local calendar date, not UTC.
 
-### Changed
+### Changed (src/)
 
 - **Citation-graph build** no longer re-embeds every note: writing `openalex_id` (or any
   other plugin-managed frontmatter) leaves the chunk text unchanged and the indexer skips it

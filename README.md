@@ -1,6 +1,6 @@
 # Academic Paper Obsidian Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.4.0-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.4.1-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
 
@@ -197,6 +197,8 @@ See [`CLAUDE.md`](./CLAUDE.md) for the module map and [`PLAN.md`](./PLAN.md) for
   frontmatter is the `[@cite]` handle.
 - `.docx` export needs **Pandoc**; PDF highlight extraction needs a PDF with annotations.
 - Obsidian's Properties panel may warn on nested CSL frontmatter — the data is valid.
+- API keys live in the OS keychain (Obsidian ≥ 1.11.4) and are blanked in `data.json`; on a
+  synced vault, enter the key once per device.
 - Bundled CSL styles under `styles/` are CC BY-SA 3.0 (see `styles/README.md`); plugin code
   is MIT.
 

@@ -1,6 +1,6 @@
 # Obsidian RAG Bibliography Manager — Concept & Plan
 
-**Status:** Phase 0–5 + ontology built (verified, 40 integration checks green) · **Date:** 2026-06-04
+**Status:** Phase 0–5 + ontology built (verified, 50 integration checks green) · **Date:** 2026-09-06
 **Working name:** *RAG Obsidian* (alt: ObsiCite, Athenaeum, Marginalia, Codex)
 
 ---
@@ -273,7 +273,7 @@ src/
 | Embedding model swap = full reindex | Store model id with index; warn + reindex on change. |
 | pdf.js extraction quality varies | Allow manual abstract; metadata extraction is best-effort + editable. |
 | SNOMED licensing | Don't bundle; ship open ontologies, user imports own release. |
-| Same work added via both DOI and PMID → two notes | **Cross-identifier dedup** (future): on add, match incoming DOI/PMID/title against existing notes, offer merge. Today: unique-citekey suffix avoids overwrite but creates a duplicate note. |
+| Same work added via both DOI and PMID → two notes | **Cross-identifier dedup** (done, 0.4.0; PDF import since 0.4.1): every add path matches normalized DOI / PMID / title against existing notes plus a session registry, and reports the existing citekey instead of creating a second note. |
 | Crossref often omits abstracts | Enrich via PubMed efetch / OpenAlex when DOI lacks abstract (verified: nature14539 had no Crossref abstract; PubMed supplied it). |
 
 ---
