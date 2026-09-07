@@ -12,7 +12,8 @@ import * as yaml from "js-yaml";
 
 import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
 import { duplicateGroups } from "../src/data/library";
-import { mapPool, poolWidth } from "../src/util/pool";
+import { mapPool, POOL_WIDTH } from "../src/util/pool";
+import { ncbiGapMs, buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
@@ -500,7 +501,46 @@ async function main() {
         out.join() === "2,4,6,8,10,12,14" && peak <= 3 && peak > 1,
         `mapPool keeps order and caps concurrency (peak ${peak})`
       );
-      ok(poolWidth(true) > poolWidth(false), "an NCBI key allows a wider pool");
+      ok(POOL_WIDTH >= 10, `the worker pool is sized for the LLM wait (${POOL_WIDTH})`);
+      // The pool is sized for the LLM wait; NCBI's own ceiling (3/s, 10/s with a key) is held by
+      // the request gate, so the spacing must stay under it however wide the pool gets.
+      ok(
+        1000 / ncbiGapMs(true) < 10 && 1000 / ncbiGapMs(false) < 3,
+        `NCBI gate stays under the published rate (${(1000 / ncbiGapMs(true)).toFixed(1)}/s with a key)`
+      );
+    }
+
+    // Tags: PubMed MeSH is authoritative but thin on recent papers, so the summary's MeSH line
+    // tops it up to MIN_TAGS. Author keywords ride along but never substitute for MeSH.
+    {
+      const many = await buildTags({
+        descriptors: ["Spinal Stenosis", "Decompression, Surgical", "Lumbar Vertebrae", "Endoscopy", "Humans", "Treatment Outcome"],
+        keywords: ["biportal"],
+      });
+      ok(many.length >= MIN_TAGS && many.includes("biportal"), `full MeSH kept as-is (${many.length} tags)`);
+
+      // The real case that slipped through: PubMed gave five headings, but "Humans" is dropped
+      // as a blanket term, so the note ended up with four and no top-up was attempted.
+      const blanket = await buildTags({
+        descriptors: ["Humans", "Postoperative Complications", "Endoscopy", "Minimally Invasive Surgical Procedures", "Spinal Diseases"],
+        keywords: [],
+        meshFromSummary: "Lumbar Vertebrae, Treatment Outcome, Spinal Fusion",
+      });
+      ok(
+        blanket.length >= MIN_TAGS && !blanket.includes("humans"),
+        `a blanket heading does not count toward the minimum: ${blanket.join(", ")}`
+      );
+
+      // Two real headings + a summary line: the LLM terms are only asked for because we are short.
+      const thin = await buildTags({
+        descriptors: ["Spinal Stenosis", "Humans"],
+        keywords: ["ube"],
+        meshFromSummary: "Lumbar Vertebrae, Decompression Surgical, Endoscopy, Treatment Outcome",
+      });
+      ok(
+        thin.length > 3 && thin.includes("spinal-stenosis"),
+        `thin MeSH topped up toward ${MIN_TAGS}: ${thin.join(", ")}`
+      );
     }
 
     // "Find duplicates" must group on ANY shared identifier, like add-time dedup does.

@@ -167,7 +167,7 @@ Neutral Warm. 차트의 데이터 색만 유지.
       - {year: "P4", label: "인용\n그래프"}
       - {year: "P5", label: "작성 지원\n참고문헌"}
     takeaway: "향후: 온톨로지 검색확장 · 모바일 QA · 대용량 색인 엔진"
-  source: "v0.4.8 · github.com/grotyx/rag-obsidian"
+  source: "v0.4.9 · github.com/grotyx/rag-obsidian"
 
 - slide: 13
   section: GET STARTED
@@ -177,7 +177,7 @@ Neutral Warm. 차트의 데이터 색만 유지.
   body:
     steps: ["Obsidian 설치", "RAG Obsidian 플러그인 활성화", "임베딩·LLM 키 설정"]
     repo_bar: "github.com/grotyx/rag-obsidian"      # 크게 강조
-    status: "현재 v0.4.8 · BRAT으로 설치 가능 · 커뮤니티 스토어 등재 준비 중"
+    status: "현재 v0.4.9 · BRAT으로 설치 가능 · 커뮤니티 스토어 등재 준비 중"
     takeaway: "Obsidian만 있으면 오늘부터 — 내 서재가 답하기 시작한다"
 
 - slide: 14

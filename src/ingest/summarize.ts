@@ -74,3 +74,25 @@ export async function summarizeSource(
   }
   return out;
 }
+
+/** Ask only for MeSH headings — used when a note already has its summary but too few tags,
+ *  so there is no MeSH line left to reuse (the summary body never stored one). Short prompt,
+ *  short answer: this is a fraction of the cost of re-summarizing the paper. */
+export async function suggestMeshTerms(
+  llm: LLMClient,
+  item: CSLItem,
+  sourceText: string,
+  wanted = 8
+): Promise<string> {
+  const year = item.issued?.["date-parts"]?.[0]?.[0] ?? "n.d.";
+  const user =
+    `Title: ${item.title}\nJournal: ${item["container-title"] || ""} (${year})\n\n` +
+    sourceText.slice(0, 12000);
+  return llm.chat(
+    [{ role: "user", content: user }],
+    `You assign MeSH headings. Reply with ${wanted} official NLM MeSH headings for this article, ` +
+      "comma-separated, nothing else. Prefer specific headings over broad ones. No commentary.",
+    { maxTokens: 512 }
+  );
+}
+

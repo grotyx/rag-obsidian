@@ -3,13 +3,13 @@ import type ScholarRagPlugin from "../../main";
 import { CSLItem } from "../types";
 import { BuildNoteOpts, keywordsToTags } from "../data/reference";
 import { LLMClient } from "../llm/client";
-import { mapPool, poolWidth } from "../util/pool";
+import { mapPool, POOL_WIDTH } from "../util/pool";
 import { summarizeSource } from "../ingest/summarize";
 import {
   searchPubmed,
   fetchPubmedRecord,
   fetchPmcFullText,
-  canonicalizeMeshTerms,
+  buildTags,
   PubmedHit,
 } from "../ingest/pubmedSearch";
 
@@ -169,7 +169,7 @@ export class PubmedSearchModal extends Modal {
 
     // The slow half — one PubMed record, maybe a PMC full text, and the summary — runs several
     // papers at a time. The vault writes afterwards stay sequential.
-    const prepared = await mapPool(fresh, poolWidth(!!apiKey), async (hit) => {
+    const prepared = await mapPool(fresh, POOL_WIDTH, async (hit) => {
       const item: CSLItem = { ...hit.item };
       const opts: BuildNoteOpts = {};
       try {
@@ -200,17 +200,13 @@ export class PubmedSearchModal extends Modal {
           }
         }
 
-        // Tags: real MeSH descriptors when the article is indexed; otherwise snap the LLM's
-        // terms to official MeSH headings (db=mesh). Author keywords are always added on top.
-        let tagTerms: string[];
-        if (descriptors.length) {
-          tagTerms = [...descriptors, ...keywords];
-        } else {
-          const llmMesh = (opts.summary?.mesh || "").split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
-          const canon = llmMesh.length ? await canonicalizeMeshTerms(llmMesh, apiKey, email) : [];
-          tagTerms = [...canon, ...keywords];
-        }
-        const tags = keywordsToTags(tagTerms);
+        const tags = await buildTags({
+          descriptors,
+          keywords,
+          meshFromSummary: opts.summary?.mesh,
+          apiKey,
+          email,
+        });
         if (tags.length) opts.tags = tags;
         return { hit, item, opts, error: null as unknown };
       } catch (e) {

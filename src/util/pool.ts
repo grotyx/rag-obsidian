@@ -25,8 +25,10 @@ export async function mapPool<T, R>(
   return out;
 }
 
-/** How many PubMed/LLM requests to keep in flight. NCBI allows 3 requests/second without an
- *  API key and 10 with one, and each item here spends most of its time in the LLM call. */
-export function poolWidth(hasPubmedKey: boolean): number {
-  return hasPubmedKey ? 6 : 3;
-}
+/** How many papers to work on at once.
+ *
+ *  Sized for the LLM, which is what a paper actually waits on: the PubMed lookups take a moment,
+ *  the summary takes seconds. It deliberately does NOT depend on the PubMed key — NCBI's own
+ *  ceiling (3 requests/second, 10 with a key) is held by the request gate in
+ *  `ingest/pubmedSearch.ts`, so extra workers queue there instead of drawing 429s. */
+export const POOL_WIDTH = 15;

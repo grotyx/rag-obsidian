@@ -3,6 +3,21 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [0.4.9] — 2026-09-07
+
+### Changed
+
+- **Notes get at least five topic tags.** PubMed's MeSH is authoritative but thin on recent
+  papers, and blanket headings such as "Humans" are dropped, so a paper could land with three or
+  four tags — or with author keywords only. When the tags that would actually be written come to
+  fewer than five, the summary's own MeSH suggestions top them up, snapped to official NLM
+  headings first (never invented). "Summarize and tag references (fill gaps)" now also picks up
+  notes that have too few tags, not only notes with none, and asks for headings alone rather
+  than re-summarizing a paper it already summarized.
+- **The worker pool is sized for the LLM, not for PubMed.** 15 papers are in flight regardless
+  of the PubMed key; NCBI's own ceiling (3 requests/second, 10 with a key) is held by a request
+  gate inside the PubMed client, so extra workers queue there instead of drawing HTTP 429s.
+
 ## [0.4.8] — 2026-09-07
 
 ### Changed

@@ -1,6 +1,6 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.4.8-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.4.9-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
 
@@ -211,7 +211,7 @@ csl: springer-basic-brackets
 npm run dev        # esbuild watch → main.js
 npm run deploy     # 빌드 + vault로 복사 (.env의 VAULT_PLUGIN_DIR)
 npm run build      # tsc + esbuild production
-npm test           # 라이브 통합 테스트 (60개 체크)
+npm test           # 라이브 통합 테스트 (64개 체크)
 ```
 
 헬퍼 스크립트 (터미널, Obsidian 불필요) — 키·경로는 `.env`에서:

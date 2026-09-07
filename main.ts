@@ -29,11 +29,11 @@ import { resolveWork, relatedWorks } from "./src/graph/openalex";
 import { TagRenameModal } from "./src/ui/TagRenameModal";
 import { extractPdfHighlights } from "./src/ingest/pdf";
 import { detectId, fetchMetadata } from "./src/ingest/metadata";
-import { fetchPubmedRecord, fetchPmcFullText, canonicalizeMeshTerms } from "./src/ingest/pubmedSearch";
-import { summarizeSource } from "./src/ingest/summarize";
-import { keywordsToTags, summaryBlock } from "./src/data/reference";
+import { fetchPubmedRecord, fetchPmcFullText, buildTags, MIN_TAGS } from "./src/ingest/pubmedSearch";
+import { summarizeSource, suggestMeshTerms } from "./src/ingest/summarize";
+import { summaryBlock } from "./src/data/reference";
 import { LLMClient } from "./src/llm/client";
-import { mapPool, poolWidth } from "./src/util/pool";
+import { mapPool, POOL_WIDTH } from "./src/util/pool";
 import { findOpenAccess } from "./src/ingest/unpaywall";
 import { checkRetraction } from "./src/ingest/retraction";
 import { formatCitation } from "./src/cite/format";
@@ -1014,7 +1014,10 @@ export default class ScholarRagPlugin extends Plugin {
   async backfillSummaries(): Promise<void> {
     const todo = this.library
       .entries()
-      .filter((e) => !e.item.summary_source || !(e.item.tags as string[] | undefined)?.length);
+      // Also picks up notes that only got author keywords: MeSH is what the graph view clusters on.
+      .filter(
+        (e) => !e.item.summary_source || ((e.item.tags as string[] | undefined)?.length ?? 0) < MIN_TAGS
+      );
     if (!todo.length) {
       new Notice("Every reference already has a summary and tags");
       return;
@@ -1029,7 +1032,7 @@ export default class ScholarRagPlugin extends Plugin {
     let failed = 0;
     try {
       // Network + LLM in parallel; the vault writes below stay sequential.
-      const prepared = await mapPool(todo, poolWidth(!!apiKey), async (e) => {
+      const prepared = await mapPool(todo, POOL_WIDTH, async (e) => {
         try {
           const pmid = e.item.PMID ? String(e.item.PMID) : "";
           // One efetch gives the abstract, the MeSH headings and the PMC id.
@@ -1056,15 +1059,22 @@ export default class ScholarRagPlugin extends Plugin {
             summary = await summarizeSource(llm, e.item, src, label);
           }
 
-          // Real MeSH first; fall back to the summary's own terms snapped to NLM headings.
+          // Real MeSH first, topped up from the summary when PubMed has fewer than MIN_TAGS.
+          const existing = (e.item.tags as string[] | undefined) ?? [];
           let tags: string[] = [];
-          if (!(e.item.tags as string[] | undefined)?.length) {
-            if (rec.descriptors.length) tags = keywordsToTags([...rec.descriptors, ...rec.keywords]);
-            else {
-              const terms = (summary?.mesh || "").split(/[,;\n]+/).map((t) => t.trim()).filter(Boolean);
-              const canon = terms.length ? await canonicalizeMeshTerms(terms, apiKey, email) : [];
-              tags = keywordsToTags([...canon, ...rec.keywords]);
+          if (existing.length < MIN_TAGS) {
+            const opts = { descriptors: rec.descriptors, keywords: rec.keywords, apiKey, email };
+            let built = await buildTags({ ...opts, meshFromSummary: summary?.mesh });
+            // Still short? A note summarized earlier kept no MeSH line — the summary body never
+            // stored one — so ask for headings alone rather than re-summarizing the paper.
+            const merged = [...existing];
+            for (const t of built) if (!merged.includes(t)) merged.push(t);
+            if (merged.length < MIN_TAGS && abstract) {
+              const mesh = await suggestMeshTerms(llm, e.item, abstract);
+              built = await buildTags({ ...opts, meshFromSummary: mesh });
+              for (const t of built) if (!merged.includes(t)) merged.push(t);
             }
+            if (merged.length > existing.length) tags = merged;
           }
           return { entry: e, summary, sourceTag, tags, error: null as unknown };
         } catch (err) {

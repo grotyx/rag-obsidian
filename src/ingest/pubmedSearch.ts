@@ -1,4 +1,5 @@
 import { requestUrl } from "obsidian";
+import { keywordsToTags } from "../data/reference";
 import { splitName, parsePubDate } from "./metadata";
 import { CSLItem } from "../types";
 
@@ -19,6 +20,24 @@ export interface PubmedSearchOpts {
 
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 
+/** NCBI allows 3 requests/second without an API key and 10 with one. The batch paths run many
+ *  papers at once — and a single paper can fire several MeSH lookups — so every call in this
+ *  module queues through one gate that spaces requests out. Without it, raising the worker pool
+ *  just turns into HTTP 429s. */
+let ncbiChain: Promise<void> = Promise.resolve();
+
+/** Milliseconds between consecutive NCBI requests, a little under the published ceiling. */
+export function ncbiGapMs(hasApiKey: boolean): number {
+  return hasApiKey ? 110 : 350;
+}
+
+function ncbiGate(hasApiKey: boolean): Promise<void> {
+  const gap = ncbiGapMs(hasApiKey);
+  const turn = ncbiChain.then(() => new Promise<void>((r) => setTimeout(r, gap)));
+  ncbiChain = turn.catch(() => undefined);
+  return turn;
+}
+
 function auth(apiKey?: string, email?: string): string {
   const p: string[] = [];
   if (apiKey) p.push(`api_key=${encodeURIComponent(apiKey)}`);
@@ -36,10 +55,12 @@ export async function searchPubmed(query: string, opts: PubmedSearchOpts = {}): 
   if (opts.from) url += `&mindate=${opts.from}&datetype=pdat`;
   if (opts.to) url += `&maxdate=${opts.to}&datetype=pdat`;
 
+  await ncbiGate(!!opts.apiKey);
   const sr = await requestUrl({ url });
   const pmids: string[] = sr.json?.esearchresult?.idlist ?? [];
   if (!pmids.length) return [];
 
+  await ncbiGate(!!opts.apiKey);
   const sum = await requestUrl({
     url: `${EUTILS}/esummary.fcgi?db=pubmed&retmode=json&id=${pmids.join(",")}${a}`,
   });
@@ -85,6 +106,7 @@ export interface PubmedRecord {
 export async function fetchPubmedRecord(pmid: string, apiKey?: string, email?: string): Promise<PubmedRecord> {
   const a = auth(apiKey, email);
   try {
+    await ncbiGate(!!apiKey);
     const res = await requestUrl({
       url: `${EUTILS}/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=xml${a}`,
     });
@@ -120,11 +142,13 @@ async function meshLookup(term: string, a: string): Promise<string | null> {
   // Exact MeSH-heading match ONLY. A free-text fallback snaps ambiguous fragments to the
   // wrong descriptor (e.g. "percutaneous" → "Percutaneous Coronary Intervention"), so when a
   // term isn't a real heading we keep it verbatim instead of guessing.
+  await ncbiGate(a.includes("api_key"));
   const sr = await requestUrl({
     url: `${EUTILS}/esearch.fcgi?db=mesh&retmode=json&term=${encodeURIComponent(`${term}[MeSH Terms]`)}${a}`,
   });
   const id = sr.json?.esearchresult?.idlist?.[0];
   if (!id) return null;
+  await ncbiGate(a.includes("api_key"));
   const su = await requestUrl({ url: `${EUTILS}/esummary.fcgi?db=mesh&id=${id}&retmode=json${a}` });
   return su.json?.result?.[id]?.ds_meshterms?.[0] || null;
 }
@@ -150,6 +174,7 @@ export async function fetchPmcFullText(pmc: string, apiKey?: string, email?: str
   const a = auth(apiKey, email);
   const numeric = String(pmc).replace(/^PMC/i, "");
   try {
+    await ncbiGate(!!apiKey);
     const res = await requestUrl({
       url: `${EUTILS}/efetch.fcgi?db=pmc&id=${numeric}&retmode=xml${a}`,
     });
@@ -161,4 +186,32 @@ export async function fetchPmcFullText(pmc: string, apiKey?: string, email?: str
   } catch {
     return "";
   }
+}
+
+/** A note should carry enough topic tags for the graph view to cluster it. PubMed's own MeSH
+ *  is authoritative but thin (or absent) on recent papers, so the summary's MeSH suggestions
+ *  top it up — snapped to official NLM headings first, never invented. */
+export const MIN_TAGS = 5;
+
+/** Build a note's tags: real MeSH headings first, topped up from the summary's MeSH line when
+ *  PubMed has fewer than `MIN_TAGS`, with author keywords appended last. */
+export async function buildTags(opts: {
+  descriptors: string[];
+  keywords: string[];
+  meshFromSummary?: string;
+  apiKey?: string;
+  email?: string;
+}): Promise<string[]> {
+  // Count what actually lands on the note: keywordsToTags drops blanket headings such as
+  // "Humans", so five descriptors can still leave four tags.
+  const tags = keywordsToTags([...opts.descriptors, ...opts.keywords]);
+  if (tags.length >= MIN_TAGS || !opts.meshFromSummary) return tags;
+
+  const suggested = opts.meshFromSummary
+    .split(/[,;\n]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (!suggested.length) return tags;
+  const canon = await canonicalizeMeshTerms(suggested, opts.apiKey, opts.email);
+  return keywordsToTags([...opts.descriptors, ...canon, ...opts.keywords]);
 }
