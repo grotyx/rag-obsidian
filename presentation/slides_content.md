@@ -17,7 +17,7 @@ Neutral Warm. 차트의 데이터 색만 유지.
 ```yaml
 - slide: 1
   type: cover
-  title: "Academic Paper Obsidian Citation Manager"   # 40pt 2줄 (구 "RAG Obsidian")
+  title: "Academic Paper Citation Manager"   # 40pt 2줄 (구 "RAG Obsidian")
   label_pill: "OBSIDIAN PLUGIN"        # 아웃라인 필 (ACCENT 테두리+텍스트)
   subtitle_1: "내 논문 서재가 그대로 AI 검색엔진이 된다"
   subtitle_2: "Obsidian 위에서 · 내 컴퓨터 안에서 · 답은 늘 출처와 함께"
@@ -167,7 +167,7 @@ Neutral Warm. 차트의 데이터 색만 유지.
       - {year: "P4", label: "인용\n그래프"}
       - {year: "P5", label: "작성 지원\n참고문헌"}
     takeaway: "향후: 온톨로지 검색확장 · 모바일 QA · 대용량 색인 엔진"
-  source: "v0.4.3 · github.com/grotyx/rag-obsidian"
+  source: "v0.4.4 · github.com/grotyx/rag-obsidian"
 
 - slide: 13
   section: GET STARTED
@@ -177,7 +177,7 @@ Neutral Warm. 차트의 데이터 색만 유지.
   body:
     steps: ["Obsidian 설치", "RAG Obsidian 플러그인 활성화", "임베딩·LLM 키 설정"]
     repo_bar: "github.com/grotyx/rag-obsidian"      # 크게 강조
-    status: "현재 v0.4.3 · 개발 빌드로 사용 중 · 공개 배포 예정"
+    status: "현재 v0.4.4 · BRAT으로 설치 가능 · 커뮤니티 스토어 등재 준비 중"
     takeaway: "Obsidian만 있으면 오늘부터 — 내 서재가 답하기 시작한다"
 
 - slide: 14

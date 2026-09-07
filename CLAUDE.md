@@ -1,9 +1,11 @@
-# Academic Paper Obsidian Citation Manager — Project Rules (orchestrator)
+# Academic Paper Citation Manager — Project Rules (orchestrator)
 
-> Display name: **Academic Paper Obsidian Citation Manager** · plugin id stays `rag-obsidian`
+> Display name: **Academic Paper Citation Manager** · plugin id stays `rag-obsidian`
+> (no "Obsidian" in the name — the community-plugin guidelines forbid it; the id may keep it,
+> as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.3 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (57 integration checks green)
+**Version**: 0.4.4 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (57 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.

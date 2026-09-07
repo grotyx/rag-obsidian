@@ -1,6 +1,6 @@
-# Academic Paper Obsidian Citation Manager
+# Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.4.3-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.4.4-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
 
@@ -205,7 +205,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the module map and [`PLAN.md`](./PLAN.md) for
 ## ⚠️ Notes & limitations
 
 - **Plugin id stays `rag-obsidian`** (folder / `data.json` key) even though the display name
-  is "Academic Paper Obsidian Citation Manager".
+  is "Academic Paper Citation Manager".
 - Filenames are **readable** (`2022-SpineJ-ParkSM-Biportal.md`); the short `citekey:` in
   frontmatter is the `[@cite]` handle.
 - `.docx` export needs **Pandoc**; PDF highlight extraction needs a PDF with annotations.

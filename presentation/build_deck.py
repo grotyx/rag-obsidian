@@ -189,7 +189,7 @@ def cover():
     _, tf = textbox(s, 0.6, 1.11, 2.95, 0.49, anchor=MSO_ANCHOR.MIDDLE)
     para(tf, [{"t": "OBSIDIAN PLUGIN", "s": 14, "b": True, "c": ACCENT}], align=PP_ALIGN.CENTER, first=True)
     _, tf = textbox(s, 0.6, 2.0512, 12.2953, 1.6)
-    para(tf, [{"t": "Academic Paper Obsidian", "s": 40, "b": True, "c": STARBUCKS}], first=True, line=48)
+    para(tf, [{"t": "Academic Paper", "s": 40, "b": True, "c": STARBUCKS}], first=True, line=48)
     para(tf, [{"t": "Citation Manager", "s": 40, "b": True, "c": STARBUCKS}], line=48)
     rect(s, 0.6, 3.7593, 1.8, 0.05, fill=ACCENT)
     _, tf = textbox(s, 0.6, 4.0517, 11.5, 0.9)

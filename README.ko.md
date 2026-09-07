@@ -1,4 +1,4 @@
-# Academic Paper Obsidian Citation Manager
+# Academic Paper Citation Manager
 
 [![version](https://img.shields.io/badge/version-0.3.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
@@ -199,7 +199,7 @@ node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled 
 ## ⚠️ 참고 & 한계
 
 - **플러그인 id는 `rag-obsidian` 유지** (폴더 / `data.json` 키). 표시 이름만
-  "Academic Paper Obsidian Citation Manager".
+  "Academic Paper Citation Manager".
 - 파일명은 **읽기 쉬움**(`2022-SpineJ-ParkSM-Biportal.md`); frontmatter의 짧은
   `citekey:`가 `[@cite]` 핸들.
 - `.docx` 변환은 **Pandoc** 필요; PDF 형광펜 추출은 주석이 있는 PDF 필요.

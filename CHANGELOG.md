@@ -1,11 +1,17 @@
 # Changelog
 
-All notable changes to Academic Paper Obsidian Citation Manager (plugin id `rag-obsidian`).
+All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
-## [Unreleased]
+## [0.4.4] — 2026-09-07
 
 ### Changed
+
+- **Renamed to "Academic Paper Citation Manager"** — Obsidian's community-plugin guidelines
+  do not allow "Obsidian" in a plugin name (none of the 7 371 listed plugins carry it), and the
+  store listing is the next step. The plugin **id stays `rag-obsidian`**, so the settings
+  folder, `data.json` and the OS-keychain entries are untouched: existing vaults just see the
+  shorter name.
 
 - Docs: CLAUDE.md module map covers the 0.3.x/0.4.x modules (PubMed search, summarize,
   Unpaywall, retraction, import, export) and records the plugin-managed frontmatter, the
