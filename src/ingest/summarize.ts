@@ -88,27 +88,38 @@ export async function suggestMeshTerms(
   const user =
     `Title: ${item.title}\nJournal: ${item["container-title"] || ""} (${year})\n\n` +
     sourceText.slice(0, 12000);
-  const reply = await llm.chat(
+  return llm.chat(
     [{ role: "user", content: user }],
-    `You assign MeSH headings. Reply with ${wanted} official NLM MeSH headings for this article ` +
-      "between ===MESH=== markers, comma-separated, nothing else.\n\n===MESH===\nHeading, Heading\n===MESH===",
+    `You assign MeSH headings. Reply with ${wanted} official NLM MeSH headings for this article, ` +
+      "ONE PER LINE, nothing else. Keep NLM's inverted form exactly as published " +
+      '("Decompression, Surgical" — the comma is part of the heading).',
     // Same reason summarizeSource asks for 8192: a reasoning model spends the budget on thinking
     // first, and a reply that never reaches the text block comes back empty.
     { maxTokens: 4096 }
   );
-  return parseMeshLine(reply);
 }
 
-/** Pull the heading list out of a reply, tolerating a model that adds a sentence around it.
- *  Unmatched terms survive canonicalisation verbatim, so prose here becomes a junk tag. */
-export function parseMeshLine(reply: string): string {
+/** Split a MeSH reply into candidate headings.
+ *
+ *  One per line, because NLM publishes inverted names that contain commas ("Decompression,
+ *  Surgical", "Diabetes Mellitus, Type 2") — splitting on commas turns one real heading into two
+ *  fragments, and "Surgical" happens to be a heading of its own, so the damage is silent.
+ *  No prose filtering here: every candidate is checked against the MeSH database, and anything
+ *  the database does not recognise is dropped rather than guessed at. */
+export function parseMeshList(reply: string): string[] {
   const marked = reply.match(/===MESH===([\s\S]*?)(?:===MESH===|$)/i);
-  const body = (marked ? marked[1] : reply).replace(/^[\s\S]*?:\s*/, "").trim();
-  const terms = body
-    .split(/[,;\n]+/)
-    .map((t) => t.replace(/^[-*\d.\s]+/, "").trim())
-    // A MeSH heading is short and has no sentence punctuation; anything else is commentary.
-    .filter((t) => t.length > 2 && t.length <= 60 && !/[.?!:]$/.test(t) && t.split(/\s+/).length <= 6);
-  return terms.join(", ");
+  return (marked ? marked[1] : reply)
+    .split(/[\n;]+/)
+    .map((line) =>
+      line
+        // list markers only: "- ", "* ", "1. ", "2) " — never a leading digit of a real heading
+        // such as "5-Methylcytosine" or "3T3 Cells"
+        .replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "")
+        .replace(/[.?!]+$/, "")
+        .trim()
+    )
+    // Generous: a model that ignores "one per line" sends the whole list as one line, and the
+    // MeSH database — not a length heuristic — decides what is a heading (see canonicalizeMeshTerms).
+    .filter((t) => t.length > 2 && t.length <= 300);
 }
 

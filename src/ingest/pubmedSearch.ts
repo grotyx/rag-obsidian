@@ -3,7 +3,7 @@ import { keywordsToTags } from "../data/reference";
 import { splitName, parsePubDate } from "./metadata";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
-import { parseMeshLine } from "./summarize";
+import { parseMeshList } from "./summarize";
 
 /** One PubMed search hit: parsed CSL metadata plus identifiers for follow-up fetches. */
 export interface PubmedHit {
@@ -138,17 +138,58 @@ async function meshLookup(term: string, a: string, hasKey: boolean): Promise<str
 }
 
 /** Snap LLM-suggested terms to official NLM MeSH Descriptor names; keep non-MeSH terms as-is. */
-async function canonicalizeMeshTerms(terms: string[], apiKey?: string, email?: string): Promise<string[]> {
+/** Headings repeat constantly across a batch — the same "Lumbar Vertebrae" for every paper in a
+ *  spine search — and each miss costs two gated round-trips, so remember what NLM answered. */
+const meshCache = new Map<string, string | null>();
+
+async function canonicalizeMeshTerms(
+  terms: string[],
+  apiKey?: string,
+  email?: string,
+  opts: { dropUnmatched?: boolean; splitFallback?: boolean } = {}
+): Promise<string[]> {
   const a = auth(apiKey, email);
+  const hasKey = !!apiKey;
+  const lookup = async (term: string): Promise<string | null> => {
+    const cached = meshCache.get(term.toLowerCase());
+    if (cached !== undefined) return cached;
+    let hit: string | null;
+    try {
+      hit = await meshLookup(term, a, hasKey);
+    } catch {
+      hit = null;
+    }
+    meshCache.set(term.toLowerCase(), hit);
+    return hit;
+  };
+
   const out: string[] = [];
   for (const raw of terms) {
     const term = raw.trim();
     if (!term) continue;
-    try {
-      out.push((await meshLookup(term, a, !!apiKey)) || term);
-    } catch {
-      out.push(term);
+    const hit = await lookup(term);
+    if (hit) {
+      out.push(hit);
+      continue;
     }
+    // The line was not a heading on its own. It may still be a comma-separated list from a model
+    // that ignored "one per line" — but it may equally be an inverted heading the database simply
+    // does not carry, so let the database decide each piece rather than assuming either shape.
+    if (opts.splitFallback && term.includes(",")) {
+      let matched = false;
+      for (const piece of term.split(",").map((p) => p.trim())) {
+        if (!piece) continue;
+        const pieceHit = await lookup(piece);
+        if (pieceHit) {
+          out.push(pieceHit);
+          matched = true;
+        }
+      }
+      if (matched) continue;
+    }
+    // Model-suggested terms are dropped when the database does not know them; PubMed's own
+    // descriptors are never routed through here, so nothing authoritative is lost.
+    if (!opts.dropUnmatched) out.push(term);
   }
   return out;
 }
@@ -191,13 +232,14 @@ export async function buildTags(opts: {
   const tags = keywordsToTags([...opts.descriptors, ...opts.keywords]);
   if (tags.length >= MIN_TAGS || !opts.meshFromSummary) return tags;
 
-  // Sanitise here, not at the call site: unmatched terms survive canonicalisation verbatim, so
-  // a model that answers in prose would otherwise write a sentence into the note's frontmatter.
-  const suggested = parseMeshLine(opts.meshFromSummary)
-    .split(/[,;\n]+/)
-    .map((t) => t.trim())
-    .filter(Boolean);
+  // Parse here, not at the call site, so every caller is covered — and verify each candidate
+  // against the MeSH database rather than pattern-matching prose: a heading the database does
+  // not recognise is dropped, so a chatty reply cannot reach the note's frontmatter.
+  const suggested = parseMeshList(opts.meshFromSummary);
   if (!suggested.length) return tags;
-  const canon = await canonicalizeMeshTerms(suggested, opts.apiKey, opts.email);
+  const canon = await canonicalizeMeshTerms(suggested, opts.apiKey, opts.email, {
+    dropUnmatched: true,
+    splitFallback: true,
+  });
   return keywordsToTags([...opts.descriptors, ...canon, ...opts.keywords]);
 }

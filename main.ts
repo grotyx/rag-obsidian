@@ -1016,9 +1016,13 @@ export default class ScholarRagPlugin extends Plugin {
       .entries()
       // Also picks up notes that only got author keywords: MeSH is what the graph view clusters on.
       .filter((e) => {
+        // Nothing to work from: no PubMed record to read and no abstract to summarize. Selecting
+        // these would re-run the same lookups on every invocation and change nothing.
+        const source = !!e.item.PMID || typeof e.item.abstract === "string";
+        if (!source) return false;
         if (!e.item.summary_source) return true;
         const n = Array.isArray(e.item.tags) ? e.item.tags.length : e.item.tags ? 1 : 0;
-        // Short on tags, but only if the LLM has not already been asked for this note.
+        // Short on tags, but only if the LLM has already been asked and came up short.
         return n < MIN_TAGS && !e.item.mesh_backfilled;
       });
     if (!todo.length) {
@@ -1078,10 +1082,13 @@ export default class ScholarRagPlugin extends Plugin {
             // Still short? A note summarized earlier kept no MeSH line — the summary body never
             // stored one — so ask for headings alone rather than re-summarizing the paper.
             if (merged.length < MIN_TAGS && abstract) {
-              meshTried = true;
               try {
                 const mesh = await suggestMeshTerms(llm, e.item, abstract);
                 add(await buildTags({ ...opts, meshFromSummary: mesh }));
+                // Only a reply that actually arrived counts as "asked". A failure here must not
+                // exclude the note forever — an expired key would otherwise mark the whole
+                // library on one run, with no way back except hand-editing YAML.
+                meshTried = merged.length < MIN_TAGS;
               } catch (err) {
                 // Never lose a summary that already cost a full paper's worth of tokens.
                 console.warn("[RAG Obsidian] MeSH suggestion failed", e.citekey, err);
@@ -1109,9 +1116,9 @@ export default class ScholarRagPlugin extends Plugin {
         await this.app.fileManager.processFrontMatter(r.entry.file, (fm) => {
           if (r.summary && r.sourceTag) fm.summary_source = r.sourceTag;
           if (r.tags.length) fm.tags = r.tags;
-          // Remember that the LLM was already asked. Some papers simply cannot reach MIN_TAGS
-          // (no PubMed record, a niche topic), and without this the command would re-run the
-          // whole lookup and pay for it again on every invocation.
+          // Only for a note that asked and still came up short. Writing it on a note that
+          // reached MIN_TAGS would add a non-CSL key — and a modify event, which re-chunks the
+          // note for the search index — for nothing.
           if (r.meshTried) fm.mesh_backfilled = true;
         });
         if (r.tags.length) tagged++;

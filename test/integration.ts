@@ -15,7 +15,7 @@ import { duplicateGroups } from "../src/data/library";
 import { mapPool, POOL_WIDTH } from "../src/util/pool";
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { ncbiGate, ncbiGapMs, resetNcbiGate } from "../src/ingest/ncbi";
-import { parseMeshLine } from "../src/ingest/summarize";
+import { parseMeshList } from "../src/ingest/summarize";
 import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
@@ -505,7 +505,41 @@ async function main() {
       );
       ok(POOL_WIDTH >= 10, `the worker pool is sized for the LLM wait (${POOL_WIDTH})`);
 
-      // The gate is what lets a 15-wide pool talk to an API that allows 10 requests/second.
+      // The retry is the headline fix of 0.4.10 and had no coverage: answer 429 once, then 200.
+    {
+      let hits = 0;
+      const flaky = http.createServer((req, res) => {
+        let body = "";
+        req.on("data", (d) => (body += d));
+        req.on("end", () => {
+          hits++;
+          if (hits === 1) {
+            res.writeHead(429, { "Content-Type": "application/json", "Retry-After": "1" });
+            res.end(JSON.stringify({ error: "slow down" }));
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ choices: [{ message: { content: "recovered" } }] }));
+        });
+      });
+      await new Promise<void>((r) => flaky.listen(0, "127.0.0.1", r));
+      const fport = (flaky.address() as { port: number }).port;
+      const started = Date.now();
+      const reply = await new LLMClient({
+        ...settings,
+        llmProvider: "openai",
+        llmModel: "mock",
+        openaiApiKey: "x",
+        openaiBaseUrl: `http://127.0.0.1:${fport}`,
+      }).chat([{ role: "user", content: "hi" }], "sys");
+      flaky.close();
+      ok(
+        reply === "recovered" && hits === 2 && Date.now() - started >= 400,
+        `a 429 is retried after a wait, not surfaced (${hits} attempts, ${Date.now() - started}ms)`
+      );
+    }
+
+    // The gate is what lets a 15-wide pool talk to an API that allows 10 requests/second.
       // Measure it: fire concurrently, record when each turn is released.
       resetNcbiGate();
       const stamps: number[] = [];
@@ -528,6 +562,10 @@ async function main() {
       const t0 = Date.now();
       await ncbiGate(false);
       ok(Date.now() - t0 < 50, `an idle gate releases immediately (${Date.now() - t0}ms)`);
+      ok(
+        1000 / ncbiGapMs(false) < 3 && ncbiGapMs(false) > ncbiGapMs(true),
+        `the keyless tier stays under NCBI's 3/s (${(1000 / ncbiGapMs(false)).toFixed(1)}/s)`
+      );
     }
 
     // Tags: PubMed MeSH is authoritative but thin on recent papers, so the summary's MeSH line
@@ -555,7 +593,8 @@ async function main() {
       const thin = await buildTags({
         descriptors: ["Spinal Stenosis", "Humans"],
         keywords: ["ube"],
-        meshFromSummary: "Lumbar Vertebrae, Decompression Surgical, Endoscopy, Treatment Outcome",
+        // A model ignoring "one per line" sends exactly this shape, inverted headings and all.
+        meshFromSummary: "Lumbar Vertebrae, Decompression, Surgical, Endoscopy, Spinal Fusion, Laminectomy",
       });
       ok(
         thin.length >= MIN_TAGS && thin.includes("spinal-stenosis"),
@@ -564,6 +603,16 @@ async function main() {
 
       // A model that wraps the list in a sentence must not turn that sentence into a tag —
       // canonicalizeMeshTerms keeps unmatched terms verbatim, so prose would land in frontmatter.
+      // NLM publishes inverted names with commas; splitting on commas silently turned one real
+      // heading into two fragments, and "Surgical" is itself a heading, so nothing looked wrong.
+      const inverted = parseMeshList("Decompression, Surgical\nDiabetes Mellitus, Type 2\n- 5-Methylcytosine");
+      ok(
+        inverted.length === 3 &&
+          inverted[0] === "Decompression, Surgical" &&
+          inverted[2] === "5-Methylcytosine",
+        `inverted headings and leading digits survive: ${JSON.stringify(inverted)}`
+      );
+
       const chatty = await buildTags({
         descriptors: ["Humans"],
         keywords: [],
@@ -571,10 +620,13 @@ async function main() {
           "Here are 8 MeSH headings for this article: Lumbar Vertebrae, Endoscopy, Treatment Outcome",
       });
       ok(
-        chatty.includes("lumbar-vertebrae") && !chatty.some((t) => /here-are|mesh-headings/.test(t)),
-        `prose never becomes a tag: ${chatty.join(", ")}`
+        chatty.includes("endoscopy") && !chatty.some((t) => /here-are|mesh-headings|article/.test(t)),
+        `prose is dropped, the headings beside it are not: ${chatty.join(", ")}`
       );
-      ok(parseMeshLine("A: Spinal Fusion, Endoscopy") === "Spinal Fusion, Endoscopy", "parseMeshLine drops the lead-in");
+      ok(
+        parseMeshList("1. Spinal Fusion\n2) Endoscopy.").join("|") === "Spinal Fusion|Endoscopy",
+        "list markers and a trailing period are stripped, the heading is not"
+      );
     }
 
     // "Find duplicates" must group on ANY shared identifier, like add-time dedup does.

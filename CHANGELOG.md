@@ -3,6 +3,41 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [0.4.11] — 2026-09-07
+
+Second review pass. The tag top-up was splitting MeSH headings in half.
+
+### Fixed
+
+- **Inverted MeSH headings are no longer torn apart.** NLM publishes names like
+  "Decompression, Surgical" and "Diabetes Mellitus, Type 2" — the comma is part of the heading —
+  and the parser split on commas, turning one real heading into two fragments. "Surgical" is
+  itself a heading, so nothing looked wrong while the correct term was lost. Headings are read
+  one per line, and a line that is not a heading is offered to the MeSH database piece by piece,
+  so a model that answers with a comma list still works.
+- **Suggested headings are verified, not pattern-matched.** Anything the MeSH database does not
+  recognise is dropped instead of kept verbatim, which removes the whole class of "a sentence
+  became a tag" bugs — no prose heuristics left to tune.
+- **Real headings that begin with a digit survive** ("5-Methylcytosine", "3T3 Cells"); the
+  list-marker strip was eating them.
+- **A failed MeSH request no longer excludes a note forever.** `mesh_backfilled` was written
+  before the call, so an expired key marked every under-tagged note in one run with no way back
+  except hand-editing YAML. It is written only when a reply arrived and the note is still short.
+- **Notes with nothing to work from** — no PubMed record and no abstract — are skipped instead
+  of re-queued on every run.
+- **Retry backoff is jittered.** 15 workers that hit the limit together also woke together and
+  reproduced the burst; the delay is now spread across a random 0.5–1.5× window.
+- MeSH lookups are memoised, so the same handful of headings is not re-resolved for every paper
+  in a batch.
+
+### Changed
+
+- Tests: the retry path had no coverage at all (`MAX_ATTEMPTS = 1` left the suite green) and the
+  gate test had dropped the stricter keyless tier. Both are covered now — a mock endpoint that
+  answers 429 with `Retry-After` and then 200, and an assertion on the 3/s ceiling — along with
+  inverted headings, digit-leading headings and list markers. The obsidian shim forwards real
+  response headers so the `Retry-After` branch is reachable.
+
 ## [0.4.10] — 2026-09-07
 
 Review pass over 0.4.9. Raising the worker pool to 15 exposed everything below.

@@ -15,7 +15,10 @@ async function requestWithRetry(
     const res = await requestUrl(opts);
     if (!RETRY_STATUS.has(res.status) || attempt >= MAX_ATTEMPTS) return res;
     const header = Number(res.headers?.["retry-after"] ?? res.headers?.["Retry-After"]);
-    const delay = Number.isFinite(header) && header > 0 ? header * 1000 : wait;
+    // Jitter matters more than the base delay here: without it the 15 workers that hit the limit
+    // together also wake together and reproduce the burst that caused it.
+    const base = Number.isFinite(header) && header > 0 ? header * 1000 : wait;
+    const delay = base * (0.5 + Math.random());
     await new Promise((r) => setTimeout(r, Math.min(delay, 30000)));
     wait *= 2;
   }

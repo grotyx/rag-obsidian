@@ -26,7 +26,9 @@ export async function requestUrl(
   } catch {
     json = undefined;
   }
-  return { status: r.status, text, json, headers: {} };
+  const headers: Record<string, string> = {};
+  r.headers.forEach((v, k) => (headers[k] = v));
+  return { status: r.status, text, json, headers };
 }
 
 export function stringifyYaml(obj: unknown): string {

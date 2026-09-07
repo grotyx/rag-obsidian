@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.10 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (67 integration checks green)
+**Version**: 0.4.11 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (70 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -58,7 +58,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `ingest/ncbi.ts` | the one queue every E-utilities request waits in (3/s, 10/s with a key) |
 | `ingest/pdf.ts` | pdfjs (CDN runtime load, injectable) text extraction + `findIdentifier` |
 | `ingest/pdfImport.ts` | PDF → text → metadata (id-fetch or LLM) → dedup → note + stash text |
-| `ingest/pubmedSearch.ts` | esearch/esummary + one `fetchPubmedRecord` efetch (abstract + MeSH + keywords + PMC id), PMC full text, `buildTags` (MeSH-first, tops up to `MIN_TAGS`), NCBI request gate |
+| `ingest/pubmedSearch.ts` | esearch/esummary + one `fetchPubmedRecord` efetch (abstract + MeSH + keywords + PMC id), PMC full text, `buildTags` (MeSH-first, tops up to `MIN_TAGS`, verifies suggestions against the MeSH database) |
 | `ingest/summarize.ts` | EN sections + KR summary + MeSH terms from an LLM (`maxTokens` 8192) |
 | `ingest/unpaywall.ts` | `findOpenAccess` — scans every `oa_locations` entry for a PDF; requires a contact e-mail |
 | `ingest/retraction.ts` | `checkRetraction` via OpenAlex `is_retracted` (+ "RETRACTED:" title guard) |
@@ -92,7 +92,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (67 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (70 checks)
 ```
 
 ## Testing approach (important)
