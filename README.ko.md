@@ -147,7 +147,7 @@ vault를 열고 활성화만 — Node·빌드 불필요.
 ## ✍️ 논문 쓰기 (Zotero / Word 플러그인 없이)
 
 ```text
-Obsidian:  Manuscript.md 작성  →  @ 로 인용  →  저널 지정: csl: european-spine-journal
+Obsidian:  Manuscript.md 작성  →  @ 로 인용  →  저널 지정: csl: springer-basic-brackets
            Ctrl/Cmd-P → "Compile manuscript"   →  Manuscript (compiled).md
 터미널:    node scripts/to-docx.cjs "Manuscript (compiled).md"   →  서식 .docx (Pandoc 필요)
 ```
@@ -171,7 +171,7 @@ Obsidian:  Manuscript.md 작성  →  @ 로 인용  →  저널 지정: csl: eur
 
 ```yaml
 ---
-csl: european-spine-journal
+csl: springer-basic-brackets
 ---
 ```
 
@@ -179,7 +179,7 @@ csl: european-spine-journal
 |---|---|
 | Spine | `spine` |
 | The Spine Journal | `elsevier-vancouver` |
-| European Spine Journal | `european-spine-journal` |
+| European Spine Journal | `springer-basic-brackets` |
 | Global Spine Journal | `american-medical-association` |
 | 그 외 | CSL 저장소의 아무 id |
 

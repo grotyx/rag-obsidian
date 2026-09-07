@@ -5,6 +5,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docs pointed at a citation style that does not exist** — every example used
+  `csl: european-spine-journal`, which is not in the CSL repository (404) and not bundled,
+  so anyone following the README got "Citation style not found" and a silent fall back to
+  the lightweight formatter. The bundled id for European Spine Journal is
+  `springer-basic-brackets`.
+
 ### Changed
 
 - README (en + ko): the install section leads with **BRAT** and a plain release download,

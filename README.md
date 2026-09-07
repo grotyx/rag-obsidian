@@ -154,7 +154,7 @@ one base URL, hundreds of models:
 ## ✍️ Writing a paper (without Zotero / Word plugins)
 
 ```text
-Obsidian:  write Manuscript.md  →  type @ to cite  →  set the journal: csl: european-spine-journal
+Obsidian:  write Manuscript.md  →  type @ to cite  →  set the journal: csl: springer-basic-brackets
            Ctrl/Cmd-P → "Compile manuscript"        →  Manuscript (compiled).md
 Terminal:  node scripts/to-docx.cjs "Manuscript (compiled).md"   →  styled .docx (needs Pandoc)
 ```
@@ -179,7 +179,7 @@ Zotero uses.
 
 ```yaml
 ---
-csl: european-spine-journal
+csl: springer-basic-brackets
 ---
 ```
 
@@ -187,7 +187,7 @@ csl: european-spine-journal
 |---|---|
 | Spine | `spine` |
 | The Spine Journal | `elsevier-vancouver` |
-| European Spine Journal | `european-spine-journal` |
+| European Spine Journal | `springer-basic-brackets` |
 | Global Spine Journal | `american-medical-association` |
 | anything else | any id from the CSL styles repo |
 
