@@ -3,6 +3,23 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [Unreleased]
+
+### Removed
+
+- **The ontology pack.** It never worked as advertised: the toggle that was supposed to enable it
+  read nothing, and a pack path that did not resolve fell back silently to an 8-concept spine
+  demo, so "Tag note with ontology concepts" tagged papers with a handful of unrelated ids. Real
+  MeSH headings on every PubMed reference cover the use case. Gone: `src/ontology/`, the
+  `tag-concepts` command, the "Ontology (optional)" settings section, the `ontologyPackPath`
+  setting and the `concepts` frontmatter field.
+
+### Changed
+
+- **`main.ts` split into `src/commands/`** (`library`, `writing`, `openaccess`, `backfill`).
+  `main.ts` keeps the plugin lifecycle, command wiring and the shared plumbing the modules call.
+  Internal only — command ids, names and behaviour are unchanged.
+
 ## [0.4.12] — 2026-09-08
 
 ### Fixed

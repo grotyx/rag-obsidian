@@ -208,7 +208,7 @@ csl: springer-basic-brackets
 |---|---|
 | **Add** | Search PubMed · Add by DOI / PMID / arXiv / title · Import (BibTeX / RIS / nbib / CSL-JSON) · Import PDF |
 | **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Extract PDF highlights · Open reference online |
-| **Organize** | Summarize and tag references (fill gaps) · Library dashboard · Find duplicates · Backfill citation counts · Check retraction · Rename tag · Enrich metadata · Suggest related papers · Tag note with ontology concepts · Export citation network |
+| **Organize** | Summarize and tag references (fill gaps) · Library dashboard · Find duplicates · Backfill citation counts · Check retraction · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
 | **Write** | `@` autocomplete · Update bibliography · Compile manuscript · Copy citation · Export annotated bibliography |
 | **Search** | Search library (semantic) · Chat with library · Show related papers · Rebuild search index |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |
@@ -221,7 +221,7 @@ csl: springer-basic-brackets
 npm run dev        # esbuild watch → main.js
 npm run deploy     # build + copy into the vault (VAULT_PLUGIN_DIR in .env)
 npm run build      # tsc + esbuild production
-npm test           # live integration suite (71 checks)
+npm test           # live integration suite (66 checks)
 ```
 
 Helper scripts (terminal, no Obsidian needed) — keys/paths from `.env`:

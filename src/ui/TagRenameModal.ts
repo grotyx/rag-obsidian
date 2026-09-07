@@ -1,5 +1,6 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import type ScholarRagPlugin from "../../main";
+import { renameTag } from "../commands/library";
 
 /** Rename (or delete) a topic tag across every reference note. */
 export class TagRenameModal extends Modal {
@@ -53,7 +54,7 @@ export class TagRenameModal extends Modal {
       new Notice("Enter the tag to rename");
       return;
     }
-    const n = await this.plugin.renameTag(this.from, this.to);
+    const n = await renameTag(this.plugin, this.from, this.to);
     new Notice(
       this.to ? `Renamed "${this.from}" → "${this.to}" in ${n} note(s)` : `Removed "${this.from}" from ${n} note(s)`
     );
