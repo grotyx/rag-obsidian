@@ -75,7 +75,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `chat/rag.ts` | retrieve → number sources → [n] grounded answer → resolve citations |
 | `cite/csl.ts` | citeproc-js rendering: bundled styles + CSL-repo fetch/cache, per-note `csl:` override |
 | `cite/format.ts` | CSL-JSON → APA / Vancouver / Plain (lightweight fallback; `cite/csl.ts` is primary) |
-| `cite/bibliography.ts` | citation grammar shared by every renderer: `extractCitekeys`, `citePattern`/`keysInCite`, `replaceCitations` (skips code), `resolveCluster` (all keys or none), `splitAtReferences`, `buildBibliography`, `inTextLabel` |
+| `cite/bibliography.ts` | citation grammar shared by every renderer: `extractCitekeys`, `citePattern`/`keysInCite`, `replaceCitations` (skips code), `resolveCluster` (all keys or none), `anchorsToCitekeys` (chat `[n]` → `[@key]` clusters), `splitAtReferences`, `buildBibliography`, `inTextLabel` |
 | `cite/export.ts` | library → BibTeX / RIS / CSL-JSON |
 | `cite/suggest.ts` | `@`-autocomplete EditorSuggest → inserts `[@citekey]` |
 | `commands/library.ts` | dashboard, duplicates, reading queue, status, citation-count backfill, enrich, rename tag, export, citation network, suggest related |
@@ -83,7 +83,8 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `commands/openaccess.ts` | Unpaywall lookup, OA PDF download, retraction check, PDF highlight extraction |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them |
 | `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
-| `ui/{LibraryView,SearchView,ChatView,RelatedView}.ts` | sidebar panes |
+| `ui/{LibraryView,SearchView,RelatedView}.ts` | sidebar panes |
+| `ui/ChatView.ts` | chat pane — history persisted to `<pluginDir>/chat.json` (last 50 messages; the model still sees the last 8), Clear chat, and "Save as note" per answer → `Chat/<date> <question>.md` |
 | `ui/progress.ts` | `startBatch`/`cancelBatch` — status-bar progress with a ✕ for the two batch commands, one batch at a time, hands out the `AbortSignal` |
 | `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal}.ts` | modals |
 | `main.ts` | plugin lifecycle, views, `addCommand` wiring, ribbons, events, citation rendering + shared plumbing (`writeAndOpen`, `activeRef`, `styleForNote`) |

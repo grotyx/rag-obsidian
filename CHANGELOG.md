@@ -5,6 +5,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **Chat that survives closing the pane.** The chat log is persisted to the plugin folder
+  (`chat.json`, last 50 messages) and replayed when the pane reopens — sources and all. The
+  model still only sees the last 8 messages, so prompt cost is unchanged. A **Clear** button
+  next to Send wipes the log and the file.
+- **"Save as note"** on every answer, plus the command **Save latest chat answer as note**
+  (`save-chat-answer`). It writes `Chat/<yyyy-mm-dd> <question>.md` holding the question and the
+  answer with its `[n]` anchors rewritten to `[@citekey]` clusters — so a chat result is a
+  citable draft that **Update bibliography** can finish. Adjacent anchors (`[1][3]`) collapse
+  into one `[@a; @c]` cluster; a run holding a number with no source behind it is left exactly
+  as written, and anchors inside code are never touched.
+
 ## [0.4.13] — 2026-09-08
 
 ### Added
