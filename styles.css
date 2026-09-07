@@ -136,6 +136,11 @@
   font-weight: 600;
   color: var(--text-accent);
 }
+.rag-obsidian-chat .srag-save-answer {
+  margin-top: 8px;
+  font-size: 0.72em;
+  padding: 2px 8px;
+}
 .rag-obsidian-chat .srag-chat-composer {
   display: flex;
   gap: 6px;

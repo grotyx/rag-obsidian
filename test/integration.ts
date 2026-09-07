@@ -29,6 +29,7 @@ import { CitationGraph } from "../src/graph/citations";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import {
+  anchorsToCitekeys,
   extractCitekeys,
   buildBibliography,
   inTextLabel,
@@ -720,6 +721,38 @@ async function main() {
     const c2 = chunkReference({ citekey: "k", title: "T", year: 2020, tags: ["a"], body: "same body" }, 800);
     const c3 = chunkReference({ citekey: "k", title: "T", year: 2021, tags: ["a"], body: "same body" }, 800);
     ok(chunkHash(c1) === chunkHash(c2) && chunkHash(c1) !== chunkHash(c3), "chunkHash: stable, and sees a prefix change");
+  }
+
+  // ---- 13. chat answer → citable note ([n] anchors → [@citekey] clusters) ----
+  log("\n[13] Chat answer → citable note");
+  {
+    const src = ["smith2020", "doe2019", "lee2021"];
+    const one = anchorsToCitekeys("Deep nets learn features [2].", src);
+    ok(one === "Deep nets learn features [@doe2019].", `single anchor → citekey: ${one}`);
+
+    const many = anchorsToCitekeys("Two lines of work agree [1][3].", src);
+    ok(many === "Two lines of work agree [@smith2020; @lee2021].", `[1][3] → one cluster: ${many}`);
+
+    // A number with no source behind it stays exactly as the model wrote it — as does the
+    // whole run it sits in, so a half-rewritten cluster can never be produced.
+    const dangling = anchorsToCitekeys("Unsupported [9] and mixed [1][9].", src);
+    ok(
+      dangling === "Unsupported [9] and mixed [1][9].",
+      `unmatched anchors left untouched: ${dangling}`
+    );
+
+    // Code is data, not prose: `[1]` in a snippet is an array index.
+    const code = anchorsToCitekeys("Use `xs[1]` here [1].\n\n```\nys[2]\n```\n", src);
+    ok(
+      code.includes("`xs[1]`") && code.includes("ys[2]") && code.includes("[@smith2020]"),
+      `anchors inside code survive, prose ones do not: ${JSON.stringify(code)}`
+    );
+
+    // The whole point: the saved note must be readable by "Update bibliography".
+    ok(
+      extractCitekeys(many).join("|") === "smith2020|lee2021",
+      `extractCitekeys reads the rewritten cluster: ${extractCitekeys(many).join("|")}`
+    );
   }
 
   log("\nDONE.");

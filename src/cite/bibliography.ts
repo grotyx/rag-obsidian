@@ -55,6 +55,28 @@ export function resolveCluster<T>(keys: string[], lookup: (key: string) => T | n
   return out;
 }
 
+/** Rewrite an answer's `[n]` source anchors into Pandoc `[@citekey]` clusters, so a saved chat
+ *  answer is a citable draft that "Update bibliography" understands. `citekeys[n-1]` is the
+ *  source behind `[n]`; adjacent anchors (`[1][3]`) collapse into one cluster. A run holding any
+ *  unknown number is left exactly as written (same all-or-nothing rule as `resolveCluster`), and
+ *  anchors inside code are skipped, like `replaceCitations`. */
+export function anchorsToCitekeys(text: string, citekeys: string[]): string {
+  return text
+    .split(CODE_RE)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(/(?:\[\d+\])+/g, (run) => {
+            const keys = resolveCluster(
+              run.match(/\d+/g) ?? [],
+              (d) => citekeys[parseInt(d, 10) - 1] ?? null
+            );
+            return keys ? `[${keys.map((k) => `@${k}`).join("; ")}]` : run;
+          })
+    )
+    .join("");
+}
+
 /** Pull unique citekeys (in first-seen order) out of `[@citekey]` Pandoc citations. */
 export function extractCitekeys(text: string): string[] {
   const keys: string[] = [];

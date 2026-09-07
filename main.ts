@@ -92,6 +92,11 @@ export default class ScholarRagPlugin extends Plugin {
       callback: () => void this.activateView(VIEW_TYPE_CHAT),
     });
     this.addCommand({
+      id: "save-chat-answer",
+      name: "Save latest chat answer as note",
+      callback: () => void this.saveChatAnswer(),
+    });
+    this.addCommand({
       id: "import-pdf",
       name: "Import PDF into library",
       callback: () => new ImportPdfModal(this.app, this).open(),
@@ -439,6 +444,14 @@ export default class ScholarRagPlugin extends Plugin {
   private async openCitekey(citekey: string): Promise<void> {
     const file = this.library.getFile(citekey);
     if (file) await this.app.workspace.getLeaf(false).openFile(file);
+  }
+
+  /** "Save latest chat answer as note" — the chat pane owns the history, so open it if needed. */
+  private async saveChatAnswer(): Promise<void> {
+    if (!this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT).length) await this.activateView(VIEW_TYPE_CHAT);
+    const view = this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT)[0]?.view;
+    if (view instanceof ChatView) await view.saveLastAnswer();
+    else new Notice("Open the chat pane first");
   }
 
   /** Write `content` to `path` (create or overwrite) and open it. vault.create/modify register
