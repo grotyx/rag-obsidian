@@ -177,11 +177,11 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
   without `secretStorage` keeps its key in `data.json`; a non-empty key found there is adopted
   as newer on load, but every save re-blanks it, so mixed setups must re-enter keys per device.
 
-## Roadmap / next (see PLAN.md)
+## Roadmap / next
 
-1. **Ontology-aware retrieval** (Tier 3: IS_A query expansion in `index/manager.search`).
-2. Mobile QA; community-store submission (BRAT beta first).
-3. Large-library index engine (sqlite-vec) — Orama index is in-memory.
+See [ROADMAP.md](ROADMAP.md) — a phased plan from a full read of the code at 0.4.12. Phase 1 (cancel +
+progress for batches, persist PMCID/MeSH on notes, per-note re-summarize, delete the Gemini-era
+scripts, split `main.ts`) comes first; the ontology pack is slated for removal (MeSH covers it).
 
 Done: citeproc-js full CSL (v0.3.0) · cross-identifier dedup on add · secretStorage for API keys (v0.4.0).
 
