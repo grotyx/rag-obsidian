@@ -15,7 +15,7 @@ import {
 export class PubmedSearchModal extends Modal {
   private plugin: ScholarRagPlugin;
   private query = "";
-  private maxResults = 8;
+  private maxResults = 20;
   private summarize = true;
   private rows: { hit: PubmedHit; checkbox: HTMLInputElement }[] = [];
   private resultsEl!: HTMLDivElement;
@@ -47,7 +47,7 @@ export class PubmedSearchModal extends Modal {
 
     new Setting(contentEl).setName("Max results").addText((t) => {
       t.setValue(String(this.maxResults));
-      t.onChange((v) => (this.maxResults = Math.max(1, Math.min(50, parseInt(v, 10) || 8))));
+      t.onChange((v) => (this.maxResults = Math.max(1, Math.min(50, parseInt(v, 10) || 20))));
       t.inputEl.type = "number";
       t.inputEl.style.width = "5em";
     });

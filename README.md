@@ -1,6 +1,6 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.4.6-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.4.7-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
 
@@ -208,7 +208,7 @@ csl: springer-basic-brackets
 |---|---|
 | **Add** | Search PubMed · Add by DOI / PMID / arXiv / title · Import (BibTeX / RIS / nbib / CSL-JSON) · Import PDF |
 | **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Extract PDF highlights · Open reference online |
-| **Organize** | Library dashboard · Find duplicates · Backfill citation counts · Check retraction · Rename tag · Enrich metadata · Suggest related papers · Tag note with ontology concepts · Export citation network |
+| **Organize** | Summarize and tag references (fill gaps) · Library dashboard · Find duplicates · Backfill citation counts · Check retraction · Rename tag · Enrich metadata · Suggest related papers · Tag note with ontology concepts · Export citation network |
 | **Write** | `@` autocomplete · Update bibliography · Compile manuscript · Copy citation · Export annotated bibliography |
 | **Search** | Search library (semantic) · Chat with library · Show related papers · Rebuild search index |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |

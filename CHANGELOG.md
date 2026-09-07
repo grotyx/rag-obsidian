@@ -3,6 +3,21 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [0.4.7] — 2026-09-07
+
+### Added
+
+- **"Summarize and tag references (fill gaps)"** — writes the AI summary and MeSH tags into
+  references that were added without them: the LLM key missing at the time, the summary toggle
+  off, or the paper not yet MeSH-indexed. Notes that already have both are skipped, so it is
+  safe to re-run. It re-reads each PubMed record once for the abstract, the MeSH headings and
+  the PMC id, so open-access papers are summarized from the full text here too. The docs had
+  promised this batch backfill since 0.3.0; it never existed outside a terminal script.
+
+### Changed
+
+- **Search PubMed: "Max results" now starts at 20** instead of 8.
+
 ## [0.4.6] — 2026-09-07
 
 ### Changed

@@ -125,7 +125,9 @@ export function keywordsToTags(terms: string[]): string[] {
   return [...out];
 }
 
-function summaryBlock(s: SummarySections): string[] {
+/** The `## Summary (EN)` / `## 요약 (KR)` block, shared by note creation and the backfill
+ *  command so an existing note ends up shaped exactly like a freshly added one. */
+export function summaryBlock(s: SummarySections): string[] {
   const en: string[] = [];
   const sec: [string, string | undefined][] = [
     ["Background / Objective", s.background],

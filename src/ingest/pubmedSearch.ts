@@ -78,6 +78,7 @@ export interface PubmedRecord {
   abstract: string; // <AbstractText> sections joined (labels kept)
   descriptors: string[]; // assigned NLM MeSH headings (empty when not yet indexed — keeps the LLM MeSH fallback alive)
   keywords: string[]; // author-supplied keywords
+  pmc: string; // "PMC…" when a full text exists, else "" — the note only stores the PMID
 }
 
 /** One efetch per PMID: abstract, MeSH descriptors and author keywords all come from the same XML. */
@@ -100,9 +101,18 @@ export async function fetchPubmedRecord(pmid: string, apiKey?: string, email?: s
       })
       .filter(Boolean)
       .join("\n\n");
-    return { abstract, descriptors: texts("MeshHeading > DescriptorName"), keywords: texts("KeywordList > Keyword") };
+    const pmc =
+      Array.from(doc.querySelectorAll("ArticleId"))
+        .find((n) => n.getAttribute("IdType") === "pmc")
+        ?.textContent?.trim() || "";
+    return {
+      abstract,
+      descriptors: texts("MeshHeading > DescriptorName"),
+      keywords: texts("KeywordList > Keyword"),
+      pmc,
+    };
   } catch {
-    return { abstract: "", descriptors: [], keywords: [] };
+    return { abstract: "", descriptors: [], keywords: [], pmc: "" };
   }
 }
 

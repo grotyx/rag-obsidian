@@ -1,5 +1,5 @@
 import { Plugin, WorkspaceLeaf, TFile, TAbstractFile, Notice, SecretStorage } from "obsidian";
-import { ScholarRagSettings, DEFAULT_SETTINGS, SECRET_FIELDS, SecretField } from "./src/types";
+import { ScholarRagSettings, DEFAULT_SETTINGS, SECRET_FIELDS, SecretField, SummarySections } from "./src/types";
 import { ScholarRagSettingTab } from "./src/settings";
 import { Library, duplicateGroups } from "./src/data/library";
 import { IndexManager } from "./src/index/manager";
@@ -29,6 +29,10 @@ import { resolveWork, relatedWorks } from "./src/graph/openalex";
 import { TagRenameModal } from "./src/ui/TagRenameModal";
 import { extractPdfHighlights } from "./src/ingest/pdf";
 import { detectId, fetchMetadata } from "./src/ingest/metadata";
+import { fetchPubmedRecord, fetchPmcFullText, canonicalizeMeshTerms } from "./src/ingest/pubmedSearch";
+import { summarizeSource } from "./src/ingest/summarize";
+import { keywordsToTags, summaryBlock } from "./src/data/reference";
+import { LLMClient } from "./src/llm/client";
 import { findOpenAccess } from "./src/ingest/unpaywall";
 import { checkRetraction } from "./src/ingest/retraction";
 import { formatCitation } from "./src/cite/format";
@@ -218,6 +222,11 @@ export default class ScholarRagPlugin extends Plugin {
       id: "export-citation-network",
       name: "Export citation network (Mermaid)",
       callback: () => void this.exportCitationNetwork(),
+    });
+    this.addCommand({
+      id: "backfill-summaries",
+      name: "Summarize and tag references (fill gaps)",
+      callback: () => void this.backfillSummaries(),
     });
     this.addCommand({
       id: "enrich-metadata",
@@ -996,6 +1005,96 @@ export default class ScholarRagPlugin extends Plugin {
     const out = `# Citation network\n\n${seen.size} papers, ${edges.length} citation edges.\n\n\`\`\`mermaid\ngraph LR\n${labels}\n${lines}\n\`\`\`\n`;
     const path = normalizePath("Citation network.md");
     await this.writeAndOpen(path, out);
+  }
+
+  /** Write the AI summary and MeSH tags into references that were added without them —
+   *  the LLM key missing at the time, the paper not yet MeSH-indexed, or the summary toggle off.
+   *  Notes that already have both are skipped, so it is safe to re-run. */
+  async backfillSummaries(): Promise<void> {
+    const todo = this.library
+      .entries()
+      .filter((e) => !e.item.summary_source || !(e.item.tags as string[] | undefined)?.length);
+    if (!todo.length) {
+      new Notice("Every reference already has a summary and tags");
+      return;
+    }
+    const apiKey = this.settings.pubmedApiKey;
+    const email = this.settings.openalexMailto;
+    const llm = new LLMClient(this.settings);
+    const notice = new Notice(`Filling gaps 0/${todo.length}…`, 0);
+    let summarized = 0;
+    let tagged = 0;
+    let failed = 0;
+    try {
+      for (const [i, e] of todo.entries()) {
+        notice.setMessage(`Filling gaps ${i + 1}/${todo.length}…`);
+        try {
+          const pmid = e.item.PMID ? String(e.item.PMID) : "";
+          // One efetch gives the abstract and the authoritative MeSH headings.
+          const rec = pmid
+            ? await fetchPubmedRecord(pmid, apiKey, email)
+            : { abstract: "", descriptors: [], keywords: [], pmc: "" };
+          const abstract =
+            (typeof e.item.abstract === "string" && e.item.abstract) || rec.abstract || "";
+
+          let summary: SummarySections | null = null;
+          let sourceTag = "";
+          if (!e.item.summary_source && abstract) {
+            let src = abstract;
+            let label = "PubMed abstract (not open access — full text not retrieved)";
+            sourceTag = "pubmed-abstract";
+            const pmc = rec.pmc; // notes store only the PMID; the efetch XML carries the PMC id
+            if (pmc) {
+              const full = await fetchPmcFullText(pmc, apiKey, email);
+              if (full) {
+                src = full;
+                label = `PMC full text (${pmc}) — summarized from the complete article body`;
+                sourceTag = "pmc-fulltext";
+              }
+            }
+            summary = await summarizeSource(llm, e.item, src, label);
+          }
+
+          // Real MeSH first; fall back to the summary's own terms snapped to NLM headings.
+          let tags: string[] = [];
+          if (!(e.item.tags as string[] | undefined)?.length) {
+            if (rec.descriptors.length) tags = keywordsToTags([...rec.descriptors, ...rec.keywords]);
+            else {
+              const terms = (summary?.mesh || "").split(/[,;\n]+/).map((t) => t.trim()).filter(Boolean);
+              const canon = terms.length ? await canonicalizeMeshTerms(terms, apiKey, email) : [];
+              tags = keywordsToTags([...canon, ...rec.keywords]);
+            }
+          }
+
+          // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
+          // appended before it is silently dropped.
+          if (summary || tags.length) {
+            await this.app.fileManager.processFrontMatter(e.file, (fm) => {
+              if (summary && sourceTag) fm.summary_source = sourceTag;
+              if (tags.length) fm.tags = tags;
+            });
+            if (tags.length) tagged++;
+          }
+          if (summary) {
+            const body = await this.app.vault.read(e.file);
+            await this.app.vault.modify(
+              e.file,
+              `${body.replace(/\s*$/, "")}\n\n${summaryBlock(summary).join("\n")}\n`
+            );
+            summarized++;
+          }
+        } catch (err) {
+          failed++;
+          console.error("[RAG Obsidian] backfill failed", e.citekey, err);
+        }
+      }
+    } finally {
+      notice.hide();
+    }
+    new Notice(
+      `Summaries added: ${summarized} · tags added: ${tagged}` +
+        (failed ? ` · failed: ${failed} (see console)` : "")
+    );
   }
 
   /** Re-fetch metadata for notes missing abstract / journal / authors and fill the gaps. */
