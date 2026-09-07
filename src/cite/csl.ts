@@ -95,6 +95,7 @@ export class CiteEngine {
     "tags",
     "pdf",
     "summary_source",
+    "summary_model",
     "oa_url",
     "oa_pdf",
     "oa_version",

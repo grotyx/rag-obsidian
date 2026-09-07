@@ -120,3 +120,27 @@ function safeCodePoint(n: number): string {
     return "";
   }
 }
+
+/** Replace a note's `## Summary (EN)` + `## 요약 (KR)` block with `newBlockLines`, appending it
+ *  at the end when the note has none. The block ends at the first same-or-higher-level heading
+ *  that is not the KR half (same boundary rule as `splitAtReferences`), so a following
+ *  `## Notes` / `## References` / `# Appendix` survives. */
+export function replaceSummaryBlock(content: string, newBlockLines: string[]): string {
+  const block = newBlockLines.join("\n").replace(/\s*$/, "");
+  const m = content.match(/(^|\n)##[ \t]+(Summary \(EN\)|요약 \(KR\))[ \t]*(\n|$)/);
+  if (!m || m.index === undefined) return `${content.replace(/\s*$/, "")}\n\n${block}\n`;
+  const start = m.index + m[1].length;
+  let cur = m.index + m[0].length;
+  for (;;) {
+    const next = content.slice(cur).search(/\n#{1,2} /);
+    if (next < 0) return `${content.slice(0, start)}${block}\n`;
+    const at = cur + next + 1;
+    // The KR heading is the block's own second half — keep walking past it.
+    const kr = content.slice(at).match(/^##[ \t]+요약 \(KR\)[ \t]*(\n|$)/);
+    if (kr) {
+      cur = at + kr[0].length;
+      continue;
+    }
+    return `${content.slice(0, start)}${block}\n\n${content.slice(at)}`;
+  }
+}

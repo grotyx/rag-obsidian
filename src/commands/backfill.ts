@@ -113,7 +113,10 @@ export async function backfillSummaries(plugin: ScholarRagPlugin): Promise<void>
       // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
       // appended before it is silently dropped.
       await plugin.app.fileManager.processFrontMatter(r.entry.file, (fm) => {
-        if (r.summary && r.sourceTag) fm.summary_source = r.sourceTag;
+        if (r.summary && r.sourceTag) {
+          fm.summary_source = r.sourceTag;
+          fm.summary_model = plugin.settings.llmModel;
+        }
         if (r.tags.length) fm.tags = r.tags;
         // Only for a note that asked and still came up short. Writing it on a note that
         // reached MIN_TAGS would add a non-CSL key — and a modify event, which re-chunks the

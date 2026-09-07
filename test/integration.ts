@@ -36,6 +36,7 @@ import {
   replaceCitations,
   resolveCluster,
   splitAtReferences,
+  replaceSummaryBlock,
 } from "../src/cite/bibliography";
 import { ScholarRagSettings, DEFAULT_SETTINGS, CSLItem } from "../src/types";
 
@@ -401,7 +402,7 @@ async function main() {
         "edition", "genre", "medium", "source", "archive", "call-number", "citation-key",
       ]);
       const PLUGIN_FIELDS = new Set([
-        "citekey", "status", "added", "tags", "pdf", "summary_source", "oa_url",
+        "citekey", "status", "added", "tags", "pdf", "summary_source", "summary_model", "oa_url",
         "oa_pdf", "oa_version", "retracted", "cited_by_count", "openalex_id", "csl",
         "citation-style", "aliases", "position",
       ]);
@@ -462,6 +463,27 @@ async function main() {
     ok(s2.base === "" && s2.tail === "", `splitAtReferences (first line): ${JSON.stringify(s2)}`);
     const s3 = splitAtReferences("Body\n\n## References\n\n- old\n\n# Appendix\nkeep\n");
     ok(s3.base === "Body" && s3.tail === "\n# Appendix\nkeep\n", `splitAtReferences (tail kept): ${JSON.stringify(s3)}`);
+
+    // "Re-summarize this reference" swaps the EN+KR block; anything after it must survive.
+    const fresh = ["## Summary (EN)", "", "**Methods**", "new", "", "## 요약 (KR)", "", "새 요약", ""];
+    const old =
+      "# T\n\n## Summary (EN)\n\n**Methods**\nold\n\n## 요약 (KR)\n\n옛 요약\n\n# Appendix\nkeep\n";
+    const r1 = replaceSummaryBlock(old, fresh);
+    ok(
+      r1.includes("new") && r1.includes("새 요약") && !r1.includes("old") && !r1.includes("옛 요약") &&
+        r1.endsWith("# Appendix\nkeep\n") && r1.startsWith("# T\n\n## Summary (EN)"),
+      `replaceSummaryBlock replaces EN+KR, keeps the appendix: ${JSON.stringify(r1)}`
+    );
+    const r2 = replaceSummaryBlock("# T\n\n## Notes\n\n## Highlights\n", fresh);
+    ok(
+      r2.startsWith("# T\n\n## Notes\n\n## Highlights\n\n## Summary (EN)") && r2.includes("새 요약"),
+      `replaceSummaryBlock appends when absent: ${JSON.stringify(r2)}`
+    );
+    const r3 = replaceSummaryBlock("## Summary (EN)\n\nold\n\n## References\n\n- ref\n", fresh);
+    ok(
+      r3.includes("## References\n\n- ref\n") && !r3.includes("old"),
+      `replaceSummaryBlock leaves ## References alone: ${JSON.stringify(r3)}`
+    );
   }
 
   // ---- 12. small pure helpers touched by the src/ review ----

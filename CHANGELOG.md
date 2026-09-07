@@ -5,6 +5,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **"Re-summarize this reference"** — redoes the summary on the active reference note and
+  replaces the existing `## Summary (EN)` / `## 요약 (KR)` block in place (a following
+  `## Notes` / `## References` / `# Appendix` survives). Source is the same as the batch
+  backfill: PMC full text when the PubMed record has one, else the abstract. Until now a poor
+  summary — or one from a cheaper model — could only be redone by hand-editing frontmatter,
+  because the batch command skips notes that already have one.
+- **"Re-summarize references made by an older model"** — rewrites every note whose summary a
+  different model produced. Notes with no source text are skipped; progress is shown as it goes.
+- **`summary_model` frontmatter** — the `llmModel` id that wrote the summary, recorded on note
+  creation, by the backfill and by both commands above. A note without the key counts as stale,
+  so the first run after upgrading picks up everything summarized before 0.4.13.
+
 ### Removed
 
 - **`scripts/fetch-refs.cjs` and `scripts/retag.cjs`.** Both predate the in-app commands

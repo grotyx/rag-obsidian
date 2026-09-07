@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.12 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (66 integration checks green)
+**Version**: 0.4.12 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (69 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -82,6 +82,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `commands/writing.ts` | update bibliography, compile manuscript, copy citation, annotated bibliography |
 | `commands/openaccess.ts` | Unpaywall lookup, OA PDF download, retraction check, PDF highlight extraction |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them |
+| `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
 | `ui/{LibraryView,SearchView,ChatView,RelatedView}.ts` | sidebar panes |
 | `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal}.ts` | modals |
 | `main.ts` | plugin lifecycle, views, `addCommand` wiring, ribbons, events, citation rendering + shared plumbing (`writeAndOpen`, `activeRef`, `styleForNote`) |
@@ -93,7 +94,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (66 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (69 checks)
 ```
 
 ## Testing approach (important)
@@ -170,10 +171,12 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 - Cross-identifier dedup on add: session registry + normalized-DOI/PMID/title match in
   `findDuplicate`; bare-digit PMID input requires a confirm click in the Add modal.
 - Plugin-managed frontmatter (`citekey`, `status`, `added`, `tags`, `pdf`,
-  `summary_source`, `oa_url`, `oa_pdf`, `oa_version`, `retracted`, `cited_by_count`,
-  `openalex_id`) shares the note with CSL-JSON fields and is stripped in `cite/csl.ts`
+  `summary_source`, `summary_model`, `oa_url`, `oa_pdf`, `oa_version`, `retracted`,
+  `cited_by_count`, `openalex_id`) shares the note with CSL-JSON fields and is stripped in `cite/csl.ts`
   (`PLUGIN_FIELDS`) — CSL defines `status`, so leaving it in printed "Unread." in every entry.
   `oa_url` is the record a human opens; `oa_pdf` is what the download command fetches.
+  `summary_model` records the `llmModel` that wrote the summary — "Re-summarize references made
+  by an older model" selects on it, so a note missing the key counts as stale.
 - secretStorage vs sync: `data.json` (keys blanked) syncs, the OS keychain doesn't. A device
   without `secretStorage` keeps its key in `data.json`; a non-empty key found there is adopted
   as newer on load, but every save re-blanks it, so mixed setups must re-enter keys per device.

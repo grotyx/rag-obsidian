@@ -28,6 +28,7 @@ import * as libraryCmd from "./src/commands/library";
 import * as writingCmd from "./src/commands/writing";
 import * as oaCmd from "./src/commands/openaccess";
 import { backfillSummaries } from "./src/commands/backfill";
+import { resummarizeActive, resummarizeOutdated } from "./src/commands/summaries";
 
 export default class ScholarRagPlugin extends Plugin {
   settings!: ScholarRagSettings;
@@ -210,6 +211,16 @@ export default class ScholarRagPlugin extends Plugin {
       id: "backfill-summaries",
       name: "Summarize and tag references (fill gaps)",
       callback: () => void backfillSummaries(this),
+    });
+    this.addCommand({
+      id: "resummarize-active",
+      name: "Re-summarize this reference",
+      callback: () => void resummarizeActive(this),
+    });
+    this.addCommand({
+      id: "resummarize-outdated",
+      name: "Re-summarize references made by an older model",
+      callback: () => void resummarizeOutdated(this),
     });
     this.addCommand({
       id: "enrich-metadata",
