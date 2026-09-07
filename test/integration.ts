@@ -484,6 +484,33 @@ async function main() {
       );
       ok(POOL_WIDTH >= 10, `the worker pool is sized for the LLM wait (${POOL_WIDTH})`);
 
+      // Cancelling a batch: in-flight items finish, no new ones start, and the promise still
+      // resolves so the caller can write what completed.
+      {
+        const ctl = new AbortController();
+        let ran = 0;
+        let ranAfterAbort = 0;
+        const part = await mapPool(
+          [1, 2, 3, 4, 5, 6, 7],
+          3,
+          async (n) => {
+            ran++;
+            if (ctl.signal.aborted) ranAfterAbort++;
+            await new Promise((r) => setTimeout(r, 10));
+            if (ran === 3) ctl.abort(); // the first batch of 3 has settled
+            return n * 2;
+          },
+          ctl.signal
+        );
+        ok(
+          ranAfterAbort <= 3 &&
+            ran <= 6 &&
+            part.filter((v) => v !== undefined).length === ran &&
+            part[0] === 2,
+          `mapPool stops starting work when aborted and still resolves (ran ${ran}/7)`
+        );
+      }
+
       // The retry is the headline fix of 0.4.10 and had no coverage: answer 429 once, then 200.
     {
       let hits = 0;

@@ -5,6 +5,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **Cancel and progress for the two batch operations** — "Add selected" in the PubMed search
+  modal and "Summarize and tag references (fill gaps)". Both now show live progress in the
+  status bar (`Adding 12/50 · 3 failed`) with a ✕ that stops the batch; the command palette's
+  **Cancel current batch** does the same for the keyboard. Cancelling lets the papers already
+  in flight finish and writes them — the closing notice says how many were written and how many
+  were never started. Only one batch runs at a time. Previously a 50-paper add could only be
+  stopped by quitting Obsidian.
+
 ### Removed
 
 - **`scripts/fetch-refs.cjs` and `scripts/retag.cjs`.** Both predate the in-app commands

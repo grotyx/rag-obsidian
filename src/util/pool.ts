@@ -4,11 +4,17 @@
  *  `Library.createReference` derives the citekey and filename from what is already in the
  *  vault, so two concurrent creates can pick the same name.
  *
- *  `fn` is expected to handle its own failures — a rejection here aborts the whole batch. */
+ *  `fn` is expected to handle its own failures — a rejection here aborts the whole batch.
+ *
+ *  Pass a `signal` to make the batch cancellable. Aborting stops *new* work only: whatever is
+ *  already in flight finishes and the promise resolves normally, so the caller can still write
+ *  what completed. Slots for items that never started are left empty — read the result with
+ *  `if (!r) continue` and count the holes as skipped. */
 export async function mapPool<T, R>(
   items: T[],
   limit: number,
-  fn: (item: T, index: number) => Promise<R>
+  fn: (item: T, index: number) => Promise<R>,
+  signal?: AbortSignal
 ): Promise<R[]> {
   const out = new Array<R>(items.length);
   if (!items.length) return out;
@@ -16,6 +22,7 @@ export async function mapPool<T, R>(
   let next = 0;
   const worker = async (): Promise<void> => {
     for (;;) {
+      if (signal?.aborted) return;
       const i = next++;
       if (i >= items.length) return;
       out[i] = await fn(items[i], i);

@@ -6,6 +6,7 @@ import { summarizeSource, suggestMeshTerms } from "../ingest/summarize";
 import { summaryBlock } from "../data/reference";
 import { LLMClient } from "../llm/client";
 import { mapPool, POOL_WIDTH } from "../util/pool";
+import { startBatch } from "../ui/progress";
 
 /** Write the AI summary and MeSH tags into references that were added without them —
  *  the LLM key missing at the time, the paper not yet MeSH-indexed, or the summary toggle off.
@@ -31,11 +32,13 @@ export async function backfillSummaries(plugin: ScholarRagPlugin): Promise<void>
   const apiKey = plugin.settings.pubmedApiKey;
   const email = plugin.settings.openalexMailto;
   const llm = new LLMClient(plugin.settings);
-  const notice = new Notice(`Filling gaps 0/${todo.length}…`, 0);
+  const batch = startBatch(plugin, "Filling gaps", todo.length);
+  if (!batch) return;
   let fetched = 0;
   let summarized = 0;
   let tagged = 0;
   let failed = 0;
+  let outcome = "Filling gaps failed (see console)";
   try {
     // Network + LLM in parallel; the vault writes below stay sequential.
     const prepared = await mapPool(todo, POOL_WIDTH, async (e) => {
@@ -97,15 +100,17 @@ export async function backfillSummaries(plugin: ScholarRagPlugin): Promise<void>
         }
         return { entry: e, summary, sourceTag, tags, meshTried, error: null as unknown };
       } catch (err) {
+        failed++;
         return { entry: e, summary: null, sourceTag: "", tags: [] as string[], meshTried: false, error: err };
       } finally {
-        notice.setMessage(`Filling gaps ${++fetched}/${todo.length}…`);
+        batch.tick(++fetched, failed);
       }
-    });
+    }, batch.signal);
 
     for (const r of prepared) {
+      // Empty slot: the batch was cancelled before this one started.
+      if (!r) continue;
       if (r.error) {
-        failed++;
         console.error("[RAG Obsidian] backfill failed", r.entry.citekey, r.error);
         continue;
       }
@@ -130,11 +135,13 @@ export async function backfillSummaries(plugin: ScholarRagPlugin): Promise<void>
         summarized++;
       }
     }
+    const skipped = todo.length - fetched;
+    outcome =
+      `Summaries added: ${summarized} · tags added: ${tagged}` +
+      (failed ? ` · failed: ${failed} (see console)` : "") +
+      (skipped ? ` · cancelled, ${skipped} not started` : "");
   } finally {
-    notice.hide();
+    batch.finish(outcome);
   }
-  new Notice(
-    `Summaries added: ${summarized} · tags added: ${tagged}` +
-      (failed ? ` · failed: ${failed} (see console)` : "")
-  );
+  new Notice(outcome);
 }
