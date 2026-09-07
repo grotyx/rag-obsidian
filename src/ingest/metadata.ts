@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import { CSLItem } from "../types";
+import { ncbiGate } from "./ncbi";
 
 export type SourceId =
   | { kind: "doi"; value: string }
@@ -118,6 +119,7 @@ async function fetchCrossref(doi: string): Promise<CSLItem> {
 
 async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
   const key = apiKey ? `&api_key=${encodeURIComponent(apiKey)}` : "";
+  await ncbiGate(!!apiKey);
   const sum = await requestUrl({
     url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${pmid}&retmode=json${key}`,
     throw: false,
@@ -152,6 +154,7 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
   // abstract via efetch (best-effort) — retmode=xml so we get the real abstract,
   // not the full formatted citation (journal/authors/affiliations/DOI footer)
   try {
+    await ncbiGate(!!apiKey);
     const ab = await requestUrl({
       url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=xml${key}`,
       throw: false,
@@ -159,6 +162,7 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
     let abstract = ab.status < 400 && ab.text ? extractAbstractXml(ab.text) : "";
     if (!abstract) {
       // fall back to the plain-text fetch (formatted citation; better than nothing)
+      await ncbiGate(!!apiKey);
       const txt = await requestUrl({
         url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmid}&rettype=abstract&retmode=text${key}`,
         throw: false,

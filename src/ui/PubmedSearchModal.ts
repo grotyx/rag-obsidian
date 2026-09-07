@@ -1,7 +1,7 @@
 import { App, Modal, Notice, Setting, TextComponent } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { CSLItem } from "../types";
-import { BuildNoteOpts, keywordsToTags } from "../data/reference";
+import { BuildNoteOpts } from "../data/reference";
 import { LLMClient } from "../llm/client";
 import { mapPool, POOL_WIDTH } from "../util/pool";
 import { summarizeSource } from "../ingest/summarize";

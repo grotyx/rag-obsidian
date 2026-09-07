@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.9 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (64 integration checks green)
+**Version**: 0.4.10 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (67 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -55,6 +55,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `data/reference.ts` | citekey generation, CSL-JSON → markdown note builder |
 | `data/library.ts` | CRUD over `References/`, `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` (add-time) + `matchKeys`/`duplicateGroups` (report, groups on any shared identifier) |
 | `ingest/metadata.ts` | `detectId` + Crossref / PubMed / arXiv fetchers → CSLItem |
+| `ingest/ncbi.ts` | the one queue every E-utilities request waits in (3/s, 10/s with a key) |
 | `ingest/pdf.ts` | pdfjs (CDN runtime load, injectable) text extraction + `findIdentifier` |
 | `ingest/pdfImport.ts` | PDF → text → metadata (id-fetch or LLM) → dedup → note + stash text |
 | `ingest/pubmedSearch.ts` | esearch/esummary + one `fetchPubmedRecord` efetch (abstract + MeSH + keywords + PMC id), PMC full text, `buildTags` (MeSH-first, tops up to `MIN_TAGS`), NCBI request gate |
@@ -70,7 +71,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding) |
 | `graph/openalex.ts` | OpenAlex client (`resolveWork`, `fetchTitles`) |
 | `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` |
-| `llm/client.ts` | provider-agnostic chat (Anthropic / OpenAI / Ollama) via `requestUrl` |
+| `llm/client.ts` | provider-agnostic chat (Anthropic / OpenAI / Ollama) via `requestUrl`, with 429/5xx backoff |
 | `chat/rag.ts` | retrieve → number sources → [n] grounded answer → resolve citations |
 | `cite/csl.ts` | citeproc-js rendering: bundled styles + CSL-repo fetch/cache, per-note `csl:` override |
 | `cite/format.ts` | CSL-JSON → APA / Vancouver / Plain (lightweight fallback; `cite/csl.ts` is primary) |
@@ -91,7 +92,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (64 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (67 checks)
 ```
 
 ## Testing approach (important)

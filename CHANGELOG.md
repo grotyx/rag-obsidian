@@ -3,6 +3,42 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [0.4.10] — 2026-09-07
+
+Review pass over 0.4.9. Raising the worker pool to 15 exposed everything below.
+
+### Fixed
+
+- **Rate-limited LLM calls are retried instead of dropped.** 15 papers in flight can push a
+  provider over its per-minute budget; the client threw on the first 429 and the paper was
+  added without its summary. HTTP 408/409/429/5xx now back off (honouring `Retry-After`) and
+  retry up to four times.
+- **A failed MeSH suggestion no longer throws away the summary** that was just paid for, and
+  the note is no longer marked failed for it.
+- **A model that answers in prose cannot write a sentence into your tags.** Unmatched terms
+  survive canonicalisation verbatim, so "Here are 8 MeSH headings…" became a tag. The heading
+  list is parsed at the point tags are built, so every caller is covered.
+- **`tags:` written as a bare string** (`tags: ube`) is read as one tag instead of being spread
+  into single letters.
+- **"Fill gaps" is idempotent again.** A note that cannot reach five tags — no PubMed record, a
+  niche topic — was re-selected on every run and re-charged an LLM call plus a round of MeSH
+  lookups. The attempt is recorded in `mesh_backfilled` and not repeated.
+- **The MeSH-only request asks for 4096 tokens**, not 512: a reasoning model spent the smaller
+  budget on thinking and returned empty text, so tags were silently never added.
+- **The NCBI queue no longer charges for an idle wait** (it sleeps only the remainder of the
+  gap since the last request), and it stopped inferring the rate tier by searching the query
+  string for "api_key" — a contact address containing that substring selected the wrong tier.
+- **Every NCBI request goes through one queue.** The gate covered `ingest/pubmedSearch.ts` only,
+  leaving three call sites in `ingest/metadata.ts` free to blow the same limit; it now lives in
+  `ingest/ncbi.ts` and both modules route through it.
+
+### Changed
+
+- Tests: the pool/gate checks compared constants to constants and could not fail. They now
+  measure the gate's actual spacing across concurrent callers, assert an idle gate returns at
+  once, and check the tag minimum against `MIN_TAGS` rather than a lower literal. Each was
+  mutation-checked.
+
 ## [0.4.9] — 2026-09-07
 
 ### Changed

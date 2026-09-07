@@ -13,7 +13,9 @@ import * as yaml from "js-yaml";
 import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
 import { duplicateGroups } from "../src/data/library";
 import { mapPool, POOL_WIDTH } from "../src/util/pool";
-import { ncbiGapMs, buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
+import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
+import { ncbiGate, ncbiGapMs, resetNcbiGate } from "../src/ingest/ncbi";
+import { parseMeshLine } from "../src/ingest/summarize";
 import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
@@ -502,12 +504,30 @@ async function main() {
         `mapPool keeps order and caps concurrency (peak ${peak})`
       );
       ok(POOL_WIDTH >= 10, `the worker pool is sized for the LLM wait (${POOL_WIDTH})`);
-      // The pool is sized for the LLM wait; NCBI's own ceiling (3/s, 10/s with a key) is held by
-      // the request gate, so the spacing must stay under it however wide the pool gets.
-      ok(
-        1000 / ncbiGapMs(true) < 10 && 1000 / ncbiGapMs(false) < 3,
-        `NCBI gate stays under the published rate (${(1000 / ncbiGapMs(true)).toFixed(1)}/s with a key)`
+
+      // The gate is what lets a 15-wide pool talk to an API that allows 10 requests/second.
+      // Measure it: fire concurrently, record when each turn is released.
+      resetNcbiGate();
+      const stamps: number[] = [];
+      await Promise.all(
+        Array.from({ length: 5 }, async () => {
+          await ncbiGate(true);
+          stamps.push(Date.now());
+        })
       );
+      stamps.sort((a, b) => a - b);
+      const gaps = stamps.slice(1).map((t, i) => t - stamps[i]);
+      const slack = 25; // timer coarseness
+      ok(
+        gaps.every((g) => g >= ncbiGapMs(true) - slack) && 1000 / ncbiGapMs(true) < 10,
+        `ncbiGate spaces concurrent callers ${gaps.join("/")}ms apart (needs ~${ncbiGapMs(true)})`
+      );
+
+      // An idle gate must not charge for a wait nobody owes.
+      resetNcbiGate();
+      const t0 = Date.now();
+      await ncbiGate(false);
+      ok(Date.now() - t0 < 50, `an idle gate releases immediately (${Date.now() - t0}ms)`);
     }
 
     // Tags: PubMed MeSH is authoritative but thin on recent papers, so the summary's MeSH line
@@ -538,9 +558,23 @@ async function main() {
         meshFromSummary: "Lumbar Vertebrae, Decompression Surgical, Endoscopy, Treatment Outcome",
       });
       ok(
-        thin.length > 3 && thin.includes("spinal-stenosis"),
-        `thin MeSH topped up toward ${MIN_TAGS}: ${thin.join(", ")}`
+        thin.length >= MIN_TAGS && thin.includes("spinal-stenosis"),
+        `thin MeSH topped up to ${MIN_TAGS}: ${thin.join(", ")}`
       );
+
+      // A model that wraps the list in a sentence must not turn that sentence into a tag —
+      // canonicalizeMeshTerms keeps unmatched terms verbatim, so prose would land in frontmatter.
+      const chatty = await buildTags({
+        descriptors: ["Humans"],
+        keywords: [],
+        meshFromSummary:
+          "Here are 8 MeSH headings for this article: Lumbar Vertebrae, Endoscopy, Treatment Outcome",
+      });
+      ok(
+        chatty.includes("lumbar-vertebrae") && !chatty.some((t) => /here-are|mesh-headings/.test(t)),
+        `prose never becomes a tag: ${chatty.join(", ")}`
+      );
+      ok(parseMeshLine("A: Spinal Fusion, Endoscopy") === "Spinal Fusion, Endoscopy", "parseMeshLine drops the lead-in");
     }
 
     // "Find duplicates" must group on ANY shared identifier, like add-time dedup does.

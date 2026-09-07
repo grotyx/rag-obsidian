@@ -1,4 +1,25 @@
 import { requestUrl } from "obsidian";
+
+/** Providers answer 429 when too many requests land at once — and the batch paths deliberately
+ *  run 15 papers in parallel. Retry those (and transient 5xx) with exponential backoff, honouring
+ *  Retry-After when the provider sends one, so a burst degrades into a wait instead of a row of
+ *  "summary failed" notices. */
+const RETRY_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 4;
+
+async function requestWithRetry(
+  opts: Parameters<typeof requestUrl>[0]
+): Promise<Awaited<ReturnType<typeof requestUrl>>> {
+  let wait = 1000;
+  for (let attempt = 1; ; attempt++) {
+    const res = await requestUrl(opts);
+    if (!RETRY_STATUS.has(res.status) || attempt >= MAX_ATTEMPTS) return res;
+    const header = Number(res.headers?.["retry-after"] ?? res.headers?.["Retry-After"]);
+    const delay = Number.isFinite(header) && header > 0 ? header * 1000 : wait;
+    await new Promise((r) => setTimeout(r, Math.min(delay, 30000)));
+    wait *= 2;
+  }
+}
 import { ScholarRagSettings } from "../types";
 
 export interface ChatMessage {
@@ -33,7 +54,7 @@ export class LLMClient {
   private async anthropic(messages: ChatMessage[], system: string, opts: ChatOpts = {}): Promise<string> {
     const key = this.settings.anthropicApiKey;
     if (!key) throw new Error("Anthropic API key not set (Settings → RAG Obsidian)");
-    const res = await requestUrl({
+    const res = await requestWithRetry({
       url: "https://api.anthropic.com/v1/messages",
       method: "POST",
       headers: {
@@ -68,7 +89,7 @@ export class LLMClient {
     if (opts.reasoningEffort && /(^|\/)(o\d|gpt-5)/i.test(this.settings.llmModel)) {
       body.reasoning_effort = opts.reasoningEffort;
     }
-    const res = await requestUrl({
+    const res = await requestWithRetry({
       url: `${this.settings.openaiBaseUrl.replace(/\/+$/, "")}/chat/completions`,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
@@ -80,7 +101,7 @@ export class LLMClient {
   }
 
   private async ollama(messages: ChatMessage[], system: string): Promise<string> {
-    const res = await requestUrl({
+    const res = await requestWithRetry({
       url: `${this.settings.ollamaUrl.replace(/\/+$/, "")}/api/chat`,
       method: "POST",
       headers: { "Content-Type": "application/json" },

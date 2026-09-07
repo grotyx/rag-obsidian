@@ -88,11 +88,27 @@ export async function suggestMeshTerms(
   const user =
     `Title: ${item.title}\nJournal: ${item["container-title"] || ""} (${year})\n\n` +
     sourceText.slice(0, 12000);
-  return llm.chat(
+  const reply = await llm.chat(
     [{ role: "user", content: user }],
-    `You assign MeSH headings. Reply with ${wanted} official NLM MeSH headings for this article, ` +
-      "comma-separated, nothing else. Prefer specific headings over broad ones. No commentary.",
-    { maxTokens: 512 }
+    `You assign MeSH headings. Reply with ${wanted} official NLM MeSH headings for this article ` +
+      "between ===MESH=== markers, comma-separated, nothing else.\n\n===MESH===\nHeading, Heading\n===MESH===",
+    // Same reason summarizeSource asks for 8192: a reasoning model spends the budget on thinking
+    // first, and a reply that never reaches the text block comes back empty.
+    { maxTokens: 4096 }
   );
+  return parseMeshLine(reply);
+}
+
+/** Pull the heading list out of a reply, tolerating a model that adds a sentence around it.
+ *  Unmatched terms survive canonicalisation verbatim, so prose here becomes a junk tag. */
+export function parseMeshLine(reply: string): string {
+  const marked = reply.match(/===MESH===([\s\S]*?)(?:===MESH===|$)/i);
+  const body = (marked ? marked[1] : reply).replace(/^[\s\S]*?:\s*/, "").trim();
+  const terms = body
+    .split(/[,;\n]+/)
+    .map((t) => t.replace(/^[-*\d.\s]+/, "").trim())
+    // A MeSH heading is short and has no sentence punctuation; anything else is commentary.
+    .filter((t) => t.length > 2 && t.length <= 60 && !/[.?!:]$/.test(t) && t.split(/\s+/).length <= 6);
+  return terms.join(", ");
 }
 

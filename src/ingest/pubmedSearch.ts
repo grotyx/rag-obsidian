@@ -2,6 +2,8 @@ import { requestUrl } from "obsidian";
 import { keywordsToTags } from "../data/reference";
 import { splitName, parsePubDate } from "./metadata";
 import { CSLItem } from "../types";
+import { ncbiGate } from "./ncbi";
+import { parseMeshLine } from "./summarize";
 
 /** One PubMed search hit: parsed CSL metadata plus identifiers for follow-up fetches. */
 export interface PubmedHit {
@@ -19,24 +21,6 @@ export interface PubmedSearchOpts {
 }
 
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
-
-/** NCBI allows 3 requests/second without an API key and 10 with one. The batch paths run many
- *  papers at once — and a single paper can fire several MeSH lookups — so every call in this
- *  module queues through one gate that spaces requests out. Without it, raising the worker pool
- *  just turns into HTTP 429s. */
-let ncbiChain: Promise<void> = Promise.resolve();
-
-/** Milliseconds between consecutive NCBI requests, a little under the published ceiling. */
-export function ncbiGapMs(hasApiKey: boolean): number {
-  return hasApiKey ? 110 : 350;
-}
-
-function ncbiGate(hasApiKey: boolean): Promise<void> {
-  const gap = ncbiGapMs(hasApiKey);
-  const turn = ncbiChain.then(() => new Promise<void>((r) => setTimeout(r, gap)));
-  ncbiChain = turn.catch(() => undefined);
-  return turn;
-}
 
 function auth(apiKey?: string, email?: string): string {
   const p: string[] = [];
@@ -138,30 +122,30 @@ export async function fetchPubmedRecord(pmid: string, apiKey?: string, email?: s
   }
 }
 
-async function meshLookup(term: string, a: string): Promise<string | null> {
+async function meshLookup(term: string, a: string, hasKey: boolean): Promise<string | null> {
   // Exact MeSH-heading match ONLY. A free-text fallback snaps ambiguous fragments to the
   // wrong descriptor (e.g. "percutaneous" → "Percutaneous Coronary Intervention"), so when a
   // term isn't a real heading we keep it verbatim instead of guessing.
-  await ncbiGate(a.includes("api_key"));
+  await ncbiGate(hasKey);
   const sr = await requestUrl({
     url: `${EUTILS}/esearch.fcgi?db=mesh&retmode=json&term=${encodeURIComponent(`${term}[MeSH Terms]`)}${a}`,
   });
   const id = sr.json?.esearchresult?.idlist?.[0];
   if (!id) return null;
-  await ncbiGate(a.includes("api_key"));
+  await ncbiGate(hasKey);
   const su = await requestUrl({ url: `${EUTILS}/esummary.fcgi?db=mesh&id=${id}&retmode=json${a}` });
   return su.json?.result?.[id]?.ds_meshterms?.[0] || null;
 }
 
 /** Snap LLM-suggested terms to official NLM MeSH Descriptor names; keep non-MeSH terms as-is. */
-export async function canonicalizeMeshTerms(terms: string[], apiKey?: string, email?: string): Promise<string[]> {
+async function canonicalizeMeshTerms(terms: string[], apiKey?: string, email?: string): Promise<string[]> {
   const a = auth(apiKey, email);
   const out: string[] = [];
   for (const raw of terms) {
     const term = raw.trim();
     if (!term) continue;
     try {
-      out.push((await meshLookup(term, a)) || term);
+      out.push((await meshLookup(term, a, !!apiKey)) || term);
     } catch {
       out.push(term);
     }
@@ -207,7 +191,9 @@ export async function buildTags(opts: {
   const tags = keywordsToTags([...opts.descriptors, ...opts.keywords]);
   if (tags.length >= MIN_TAGS || !opts.meshFromSummary) return tags;
 
-  const suggested = opts.meshFromSummary
+  // Sanitise here, not at the call site: unmatched terms survive canonicalisation verbatim, so
+  // a model that answers in prose would otherwise write a sentence into the note's frontmatter.
+  const suggested = parseMeshLine(opts.meshFromSummary)
     .split(/[,;\n]+/)
     .map((t) => t.trim())
     .filter(Boolean);

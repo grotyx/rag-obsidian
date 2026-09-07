@@ -1015,9 +1015,12 @@ export default class ScholarRagPlugin extends Plugin {
     const todo = this.library
       .entries()
       // Also picks up notes that only got author keywords: MeSH is what the graph view clusters on.
-      .filter(
-        (e) => !e.item.summary_source || ((e.item.tags as string[] | undefined)?.length ?? 0) < MIN_TAGS
-      );
+      .filter((e) => {
+        if (!e.item.summary_source) return true;
+        const n = Array.isArray(e.item.tags) ? e.item.tags.length : e.item.tags ? 1 : 0;
+        // Short on tags, but only if the LLM has not already been asked for this note.
+        return n < MIN_TAGS && !e.item.mesh_backfilled;
+      });
     if (!todo.length) {
       new Notice("Every reference already has a summary and tags");
       return;
@@ -1060,25 +1063,35 @@ export default class ScholarRagPlugin extends Plugin {
           }
 
           // Real MeSH first, topped up from the summary when PubMed has fewer than MIN_TAGS.
-          const existing = (e.item.tags as string[] | undefined) ?? [];
+          // A hand-edited `tags: ube` reads back as a string; spreading that yields ["u","b","e"].
+          const raw = e.item.tags;
+          const existing = Array.isArray(raw) ? raw.map(String) : typeof raw === "string" ? [raw] : [];
           let tags: string[] = [];
+          let meshTried = false;
           if (existing.length < MIN_TAGS) {
             const opts = { descriptors: rec.descriptors, keywords: rec.keywords, apiKey, email };
-            let built = await buildTags({ ...opts, meshFromSummary: summary?.mesh });
+            const merged = [...existing];
+            const add = (list: string[]) => {
+              for (const t of list) if (!merged.includes(t)) merged.push(t);
+            };
+            add(await buildTags({ ...opts, meshFromSummary: summary?.mesh }));
             // Still short? A note summarized earlier kept no MeSH line — the summary body never
             // stored one — so ask for headings alone rather than re-summarizing the paper.
-            const merged = [...existing];
-            for (const t of built) if (!merged.includes(t)) merged.push(t);
             if (merged.length < MIN_TAGS && abstract) {
-              const mesh = await suggestMeshTerms(llm, e.item, abstract);
-              built = await buildTags({ ...opts, meshFromSummary: mesh });
-              for (const t of built) if (!merged.includes(t)) merged.push(t);
+              meshTried = true;
+              try {
+                const mesh = await suggestMeshTerms(llm, e.item, abstract);
+                add(await buildTags({ ...opts, meshFromSummary: mesh }));
+              } catch (err) {
+                // Never lose a summary that already cost a full paper's worth of tokens.
+                console.warn("[RAG Obsidian] MeSH suggestion failed", e.citekey, err);
+              }
             }
             if (merged.length > existing.length) tags = merged;
           }
-          return { entry: e, summary, sourceTag, tags, error: null as unknown };
+          return { entry: e, summary, sourceTag, tags, meshTried, error: null as unknown };
         } catch (err) {
-          return { entry: e, summary: null, sourceTag: "", tags: [] as string[], error: err };
+          return { entry: e, summary: null, sourceTag: "", tags: [] as string[], meshTried: false, error: err };
         } finally {
           notice.setMessage(`Filling gaps ${++fetched}/${todo.length}…`);
         }
@@ -1090,12 +1103,16 @@ export default class ScholarRagPlugin extends Plugin {
           console.error("[RAG Obsidian] backfill failed", r.entry.citekey, r.error);
           continue;
         }
-        if (!r.summary && !r.tags.length) continue;
+        if (!r.summary && !r.tags.length && !r.meshTried) continue;
         // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
         // appended before it is silently dropped.
         await this.app.fileManager.processFrontMatter(r.entry.file, (fm) => {
           if (r.summary && r.sourceTag) fm.summary_source = r.sourceTag;
           if (r.tags.length) fm.tags = r.tags;
+          // Remember that the LLM was already asked. Some papers simply cannot reach MIN_TAGS
+          // (no PubMed record, a niche topic), and without this the command would re-run the
+          // whole lookup and pay for it again on every invocation.
+          if (r.meshTried) fm.mesh_backfilled = true;
         });
         if (r.tags.length) tagged++;
         if (r.summary) {
