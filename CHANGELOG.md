@@ -5,6 +5,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.4.13] — 2026-09-08
+
 ### Added
 
 - **Cancel and progress for the two batch operations** — "Add selected" in the PubMed search
