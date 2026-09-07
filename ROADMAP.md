@@ -22,10 +22,8 @@ OpenRouter.
    summary, so a poor summary (or one made by an older model) cannot be redone without hand-editing
    frontmatter. A per-note command that replaces the summary block and updates `summary_source` —
    and records `summary_model` so a model upgrade can target only the old ones.
-4. **Retire the Gemini-era scripts.** `scripts/fetch-refs.cjs` and `scripts/retag.cjs` predate the
-   in-app commands, need a `GEMINI_API_KEY`, and `retag.cjs` still carries the four-tag bug fixed in
-   0.4.9 — running it *reintroduces* the defect. Delete both; keep `to-docx.cjs` and `deploy.cjs`,
-   which have no in-app equivalent.
+4. ~~**Retire the Gemini-era scripts.**~~ Done (see CHANGELOG `[Unreleased]`) — `fetch-refs.cjs` and
+   `retag.cjs` removed; `to-docx.cjs` and `deploy.cjs` kept.
 5. **Split `main.ts`.** 1,253 lines and every command lives there. Not user-visible, but each of the
    last ten fixes touched it and reviewers keep finding coupling bugs in it (the frontmatter-write
    order, the citation cache). Move commands into `commands/{library,writing,openaccess,backfill}.ts`;
