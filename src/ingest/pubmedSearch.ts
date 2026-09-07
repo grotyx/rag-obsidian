@@ -130,10 +130,13 @@ async function meshLookup(term: string, a: string, hasKey: boolean): Promise<str
   const sr = await requestUrl({
     url: `${EUTILS}/esearch.fcgi?db=mesh&retmode=json&term=${encodeURIComponent(`${term}[MeSH Terms]`)}${a}`,
   });
+  // A 429 must surface as an error, not as "no such heading": the caller only caches verdicts.
+  if (sr.status >= 400) throw new Error(`MeSH lookup failed (HTTP ${sr.status})`);
   const id = sr.json?.esearchresult?.idlist?.[0];
   if (!id) return null;
   await ncbiGate(hasKey);
   const su = await requestUrl({ url: `${EUTILS}/esummary.fcgi?db=mesh&id=${id}&retmode=json${a}` });
+  if (su.status >= 400) throw new Error(`MeSH lookup failed (HTTP ${su.status})`);
   return su.json?.result?.[id]?.ds_meshterms?.[0] || null;
 }
 

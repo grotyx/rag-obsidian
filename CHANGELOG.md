@@ -49,6 +49,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Fixed
 
+- **MeSH verification treats an HTTP error as an error.** A 4xx/5xx from the NCBI mesh database used to read as "no such heading" and be cached, so one rate-limit reply could strip tags for the rest of the session.
 - **A two-sided year filter no longer throws.** `SearchFilters` sent Orama `{ gte, lte }` on one
   property, which it rejects with `INVALID_FILTER_OPERATION` — nothing exercised both bounds at
   once until the search pane started offering them. It now uses `between`.
