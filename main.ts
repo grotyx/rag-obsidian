@@ -23,6 +23,7 @@ import {
 import { CiteEngine } from "./src/cite/csl";
 import { ImportModal } from "./src/ui/ImportModal";
 import { TagRenameModal } from "./src/ui/TagRenameModal";
+import { BackfillScopeModal } from "./src/ui/BackfillScopeModal";
 import { normalizePath } from "obsidian";
 import * as libraryCmd from "./src/commands/library";
 import * as writingCmd from "./src/commands/writing";
@@ -212,6 +213,19 @@ export default class ScholarRagPlugin extends Plugin {
       id: "backfill-summaries",
       name: "Summarize and tag references (fill gaps)",
       callback: () => void backfillSummaries(this),
+    });
+    this.addCommand({
+      id: "backfill-summaries-active",
+      name: "Summarize and tag this reference",
+      callback: () => {
+        const r = this.activeRef();
+        if (r) void backfillSummaries(this, { kind: "note", path: r.file.path });
+      },
+    });
+    this.addCommand({
+      id: "backfill-summaries-scoped",
+      name: "Summarize and tag references in a folder or tag…",
+      callback: () => new BackfillScopeModal(this.app, this).open(),
     });
     this.addCommand({
       id: "cancel-batch",

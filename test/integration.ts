@@ -11,7 +11,7 @@ import * as http from "http";
 import * as yaml from "js-yaml";
 
 import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
-import { duplicateGroups } from "../src/data/library";
+import { duplicateGroups, inScope, BackfillScope } from "../src/data/library";
 import { mapPool, POOL_WIDTH } from "../src/util/pool";
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { ncbiGate, ncbiGapMs, resetNcbiGate } from "../src/ingest/ncbi";
@@ -720,6 +720,48 @@ async function main() {
     const c2 = chunkReference({ citekey: "k", title: "T", year: 2020, tags: ["a"], body: "same body" }, 800);
     const c3 = chunkReference({ citekey: "k", title: "T", year: 2021, tags: ["a"], body: "same body" }, 800);
     ok(chunkHash(c1) === chunkHash(c2) && chunkHash(c1) !== chunkHash(c3), "chunkHash: stable, and sees a prefix change");
+  }
+
+  // ---- 13. "fill gaps" scope (inScope) ----
+  log("\n[13] Fill-gaps scope (inScope)");
+  {
+    const spineA = { file: { path: "References/Spine/a.md" }, item: { tags: ["Spine", "endoscopy"] } };
+    const spineB = { file: { path: "References/Spine/b.md" }, item: { tags: "#Spine" } };
+    const spine2 = { file: { path: "References/Spine2/c.md" }, item: { tags: ["spine"] } };
+    const untagged = { file: { path: "References/other.md" }, item: {} };
+
+    const all: BackfillScope = { kind: "all" };
+    ok(
+      [spineA, spineB, spine2, untagged].every((e) => inScope(e, all)),
+      "all scope matches every entry"
+    );
+
+    const note: BackfillScope = { kind: "note", path: spineA.file.path };
+    ok(
+      inScope(spineA, note) && !inScope(spineB, note) && !inScope(spine2, note),
+      "note scope matches only the exact path"
+    );
+
+    const folder: BackfillScope = { kind: "folder", folder: "References/Spine" };
+    ok(
+      inScope(spineA, folder) && inScope(spineB, folder) && !inScope(spine2, folder) && !inScope(untagged, folder),
+      "folder scope matches notes under it but not a sibling folder with the same prefix (Spine vs Spine2)"
+    );
+
+    const tagPlain: BackfillScope = { kind: "tag", tag: "spine" };
+    const tagHash: BackfillScope = { kind: "tag", tag: "#Spine" };
+    ok(
+      inScope(spineA, tagPlain) && inScope(spineB, tagPlain) && inScope(spine2, tagPlain) && !inScope(untagged, tagPlain),
+      "tag scope matches case-insensitively across array/string tags"
+    );
+    ok(
+      inScope(spineA, tagHash) && inScope(spineB, tagHash),
+      "tag scope tolerates a leading # on either the scope tag or the stored tag"
+    );
+    ok(
+      !inScope(untagged, { kind: "tag", tag: "endoscopy" }) && !inScope(spineA, { kind: "tag", tag: "nope" }),
+      "tag scope does not match an unrelated or missing tag"
+    );
   }
 
   log("\nDONE.");

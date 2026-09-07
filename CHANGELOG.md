@@ -5,6 +5,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **Scope for "Summarize and tag references (fill gaps)"** — three new ways to run it besides
+  the whole library: **"Summarize and tag this reference"** (the active note), and
+  **"Summarize and tag references in a folder or tag…"**, which opens a fuzzy picker over the
+  folders under the references folder and every distinct tag in the library. The batch command
+  itself is unchanged when run with no scope.
+
 ## [0.4.13] — 2026-09-08
 
 ### Added
