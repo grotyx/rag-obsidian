@@ -239,6 +239,9 @@ node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled 
 - 설정의 **Contact e-mail**을 채워 두세요. OpenAlex·Unpaywall·PubMed가 같이 쓰는 값이고,
   오픈액세스 PDF 조회는 이 값이 없으면 동작하지 않습니다.
 - `styles/`의 번들 CSL 스타일은 CC BY-SA 3.0 (`styles/README.md` 참고); 플러그인 코드는 MIT.
+- **모바일**: `isDesktopOnly: false`이며 인용 워크플로(추가/검색/챗/인용)는 코드 감사를
+  거쳤지만 아직 실기기 검증은 없습니다 — 기능 표와 iOS QA 스크립트는
+  [docs/MOBILE.md](docs/MOBILE.md) 참고.
 
 ## 👤 저자
 

@@ -1,5 +1,6 @@
 import { ScholarRagSettings } from "../../types";
 import { EmbeddingProvider } from "../embedding";
+import { wrapCdnImportError } from "../../util/cdn";
 
 /**
  * EXPERIMENTAL: in-app local embeddings via Transformers.js, loaded from a CDN at
@@ -20,12 +21,20 @@ export class TransformersProvider implements EmbeddingProvider {
 
   private async getPipe(): Promise<(text: string, opts: object) => Promise<{ data: Float32Array }>> {
     if (this.pipe) return this.pipe;
-    // Hide the URL from esbuild so it stays a runtime dynamic import.
-    const dynamicImport = new Function("u", "return import(u)") as (u: string) => Promise<{
+    type DynamicImport = (u: string) => Promise<{
       pipeline: (task: string, model: string) => Promise<unknown>;
       env: { allowLocalModels: boolean };
     }>;
-    const mod = await dynamicImport("https://esm.sh/@huggingface/transformers@3.0.2");
+    let mod: Awaited<ReturnType<DynamicImport>>;
+    try {
+      // Hide the URL from esbuild so it stays a runtime dynamic import.
+      const dynamicImport = new Function("u", "return import(u)") as DynamicImport;
+      mod = await dynamicImport("https://esm.sh/@huggingface/transformers@3.0.2");
+    } catch (e) {
+      // Same CDN-blocked failure mode as pdfjs (src/ingest/pdf.ts) — give the caller a clear
+      // reason instead of a raw module-loader error.
+      throw wrapCdnImportError("Transformers.js embeddings", e);
+    }
     mod.env.allowLocalModels = false;
     this.pipe = await mod.pipeline("feature-extraction", this.model);
     return this.pipe;

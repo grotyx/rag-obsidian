@@ -2,6 +2,7 @@
  * bundle to avoid a ~1MB main.js). The loader is injectable for testing. */
 
 import { cleanDoi } from "./metadata";
+import { wrapCdnImportError } from "../util/cdn";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PdfjsLike = {
@@ -21,9 +22,16 @@ export function setPdfjsLoader(fn: () => Promise<PdfjsLike>): void {
 }
 
 async function defaultLoader(): Promise<PdfjsLike> {
-  // Hidden from esbuild so it stays a runtime dynamic import (CDN, not bundled).
-  const dynamicImport = new Function("u", "return import(u)") as (u: string) => Promise<PdfjsLike>;
-  const mod = await dynamicImport(`https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.min.mjs`);
+  let mod: PdfjsLike;
+  try {
+    // Hidden from esbuild so it stays a runtime dynamic import (CDN, not bundled).
+    const dynamicImport = new Function("u", "return import(u)") as (u: string) => Promise<PdfjsLike>;
+    mod = await dynamicImport(`https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.min.mjs`);
+  } catch (e) {
+    // A dynamic import() to a CDN can be blocked by the app's webview (seen on some mobile
+    // builds) — surface a clear reason instead of a raw "Failed to fetch" from the module loader.
+    throw wrapCdnImportError("PDF reading", e);
+  }
   mod.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.mjs`;
   return mod;
 }

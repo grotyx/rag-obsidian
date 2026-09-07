@@ -17,6 +17,13 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     containerEl.createEl("h2", { text: "Library" });
 
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: this.plugin.hasSecretStorage()
+        ? "API keys below are stored in the OS keychain, not in data.json."
+        : "This app has no OS keychain access, so API keys below are stored in plain text in data.json (synced with your vault if sync is on).",
+    });
+
     new Setting(containerEl)
       .setName("References folder")
       .setDesc("Folder where reference notes are stored.")
