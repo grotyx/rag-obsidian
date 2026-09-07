@@ -566,6 +566,19 @@ async function main() {
         1000 / ncbiGapMs(false) < 3 && ncbiGapMs(false) > ncbiGapMs(true),
         `the keyless tier stays under NCBI's 3/s (${(1000 / ncbiGapMs(false)).toFixed(1)}/s)`
       );
+
+      // Mixed tiers: a keyed call following a keyless one must not fire 110ms after it. The
+      // keyless request counted against the address's 3/s budget, so the wait between the two
+      // has to honour the stricter neighbour, not just the newcomer's own tier.
+      resetNcbiGate();
+      await ncbiGate(false);
+      const mixed = Date.now();
+      await ncbiGate(true);
+      const waited = Date.now() - mixed;
+      ok(
+        waited >= ncbiGapMs(false) - 25,
+        `a keyed call after a keyless one still waits the keyless gap (${waited}ms, needs ${ncbiGapMs(false)})`
+      );
     }
 
     // Tags: PubMed MeSH is authoritative but thin on recent papers, so the summary's MeSH line

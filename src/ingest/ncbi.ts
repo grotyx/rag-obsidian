@@ -7,6 +7,7 @@
  *  imports metadata — a gate owned by either one would be a cycle. */
 let chain: Promise<void> = Promise.resolve();
 let lastRelease = 0;
+let lastGap = 0;
 
 /** Milliseconds between consecutive requests, a little under the published ceiling. */
 export function ncbiGapMs(hasApiKey: boolean): number {
@@ -18,9 +19,13 @@ export function ncbiGapMs(hasApiKey: boolean): number {
 export function ncbiGate(hasApiKey: boolean): Promise<void> {
   const gap = ncbiGapMs(hasApiKey);
   const turn = chain.then(async () => {
-    const owed = gap - (Date.now() - lastRelease);
+    // Honour the stricter of the two neighbouring tiers. The wait is measured from the previous
+    // request, so if a keyless call follows a keyed one, spacing it by its own 110 ms would put
+    // two requests inside NCBI's keyless 3/s window — which is what gets an address throttled.
+    const owed = Math.max(gap, lastGap) - (Date.now() - lastRelease);
     if (owed > 0) await new Promise((r) => setTimeout(r, owed));
     lastRelease = Date.now();
+    lastGap = gap;
   });
   chain = turn.catch(() => undefined);
   return turn;
@@ -30,4 +35,5 @@ export function ncbiGate(hasApiKey: boolean): Promise<void> {
 export function resetNcbiGate(): void {
   chain = Promise.resolve();
   lastRelease = 0;
+  lastGap = 0;
 }

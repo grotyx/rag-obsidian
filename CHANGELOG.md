@@ -3,6 +3,15 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [0.4.12] — 2026-09-08
+
+### Fixed
+
+- **Mixed-tier NCBI requests keep the stricter spacing.** The queue timed each turn by that
+  turn's own tier, but the wait is measured from the *previous* request — so a call made with an
+  API key could fire 110 ms after a keyless one that had counted against the address's 3/s
+  budget. The gap is now the larger of the two neighbours.
+
 ## [0.4.11] — 2026-09-07
 
 Second review pass. The tag top-up was splitting MeSH headings in half.
