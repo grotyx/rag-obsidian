@@ -147,6 +147,14 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 - Embedding index is tagged with `provider:model`; on mismatch it won't restore → user rebuilds.
 - API keys live in Obsidian `secretStorage` (synced from in-memory settings on save; `data.json`
   stores them blanked). On apps without `secretStorage` they fall back to `data.json` as before.
+- **Mobile guard rule**: no `require`/`fs`/`path`/`electron`/`Buffer`/`process.*`/raw `fetch`
+  anywhere (see Testing above — `requestUrl` and the vault adapter cover every network/file
+  need on mobile too). A desktop-only API with no small mobile-safe equivalent (e.g. `window.open`,
+  `navigator.clipboard`) gets a fallback to a `Notice` showing the raw value, not a `Platform.isMobile`
+  block that hides the feature — see `main.ts`'s `safeOpenExternal` and `src/commands/writing.ts`'s
+  `copyCitation`. The CDN-loaded pdfjs/Transformers.js stay as-is (locked decision), but their
+  loaders rethrow a clear "…is unavailable: …" error on a blocked/failed dynamic import instead of
+  a raw fetch error. See `docs/MOBILE.md`.
 
 ## Providers & defaults
 

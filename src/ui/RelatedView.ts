@@ -127,7 +127,7 @@ export class RelatedView extends ItemView {
         const row = s4.createDiv({ cls: "srag-rel-row" });
         row.createSpan({ cls: "srag-rel-title", text: m.title });
         row.createSpan({ cls: "srag-rel-badge", text: `  ×${m.count}` });
-        row.onclick = () => window.open(`https://openalex.org/${m.openalexId}`, "_blank");
+        row.onclick = () => this.plugin.safeOpenExternal(`https://openalex.org/${m.openalexId}`);
       }
     });
   }

@@ -252,6 +252,9 @@ See [`CLAUDE.md`](./CLAUDE.md) for the module map and [`PLAN.md`](./PLAN.md) for
   synced vault, enter the key once per device.
 - Bundled CSL styles under `styles/` are CC BY-SA 3.0 (see `styles/README.md`); plugin code
   is MIT.
+- **Mobile**: `isDesktopOnly: false`, and the citation workflow (add/search/chat/cite) is
+  code-audited for mobile, but no device has run it yet — see [docs/MOBILE.md](docs/MOBILE.md)
+  for the feature matrix and an iOS QA script.
 
 ## 👤 Author
 

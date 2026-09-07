@@ -5,6 +5,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Changed
+
+- **Mobile guards.** Code-level mobile audit (no device changes behavior on desktop): the
+  citation-graph "missing paper" link now falls back to a `Notice` when `window.open` isn't
+  available, the pdfjs/Transformers.js CDN loaders raise a clear "…is unavailable" message
+  instead of a raw fetch error when the dynamic import is blocked, and the settings tab now
+  states whether API keys are in the OS keychain or in `data.json`. See `docs/MOBILE.md` for
+  the full feature matrix and a manual iOS QA script.
+
 ## [0.4.14] — 2026-09-08
 
 ### Added

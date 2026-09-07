@@ -301,6 +301,11 @@ export default class ScholarRagPlugin extends Plugin {
     return (this.app.secretStorage as SecretStorage | undefined) ?? null;
   }
 
+  /** True when API keys are kept in the OS keychain; false when they fall back to plaintext in data.json (settings tab). */
+  hasSecretStorage(): boolean {
+    return this.secretStore() !== null;
+  }
+
   /** secretStorage id for a settings field — lowercase alphanumeric + dashes, as the API requires. */
   private secretId(field: SecretField): string {
     return `${this.manifest.id}-${field.toLowerCase()}`;
@@ -500,7 +505,7 @@ export default class ScholarRagPlugin extends Plugin {
   }
 
   /** Open a URL externally — http(s) only, so frontmatter can't smuggle javascript:/file: schemes. */
-  private safeOpenExternal(url: string): void {
+  safeOpenExternal(url: string): void {
     if (!/^https?:\/\//i.test(url)) {
       new Notice("Blocked non-http(s) URL");
       return;

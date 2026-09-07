@@ -27,6 +27,7 @@ import { formatCitation } from "../src/cite/format";
 import { CiteEngine } from "../src/cite/csl";
 import { CitationGraph } from "../src/graph/citations";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
+import { wrapCdnImportError } from "../src/util/cdn";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import {
   anchorsToCitekeys,
@@ -934,6 +935,28 @@ async function main() {
     ok(
       rLang.includes("new") && !rLang.includes("alt") && rLang.endsWith("# Appendix\nkeep\n"),
       "replaceSummaryBlock recognises a language-suffixed ## Summary (X) heading"
+    );
+  }
+
+  // ---- 18. Mobile guards ----
+  log("\n[18] Mobile guards");
+  {
+    // pdf.ts and transformers.ts both wrap a blocked/failed CDN dynamic import() (a real risk
+    // on mobile webviews) through this one helper — test the helper directly rather than the
+    // production loader, since tests inject their own loader and never hit `defaultLoader`.
+    const raw = new Error("Failed to fetch dynamically imported module");
+    const wrapped = wrapCdnImportError("PDF reading", raw);
+    ok(
+      /^PDF reading is unavailable/.test(wrapped.message) &&
+        /CDN/.test(wrapped.message) &&
+        wrapped.message.includes(raw.message),
+      `wrapCdnImportError: clear notice-ready message, original preserved: "${wrapped.message}"`
+    );
+    const wrapped2 = wrapCdnImportError("Transformers.js embeddings", "not an Error object");
+    ok(
+      wrapped2.message.startsWith("Transformers.js embeddings is unavailable") &&
+        wrapped2.message.includes("not an Error object"),
+      `wrapCdnImportError: handles a non-Error throw: "${wrapped2.message}"`
     );
   }
 
