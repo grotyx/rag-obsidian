@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.7 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (58 integration checks green)
+**Version**: 0.4.8 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (60 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -63,6 +63,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `ingest/retraction.ts` | `checkRetraction` via OpenAlex `is_retracted` (+ "RETRACTED:" title guard) |
 | `ingest/import.ts` | BibTeX / RIS / `.nbib` / CSL-JSON parsing → CSLItem[] |
 | `index/embedding.ts` | `EmbeddingProvider` interface + factory |
+| `util/pool.ts` | `mapPool` bounded concurrency + `poolWidth` (3, or 6 with an NCBI key) — the network/LLM half of a batch; vault writes stay sequential |
 | `index/providers/{ollama,openai,transformers}.ts` | embedding backends |
 | `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers, `chunkHash` (reindex change detector) |
 | `index/store.ts` | Orama hybrid index wrapper + JSON persist/restore |
@@ -90,7 +91,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (58 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (60 checks)
 ```
 
 ## Testing approach (important)

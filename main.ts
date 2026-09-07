@@ -33,6 +33,7 @@ import { fetchPubmedRecord, fetchPmcFullText, canonicalizeMeshTerms } from "./sr
 import { summarizeSource } from "./src/ingest/summarize";
 import { keywordsToTags, summaryBlock } from "./src/data/reference";
 import { LLMClient } from "./src/llm/client";
+import { mapPool, poolWidth } from "./src/util/pool";
 import { findOpenAccess } from "./src/ingest/unpaywall";
 import { checkRetraction } from "./src/ingest/retraction";
 import { formatCitation } from "./src/cite/format";
@@ -1022,15 +1023,16 @@ export default class ScholarRagPlugin extends Plugin {
     const email = this.settings.openalexMailto;
     const llm = new LLMClient(this.settings);
     const notice = new Notice(`Filling gaps 0/${todo.length}…`, 0);
+    let fetched = 0;
     let summarized = 0;
     let tagged = 0;
     let failed = 0;
     try {
-      for (const [i, e] of todo.entries()) {
-        notice.setMessage(`Filling gaps ${i + 1}/${todo.length}…`);
+      // Network + LLM in parallel; the vault writes below stay sequential.
+      const prepared = await mapPool(todo, poolWidth(!!apiKey), async (e) => {
         try {
           const pmid = e.item.PMID ? String(e.item.PMID) : "";
-          // One efetch gives the abstract and the authoritative MeSH headings.
+          // One efetch gives the abstract, the MeSH headings and the PMC id.
           const rec = pmid
             ? await fetchPubmedRecord(pmid, apiKey, email)
             : { abstract: "", descriptors: [], keywords: [], pmc: "" };
@@ -1043,12 +1045,11 @@ export default class ScholarRagPlugin extends Plugin {
             let src = abstract;
             let label = "PubMed abstract (not open access — full text not retrieved)";
             sourceTag = "pubmed-abstract";
-            const pmc = rec.pmc; // notes store only the PMID; the efetch XML carries the PMC id
-            if (pmc) {
-              const full = await fetchPmcFullText(pmc, apiKey, email);
+            if (rec.pmc) {
+              const full = await fetchPmcFullText(rec.pmc, apiKey, email);
               if (full) {
                 src = full;
-                label = `PMC full text (${pmc}) — summarized from the complete article body`;
+                label = `PMC full text (${rec.pmc}) — summarized from the complete article body`;
                 sourceTag = "pmc-fulltext";
               }
             }
@@ -1065,27 +1066,35 @@ export default class ScholarRagPlugin extends Plugin {
               tags = keywordsToTags([...canon, ...rec.keywords]);
             }
           }
-
-          // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
-          // appended before it is silently dropped.
-          if (summary || tags.length) {
-            await this.app.fileManager.processFrontMatter(e.file, (fm) => {
-              if (summary && sourceTag) fm.summary_source = sourceTag;
-              if (tags.length) fm.tags = tags;
-            });
-            if (tags.length) tagged++;
-          }
-          if (summary) {
-            const body = await this.app.vault.read(e.file);
-            await this.app.vault.modify(
-              e.file,
-              `${body.replace(/\s*$/, "")}\n\n${summaryBlock(summary).join("\n")}\n`
-            );
-            summarized++;
-          }
+          return { entry: e, summary, sourceTag, tags, error: null as unknown };
         } catch (err) {
+          return { entry: e, summary: null, sourceTag: "", tags: [] as string[], error: err };
+        } finally {
+          notice.setMessage(`Filling gaps ${++fetched}/${todo.length}…`);
+        }
+      });
+
+      for (const r of prepared) {
+        if (r.error) {
           failed++;
-          console.error("[RAG Obsidian] backfill failed", e.citekey, err);
+          console.error("[RAG Obsidian] backfill failed", r.entry.citekey, r.error);
+          continue;
+        }
+        if (!r.summary && !r.tags.length) continue;
+        // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
+        // appended before it is silently dropped.
+        await this.app.fileManager.processFrontMatter(r.entry.file, (fm) => {
+          if (r.summary && r.sourceTag) fm.summary_source = r.sourceTag;
+          if (r.tags.length) fm.tags = r.tags;
+        });
+        if (r.tags.length) tagged++;
+        if (r.summary) {
+          const body = await this.app.vault.read(r.entry.file);
+          await this.app.vault.modify(
+            r.entry.file,
+            `${body.replace(/\s*$/, "")}\n\n${summaryBlock(r.summary).join("\n")}\n`
+          );
+          summarized++;
         }
       }
     } finally {

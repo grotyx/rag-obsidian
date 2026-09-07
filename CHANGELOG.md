@@ -3,6 +3,21 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [0.4.8] — 2026-09-07
+
+### Changed
+
+- **Adding papers and filling gaps now run several at a time.** Both walked their list one
+  paper at a time, and each paper waits on a PubMed record, sometimes a PMC full text, and a
+  summary — so a batch took as long as the sum of its parts. The network and LLM half now runs
+  3 at a time, or 6 when a PubMed API key is set (NCBI allows 3 requests/second without one and
+  10 with). Measured in a real vault: 14 papers added with summaries and MeSH tags in 119 s,
+  about 9 s each.
+- Vault writes stay sequential on purpose: `createReference` derives the citekey and filename
+  from what is already in the vault, so concurrent creates could pick the same name. Duplicates
+  are also checked before and after the parallel phase, since two selected hits can be the same
+  work.
+
 ## [0.4.7] — 2026-09-07
 
 ### Added

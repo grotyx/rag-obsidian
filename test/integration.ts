@@ -12,6 +12,7 @@ import * as yaml from "js-yaml";
 
 import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
 import { duplicateGroups } from "../src/data/library";
+import { mapPool, poolWidth } from "../src/util/pool";
 import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
@@ -484,6 +485,24 @@ async function main() {
   // ---- 12. small pure helpers touched by the src/ review ----
   log("\n[12] Helpers");
   {
+    // mapPool: order preserved, concurrency capped, all items visited.
+    {
+      let inFlight = 0;
+      let peak = 0;
+      const out = await mapPool([1, 2, 3, 4, 5, 6, 7], 3, async (n) => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 10 + (n % 3) * 5));
+        inFlight--;
+        return n * 2;
+      });
+      ok(
+        out.join() === "2,4,6,8,10,12,14" && peak <= 3 && peak > 1,
+        `mapPool keeps order and caps concurrency (peak ${peak})`
+      );
+      ok(poolWidth(true) > poolWidth(false), "an NCBI key allows a wider pool");
+    }
+
     // "Find duplicates" must group on ANY shared identifier, like add-time dedup does.
     const notes = [
       { name: "byDoi", item: { DOI: "10.1/X", PMID: "111", title: "Deep learning for spine" } },

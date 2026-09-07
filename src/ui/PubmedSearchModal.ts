@@ -3,6 +3,7 @@ import type ScholarRagPlugin from "../../main";
 import { CSLItem } from "../types";
 import { BuildNoteOpts, keywordsToTags } from "../data/reference";
 import { LLMClient } from "../llm/client";
+import { mapPool, poolWidth } from "../util/pool";
 import { summarizeSource } from "../ingest/summarize";
 import {
   searchPubmed,
@@ -152,24 +153,28 @@ export class PubmedSearchModal extends Modal {
     const email = this.plugin.settings.openalexMailto;
     const llm = new LLMClient(this.plugin.settings);
 
-    const notice = new Notice(`Adding 0/${chosen.length}…`, 0);
+    // Duplicates first and in order: findDuplicate reads a session registry that only the
+    // creates below write to, so it has to see them one at a time.
+    const fresh = chosen.filter((hit) => !this.plugin.library.findDuplicate(hit.item));
+    const skipped = chosen.length - fresh.length;
+    if (!fresh.length) {
+      new Notice(`All ${skipped} selected paper(s) are already in the library.`);
+      return;
+    }
+
+    const notice = new Notice(`Fetching 0/${fresh.length}…`, 0);
+    let done = 0;
     let added = 0;
-    let skipped = 0;
     let lastFile = null as import("obsidian").TFile | null;
 
-    for (const hit of chosen) {
+    // The slow half — one PubMed record, maybe a PMC full text, and the summary — runs several
+    // papers at a time. The vault writes afterwards stay sequential.
+    const prepared = await mapPool(fresh, poolWidth(!!apiKey), async (hit) => {
       const item: CSLItem = { ...hit.item };
+      const opts: BuildNoteOpts = {};
       try {
-        if (this.plugin.library.findDuplicate(item)) {
-          skipped++;
-          notice.setMessage(`Adding ${added + skipped}/${chosen.length}… (skipping duplicates)`);
-          continue;
-        }
-        // One efetch: abstract + real PubMed MeSH (authoritative; LLM-generated MeSH fills the gap below).
         const { abstract, descriptors, keywords } = await fetchPubmedRecord(hit.pmid, apiKey, email);
         if (abstract) item.abstract = abstract.replace(/\s+/g, " ").trim().slice(0, 6000);
-
-        const opts: BuildNoteOpts = {};
 
         if (this.summarize) {
           let src = abstract;
@@ -201,29 +206,37 @@ export class PubmedSearchModal extends Modal {
         if (descriptors.length) {
           tagTerms = [...descriptors, ...keywords];
         } else {
-          const llmMesh = (opts.summary?.mesh || "").split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+          const llmMesh = (opts.summary?.mesh || "").split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
           const canon = llmMesh.length ? await canonicalizeMeshTerms(llmMesh, apiKey, email) : [];
           tagTerms = [...canon, ...keywords];
         }
         const tags = keywordsToTags(tagTerms);
         if (tags.length) opts.tags = tags;
-
-        lastFile = await this.plugin.library.createReference(item, opts);
-        added++;
-        notice.setMessage(`Adding ${added}/${chosen.length}…`);
+        return { hit, item, opts, error: null as unknown };
       } catch (e) {
-        console.error("[RAG Obsidian] add failed", hit.pmid, e);
-        new Notice(`Failed PMID ${hit.pmid}: ${e instanceof Error ? e.message : String(e)}`);
+        return { hit, item, opts, error: e };
+      } finally {
+        notice.setMessage(`Fetching ${++done}/${fresh.length}…`);
       }
+    });
+
+    for (const p of prepared) {
+      if (p.error) {
+        console.error("[RAG Obsidian] add failed", p.hit.pmid, p.error);
+        new Notice(`Failed PMID ${p.hit.pmid}: ${p.error instanceof Error ? p.error.message : String(p.error)}`);
+        continue;
+      }
+      // Re-check: two selected hits can be the same work under different PMIDs.
+      if (this.plugin.library.findDuplicate(p.item)) continue;
+      lastFile = await this.plugin.library.createReference(p.item, p.opts);
+      added++;
+      notice.setMessage(`Writing ${added}/${prepared.length}…`);
     }
 
     notice.hide();
-    new Notice(`Added ${added} reference${added === 1 ? "" : "s"}${skipped ? `, skipped ${skipped} duplicate(s)` : ""}.`);
+    const dupes = chosen.length - added;
+    new Notice(`Added ${added} reference${added === 1 ? "" : "s"}${dupes ? `, skipped ${dupes}` : ""}.`);
     this.close();
     if (lastFile) await this.app.workspace.getLeaf(true).openFile(lastFile);
-  }
-
-  onClose(): void {
-    this.contentEl.empty();
   }
 }
