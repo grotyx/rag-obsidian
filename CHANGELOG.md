@@ -5,6 +5,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.4.14] — 2026-09-08
+
 ### Added
 
 - **Chat that survives closing the pane.** The chat log is persisted to the plugin folder
