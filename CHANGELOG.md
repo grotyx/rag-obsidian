@@ -3,6 +3,17 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [Unreleased]
+
+### Removed
+
+- **`scripts/fetch-refs.cjs` and `scripts/retag.cjs`.** Both predate the in-app commands
+  ("Search PubMed" and "Summarize and tag references (fill gaps)") they duplicate.
+  `retag.cjs` was worse than redundant: it still branched on `descriptors.length` instead of
+  counting what `keywordsToTags` actually yields — the tagging bug fixed in the plugin in
+  0.4.9 — so running it would re-introduce four-tag notes. `scripts/to-docx.cjs` and
+  `scripts/deploy.cjs` are unaffected; they have no in-app equivalent.
+
 ## [0.4.12] — 2026-09-08
 
 ### Fixed

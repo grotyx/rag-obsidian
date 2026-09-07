@@ -88,7 +88,6 @@ npm install
 
 cp .env.example .env        # Windows: copy .env.example .env
 # edit .env → set VAULT_PLUGIN_DIR to <your vault>/.obsidian/plugins/rag-obsidian
-# (and GEMINI_API_KEY etc. if you'll use the helper scripts)
 
 npm run deploy              # builds + copies the plugin into your vault
 ```
@@ -224,11 +223,9 @@ npm run build      # tsc + esbuild production
 npm test           # live integration suite (71 checks)
 ```
 
-Helper scripts (terminal, no Obsidian needed) — keys/paths from `.env`:
+Helper script (terminal, no Obsidian needed) — path from `.env`:
 
 ```bash
-node scripts/fetch-refs.cjs "biportal endoscopic discectomy" --n 8   # search → summary → tagged notes
-node scripts/retag.cjs --force                                       # (re)assign MeSH tags
 node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled md → styled .docx
 ```
 

@@ -82,7 +82,6 @@ npm install
 
 cp .env.example .env        # Windows: copy .env.example .env
 # .env 편집 → VAULT_PLUGIN_DIR 를 <내 vault>/.obsidian/plugins/rag-obsidian 로
-# (헬퍼 스크립트를 쓸 거면 GEMINI_API_KEY 등도)
 
 npm run deploy              # 빌드 + 플러그인을 vault로 복사
 ```
@@ -214,11 +213,9 @@ npm run build      # tsc + esbuild production
 npm test           # 라이브 통합 테스트 (71개 체크)
 ```
 
-헬퍼 스크립트 (터미널, Obsidian 불필요) — 키·경로는 `.env`에서:
+헬퍼 스크립트 (터미널, Obsidian 불필요) — 경로는 `.env`에서:
 
 ```bash
-node scripts/fetch-refs.cjs "biportal endoscopic discectomy" --n 8   # 검색 → 요약 → 태그 노트
-node scripts/retag.cjs --force                                       # MeSH 태그 (재)부여
 node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled md → 서식 .docx
 ```
 
