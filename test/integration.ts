@@ -15,9 +15,9 @@ import { duplicateGroups, inScope, BackfillScope } from "../src/data/library";
 import { mapPool, POOL_WIDTH } from "../src/util/pool";
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { ncbiGate, ncbiGapMs, resetNcbiGate } from "../src/ingest/ncbi";
-import { parseMeshList } from "../src/ingest/summarize";
+import { parseMeshList, buildSysPrompt, summarizeSource } from "../src/ingest/summarize";
 import { exportRefs } from "../src/cite/export";
-import { generateCitekey, buildNote } from "../src/data/reference";
+import { generateCitekey, buildNote, summaryBlock } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
 import { VectorStore, INDEX_SCHEMA, SearchFilters } from "../src/index/store";
 import { OllamaProvider } from "../src/index/providers/ollama";
@@ -50,8 +50,10 @@ function log(s: string) {
   console.log(s);
 }
 
-/** In-process mock LLM endpoint returning Ollama- and OpenAI-shaped chat responses. */
-async function startMockLLM(): Promise<{
+/** In-process mock LLM endpoint returning Ollama- and OpenAI-shaped chat responses.
+ *  `openaiReply` overrides the canned `/chat/completions` content (used to feed
+ *  `summarizeSource` a marker-formatted reply instead of the default chat sentence). */
+async function startMockLLM(openaiReply?: string): Promise<{
   server: http.Server;
   port: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,7 +74,8 @@ async function startMockLLM(): Promise<{
       if (req.url?.includes("/api/chat")) {
         res.end(JSON.stringify({ message: { role: "assistant", content: "Deep learning is representation learning with deep neural networks [1][2]." } }));
       } else if (req.url?.includes("/chat/completions")) {
-        res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "Deep learning uses neural networks [1]." } }] }));
+        const content = openaiReply ?? "Deep learning uses neural networks [1].";
+        res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content } }] }));
       } else {
         res.statusCode = 404;
         res.end("{}");
@@ -841,6 +844,96 @@ async function main() {
     ok(
       (await keys({ tags: ["Spinal Fusion", "Outcome"], yearFrom: 2010 }, fstore2)) === "new2022",
       "filters still work on a restored index"
+    );
+  }
+
+  // ---- 16. summary language setting ----
+  log("\n[16] Summary language setting");
+  {
+    // The prompt: "en+ko" is the only mode that asks for a ===KR=== block; every other mode
+    // (including free-text languages) asks for the structured sections in that language instead.
+    const pEn = buildSysPrompt("en");
+    ok(!pEn.includes("===KR===") && !/not English/.test(pEn), `en: English sections only, no KR marker`);
+
+    const pKo = buildSysPrompt("ko");
+    ok(
+      !pKo.includes("===KR===") &&
+        /Write the BACKGROUND\/METHODS\/RESULTS\/CONCLUSIONS sections in Korean, not English\./.test(pKo),
+      "ko: structured sections asked for in Korean, no separate KR marker"
+    );
+
+    const pBoth = buildSysPrompt("en+ko");
+    ok(
+      pBoth.includes("===KR===") && pBoth.includes("Korean summary must stay concise"),
+      "en+ko: unchanged two-block behaviour (EN sections + concise KR)"
+    );
+
+    const pCustom = buildSysPrompt("German");
+    ok(
+      !pCustom.includes("===KR===") &&
+        /Write the BACKGROUND\/METHODS\/RESULTS\/CONCLUSIONS sections in German, not English\./.test(pCustom),
+      "custom language: one summary in that language, no KR marker"
+    );
+
+    // summarizeSource against the mock LLM server: the mock ignores the prompt and always
+    // replies with the same marker text, so this exercises the request (language passed through
+    // to buildSysPrompt) and the response parse (parseSections) together — for "en" the
+    // caller only cares that a KR-shaped reply CAN be parsed, and for "en+ko" that it is.
+    const { server: sumServer, port: sumPort, lastBody: sumBody } = await startMockLLM(
+      "===BACKGROUND===\nB\n===METHODS===\nM\n===RESULTS===\nR\n===CONCLUSIONS===\nC\n===MESH===\nX, Y"
+    );
+    try {
+      const sumLlm = new LLMClient({
+        ...settings,
+        llmProvider: "openai",
+        llmModel: "mock",
+        openaiApiKey: "x",
+        openaiBaseUrl: `http://127.0.0.1:${sumPort}`,
+      });
+      const fakeItem: CSLItem = { title: "T", "container-title": "J", issued: { "date-parts": [[2020]] } };
+      const outEn = await summarizeSource(sumLlm, fakeItem, "source text", "abstract", "en");
+      ok(
+        outEn.background === "B" && outEn.kr === undefined,
+        `summarizeSource("en"): structured sections parsed, no kr field: ${JSON.stringify(outEn)}`
+      );
+      ok(!sumBody().messages?.[0]?.content.includes("===KR==="), "summarizeSource threaded \"en\" into the prompt");
+    } finally {
+      sumServer.close();
+    }
+
+    // summaryBlock: one stable "## Summary" heading regardless of language, so a note
+    // summarized in any mode is still found by replaceSummaryBlock later.
+    const enBlock = summaryBlock({ background: "B", methods: "M", results: "R", conclusions: "C" });
+    ok(enBlock[0] === "## Summary" && !enBlock.some((l) => l.includes("요약")), `en-only block: ${JSON.stringify(enBlock)}`);
+    const bothBlock = summaryBlock({ background: "B", kr: "K" });
+    ok(
+      bothBlock.filter((l) => l === "## Summary").length === 1 && bothBlock.includes("**한국어 요약 (KR)**"),
+      `en+ko block: single heading, KR as an inline label: ${JSON.stringify(bothBlock)}`
+    );
+
+    // replaceSummaryBlock must still recognise notes written before the heading was unified
+    // ("## Summary (EN)" / "## 요약 (KR)"), plus the new bare "## Summary" and a
+    // language-suffixed variant, so re-summarize/backfill find and replace all three shapes.
+    const freshBlock = ["## Summary", "", "**Methods**", "new", ""];
+    const legacyNote =
+      "# T\n\n## Summary (EN)\n\n**Methods**\nold\n\n## 요약 (KR)\n\n옛 요약\n\n# Appendix\nkeep\n";
+    const rLegacy = replaceSummaryBlock(legacyNote, freshBlock);
+    ok(
+      rLegacy.includes("new") && !rLegacy.includes("old") && !rLegacy.includes("옛 요약") &&
+        rLegacy.endsWith("# Appendix\nkeep\n"),
+      `replaceSummaryBlock recognises the legacy EN+KR heading pair: ${JSON.stringify(rLegacy.slice(0, 40))}`
+    );
+    const newNote = "# T\n\n## Summary\n\n**Methods**\nold\n\n# Appendix\nkeep\n";
+    const rNew = replaceSummaryBlock(newNote, freshBlock);
+    ok(
+      rNew.includes("new") && !rNew.includes("old") && rNew.endsWith("# Appendix\nkeep\n"),
+      "replaceSummaryBlock recognises the new bare ## Summary heading"
+    );
+    const langNote = "# T\n\n## Summary (German)\n\n**Methods**\nalt\n\n# Appendix\nkeep\n";
+    const rLang = replaceSummaryBlock(langNote, freshBlock);
+    ok(
+      rLang.includes("new") && !rLang.includes("alt") && rLang.endsWith("# Appendix\nkeep\n"),
+      "replaceSummaryBlock recognises a language-suffixed ## Summary (X) heading"
     );
   }
 

@@ -143,13 +143,15 @@ function safeCodePoint(n: number): string {
   }
 }
 
-/** Replace a note's `## Summary (EN)` + `## 요약 (KR)` block with `newBlockLines`, appending it
- *  at the end when the note has none. The block ends at the first same-or-higher-level heading
- *  that is not the KR half (same boundary rule as `splitAtReferences`), so a following
- *  `## Notes` / `## References` / `# Appendix` survives. */
+/** Replace a note's summary block with `newBlockLines`, appending it at the end when the note
+ *  has none. The opening heading is `## Summary` (current, language-agnostic) or, for notes
+ *  written before the heading was unified, the legacy `## Summary (EN)` — optionally followed
+ *  by its `## 요약 (KR)` other half, which the walk below also skips over. The block ends at the
+ *  first same-or-higher-level heading that is not that KR half (same boundary rule as
+ *  `splitAtReferences`), so a following `## Notes` / `## References` / `# Appendix` survives. */
 export function replaceSummaryBlock(content: string, newBlockLines: string[]): string {
   const block = newBlockLines.join("\n").replace(/\s*$/, "");
-  const m = content.match(/(^|\n)##[ \t]+(Summary \(EN\)|요약 \(KR\))[ \t]*(\n|$)/);
+  const m = content.match(/(^|\n)##[ \t]+(Summary(?:[ \t]*\([^)\n]*\))?|요약 \(KR\))[ \t]*(\n|$)/);
   if (!m || m.index === undefined) return `${content.replace(/\s*$/, "")}\n\n${block}\n`;
   const start = m.index + m[1].length;
   let cur = m.index + m[0].length;

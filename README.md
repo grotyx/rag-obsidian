@@ -24,8 +24,9 @@ no account, no backend — just your vault.
 - **Import** an existing library — **BibTeX · RIS · PubMed `.nbib` · CSL-JSON**.
 
 **🧠 Summarize (AI)**
-- An LLM writes a **section-by-section English summary** (Background / Methods / Results /
-  Conclusions) **and a concise Korean summary** into each note.
+- An LLM writes a **section-by-section summary** (Background / Methods / Results /
+  Conclusions) into each note. *Summary language* (Settings → Chat) picks English, Korean,
+  both (default, English + a concise Korean summary), or any other language by name.
 - Uses the **full text** for open-access papers (PubMed Central), the abstract otherwise.
 
 **🏷️ Organize**

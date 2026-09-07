@@ -240,6 +240,42 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           })
       );
 
+    const FIXED_SUMMARY_LANGS = ["en", "ko", "en+ko"];
+    new Setting(containerEl)
+      .setName("Summary language")
+      .setDesc("Language for AI-generated paper summaries.")
+      .addDropdown((d) => {
+        d.addOption("en", "English");
+        d.addOption("ko", "Korean");
+        d.addOption("en+ko", "English + Korean");
+        d.addOption("custom", "Custom…");
+        const cur = this.plugin.settings.summaryLanguage;
+        d.setValue(FIXED_SUMMARY_LANGS.includes(cur) ? cur : "custom");
+        d.onChange(async (v) => {
+          if (v !== "custom") this.plugin.settings.summaryLanguage = v;
+          else if (FIXED_SUMMARY_LANGS.includes(this.plugin.settings.summaryLanguage)) {
+            this.plugin.settings.summaryLanguage = "";
+          }
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      });
+
+    if (!FIXED_SUMMARY_LANGS.includes(this.plugin.settings.summaryLanguage)) {
+      new Setting(containerEl)
+        .setName("Custom summary language")
+        .setDesc("Free-text language name, e.g. German.")
+        .addText((t) =>
+          t
+            .setPlaceholder("German")
+            .setValue(this.plugin.settings.summaryLanguage)
+            .onChange(async (v) => {
+              this.plugin.settings.summaryLanguage = v.trim();
+              await this.plugin.saveSettings();
+            })
+        );
+    }
+
     new Setting(containerEl)
       .setName("Citation style")
       .setDesc("How sources are formatted under each answer.")

@@ -127,20 +127,23 @@ export function keywordsToTags(terms: string[]): string[] {
   return [...out];
 }
 
-/** The `## Summary (EN)` / `## 요약 (KR)` block, shared by note creation and the backfill
- *  command so an existing note ends up shaped exactly like a freshly added one. */
+/** The `## Summary` block (single stable heading regardless of `summaryLanguage`), shared by
+ *  note creation, the backfill command, and re-summarize so an existing note ends up shaped
+ *  exactly like a freshly added one. `replaceSummaryBlock` in cite/bibliography.ts also
+ *  recognises the legacy `## Summary (EN)` / `## 요약 (KR)` heading pair from before this
+ *  heading was unified, so old notes are still found and replaced. */
 export function summaryBlock(s: SummarySections): string[] {
-  const en: string[] = [];
+  const body: string[] = [];
   const sec: [string, string | undefined][] = [
     ["Background / Objective", s.background],
     ["Methods", s.methods],
     ["Results", s.results],
     ["Conclusions", s.conclusions],
   ];
-  for (const [h, v] of sec) if (v) en.push(`**${h}**`, v, "");
+  for (const [h, v] of sec) if (v) body.push(`**${h}**`, v, "");
+  if (s.kr) body.push("**한국어 요약 (KR)**", s.kr, "");
   const lines: string[] = [];
-  if (en.length) lines.push("## Summary (EN)", "", ...en);
-  if (s.kr) lines.push("## 요약 (KR)", "", s.kr, "");
+  if (body.length) lines.push("## Summary", "", ...body);
   return lines;
 }
 

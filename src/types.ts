@@ -27,6 +27,9 @@ export interface ScholarRagSettings {
   llmMaxTokens: number;
   citeStyle: CiteStyle; // lightweight fallback formatter (APA / Vancouver / Plain)
   cslStyleId: string; // CSL style id for citeproc bibliographies ("" = use the lightweight formatter)
+  /** Language for AI-generated paper summaries: "en", "ko", "en+ko" (both, legacy default),
+   *  or any free-text language name (e.g. "German"). */
+  summaryLanguage: string;
 
   // Phase 4 — citation graph
   openalexMailto: string;
@@ -63,6 +66,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   llmMaxTokens: 8192,
   citeStyle: "apa",
   cslStyleId: "spine",
+  summaryLanguage: "en+ko",
 
   openalexMailto: "",
 
