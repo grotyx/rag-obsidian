@@ -29,6 +29,7 @@ import * as writingCmd from "./src/commands/writing";
 import * as oaCmd from "./src/commands/openaccess";
 import { backfillSummaries } from "./src/commands/backfill";
 import { cancelBatch } from "./src/ui/progress";
+import { resummarizeActive, resummarizeOutdated } from "./src/commands/summaries";
 
 export default class ScholarRagPlugin extends Plugin {
   settings!: ScholarRagSettings;
@@ -218,6 +219,16 @@ export default class ScholarRagPlugin extends Plugin {
       callback: () => {
         if (!cancelBatch()) new Notice("No batch is running");
       },
+    });
+    this.addCommand({
+      id: "resummarize-active",
+      name: "Re-summarize this reference",
+      callback: () => void resummarizeActive(this),
+    });
+    this.addCommand({
+      id: "resummarize-outdated",
+      name: "Re-summarize references made by an older model",
+      callback: () => void resummarizeOutdated(this),
     });
     this.addCommand({
       id: "enrich-metadata",

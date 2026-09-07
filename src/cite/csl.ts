@@ -96,6 +96,7 @@ export class CiteEngine {
     "pdf",
     "summary_source",
     "mesh_terms",
+    "summary_model",
     "oa_url",
     "oa_pdf",
     "oa_version",

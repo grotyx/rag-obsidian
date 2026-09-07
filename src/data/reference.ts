@@ -83,6 +83,7 @@ export interface BuildNoteOpts {
   summary?: SummarySections;
   summarySource?: string; // short tag stored in frontmatter (e.g. "pmc-fulltext")
   summarySourceLabel?: string; // human-readable line shown above the summary
+  summaryModel?: string; // llmModel id that wrote the summary (lets a re-summarize spot stale ones)
   tags?: string[]; // topic tags for the graph view (already normalized via keywordsToTags)
   meshTerms?: string[]; // canonical MeSH headings behind those tags (reused by the backfill)
 }
@@ -169,6 +170,7 @@ export function buildNote(item: CSLItem, citekey: string, opts: BuildNoteOpts = 
   fm.status = "unread";
   fm.added = localDate(); // not toISOString(): that is the UTC date (yesterday before 09:00 KST)
   if (opts.summarySource) fm.summary_source = opts.summarySource;
+  if (opts.summaryModel) fm.summary_model = opts.summaryModel;
   if (opts.tags && opts.tags.length) fm.tags = opts.tags;
   if (opts.meshTerms && opts.meshTerms.length) fm.mesh_terms = opts.meshTerms;
 

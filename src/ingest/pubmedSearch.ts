@@ -150,17 +150,19 @@ async function canonicalizeMeshTerms(
 ): Promise<string[]> {
   const a = auth(apiKey, email);
   const hasKey = !!apiKey;
-  const lookup = async (term: string): Promise<string | null> => {
-    const cached = meshCache.get(term.toLowerCase());
+  // null = NLM answered "not a heading"; undefined = we could not ask (429, offline). Only a
+  // real verdict is cached — a transient failure must not strip tags for the rest of the session.
+  const lookup = async (term: string): Promise<string | null | undefined> => {
+    const key = term.toLowerCase();
+    const cached = meshCache.get(key);
     if (cached !== undefined) return cached;
-    let hit: string | null;
     try {
-      hit = await meshLookup(term, a, hasKey);
+      const hit = await meshLookup(term, a, hasKey);
+      meshCache.set(key, hit);
+      return hit;
     } catch {
-      hit = null;
+      return undefined;
     }
-    meshCache.set(term.toLowerCase(), hit);
-    return hit;
   };
 
   const out: string[] = [];
@@ -170,6 +172,10 @@ async function canonicalizeMeshTerms(
     const hit = await lookup(term);
     if (hit) {
       out.push(hit);
+      continue;
+    }
+    if (hit === undefined) {
+      out.push(term); // unverifiable, not unknown: keep verbatim rather than drop
       continue;
     }
     // The line was not a heading on its own. It may still be a comma-separated list from a model

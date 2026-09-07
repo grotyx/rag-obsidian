@@ -14,6 +14,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
   in flight finish and writes them — the closing notice says how many were written and how many
   were never started. Only one batch runs at a time. Previously a 50-paper add could only be
   stopped by quitting Obsidian.
+- **"Re-summarize this reference"** — redoes the summary on the active reference note and
+  replaces the existing `## Summary (EN)` / `## 요약 (KR)` block in place (a following
+  `## Notes` / `## References` / `# Appendix` survives). Source is the same as the batch
+  backfill: PMC full text when the PubMed record has one, else the abstract. Until now a poor
+  summary — or one from a cheaper model — could only be redone by hand-editing frontmatter,
+  because the batch command skips notes that already have one.
+- **"Re-summarize references made by an older model"** — rewrites every note whose summary a
+  different model produced. Notes with no source text are skipped; progress is shown as it goes.
+- **`summary_model` frontmatter** — the `llmModel` id that wrote the summary, recorded on note
+  creation, by the backfill and by both commands above. A note without the key counts as stale,
+  so the first run after upgrading picks up everything summarized before 0.4.13.
 
 ### Removed
 
@@ -41,6 +52,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 - **`main.ts` split into `src/commands/`** (`library`, `writing`, `openaccess`, `backfill`).
   `main.ts` keeps the plugin lifecycle, command wiring and the shared plumbing the modules call.
   Internal only — command ids, names and behaviour are unchanged.
+
+### Fixed
+- MeSH verification no longer caches a transient NCBI error (429/offline) as "not a heading"; unverifiable terms are kept verbatim instead of being dropped for the rest of the session.
 
 ## [0.4.12] — 2026-09-08
 

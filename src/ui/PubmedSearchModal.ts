@@ -220,6 +220,7 @@ export class PubmedSearchModal extends Modal {
             try {
               opts.summary = await summarizeSource(llm, item, src, label);
               opts.summarySource = tag;
+              opts.summaryModel = this.plugin.settings.llmModel;
               opts.summarySourceLabel = label;
             } catch (e) {
               new Notice(`Summary failed for PMID ${hit.pmid}; adding without summary.`);
