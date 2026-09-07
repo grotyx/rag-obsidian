@@ -227,19 +227,38 @@ export async function buildTags(opts: {
   apiKey?: string;
   email?: string;
 }): Promise<string[]> {
+  return (await buildTagsWithMesh(opts)).tags;
+}
+
+/** Same as `buildTags`, but also hands back the canonical headings that survived the tag pass —
+ *  the note stores them (`mesh_terms`) so a later backfill need not re-ask the model for them. */
+export async function buildTagsWithMesh(opts: {
+  descriptors: string[];
+  keywords: string[];
+  meshFromSummary?: string;
+  apiKey?: string;
+  email?: string;
+}): Promise<{ tags: string[]; mesh: string[] }> {
   // Count what actually lands on the note: keywordsToTags drops blanket headings such as
   // "Humans", so five descriptors can still leave four tags.
   const tags = keywordsToTags([...opts.descriptors, ...opts.keywords]);
-  if (tags.length >= MIN_TAGS || !opts.meshFromSummary) return tags;
+  if (tags.length >= MIN_TAGS || !opts.meshFromSummary) return { tags, mesh: [] };
 
   // Parse here, not at the call site, so every caller is covered — and verify each candidate
   // against the MeSH database rather than pattern-matching prose: a heading the database does
   // not recognise is dropped, so a chatty reply cannot reach the note's frontmatter.
   const suggested = parseMeshList(opts.meshFromSummary);
-  if (!suggested.length) return tags;
+  if (!suggested.length) return { tags, mesh: [] };
   const canon = await canonicalizeMeshTerms(suggested, opts.apiKey, opts.email, {
     dropUnmatched: true,
     splitFallback: true,
   });
-  return keywordsToTags([...opts.descriptors, ...canon, ...opts.keywords]);
+  const all = keywordsToTags([...opts.descriptors, ...canon, ...opts.keywords]);
+  // Only the headings that actually reached the note: a blanket term such as "Humans" is
+  // dropped by keywordsToTags, and storing it would re-suggest a tag that never lands.
+  const mesh = canon.filter((m) => {
+    const [slug] = keywordsToTags([m]);
+    return !!slug && all.includes(slug);
+  });
+  return { tags: all, mesh };
 }

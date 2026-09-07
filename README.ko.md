@@ -210,7 +210,7 @@ csl: springer-basic-brackets
 npm run dev        # esbuild watch → main.js
 npm run deploy     # 빌드 + vault로 복사 (.env의 VAULT_PLUGIN_DIR)
 npm run build      # tsc + esbuild production
-npm test           # 라이브 통합 테스트 (66개 체크)
+npm test           # 라이브 통합 테스트 (69개 체크)
 ```
 
 헬퍼 스크립트 (터미널, Obsidian 불필요) — 경로는 `.env`에서:

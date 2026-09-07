@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.12 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (66 integration checks green)
+**Version**: 0.4.12 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (69 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -93,7 +93,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (66 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (69 checks)
 ```
 
 ## Testing approach (important)
@@ -169,10 +169,13 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 - Obsidian Properties UI may warn on nested CSL frontmatter (`author`/`issued`) — data is valid.
 - Cross-identifier dedup on add: session registry + normalized-DOI/PMID/title match in
   `findDuplicate`; bare-digit PMID input requires a confirm click in the Add modal.
-- Plugin-managed frontmatter (`citekey`, `status`, `added`, `tags`, `pdf`,
+- Plugin-managed frontmatter (`citekey`, `status`, `added`, `tags`, `mesh_terms`, `pdf`,
   `summary_source`, `oa_url`, `oa_pdf`, `oa_version`, `retracted`, `cited_by_count`,
   `openalex_id`) shares the note with CSL-JSON fields and is stripped in `cite/csl.ts`
   (`PLUGIN_FIELDS`) — CSL defines `status`, so leaving it in printed "Unread." in every entry.
+  `PMCID` sits beside them but is **not** stripped: it is a real CSL variable, so citeproc may
+  legitimately print it. `mesh_terms` stores the canonical headings behind `tags` so the
+  fill-gaps command can reuse them instead of re-asking the model.
   `oa_url` is the record a human opens; `oa_pdf` is what the download command fetches.
 - secretStorage vs sync: `data.json` (keys blanked) syncs, the OS keychain doesn't. A device
   without `secretStorage` keeps its key in `data.json`; a non-empty key found there is adopted

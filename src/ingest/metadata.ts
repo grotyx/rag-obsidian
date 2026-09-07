@@ -133,8 +133,10 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
     .map((a: { name: string }) => splitName(a.name));
 
   let doi = "";
+  let pmc = "";
   for (const aid of r.articleids || []) {
     if (aid.idtype === "doi") doi = aid.value;
+    if (aid.idtype === "pmc") pmc = aid.value;
   }
 
   const item: CSLItem = {
@@ -147,6 +149,7 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
     issue: r.issue,
     page: r.pages,
     PMID: pmid,
+    PMCID: pmc || undefined,
     DOI: doi || undefined,
     issued: parsePubDate(r.pubdate),
   };

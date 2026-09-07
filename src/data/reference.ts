@@ -84,6 +84,7 @@ export interface BuildNoteOpts {
   summarySource?: string; // short tag stored in frontmatter (e.g. "pmc-fulltext")
   summarySourceLabel?: string; // human-readable line shown above the summary
   tags?: string[]; // topic tags for the graph view (already normalized via keywordsToTags)
+  meshTerms?: string[]; // canonical MeSH headings behind those tags (reused by the backfill)
 }
 
 // Generic MeSH (demographics / study design / check-tags) excluded from topic tags.
@@ -157,6 +158,7 @@ export function buildNote(item: CSLItem, citekey: string, opts: BuildNoteOpts = 
   if (item.page) fm.page = item.page;
   if (item.DOI) fm.DOI = item.DOI;
   if (item.PMID) fm.PMID = item.PMID;
+  if (item.PMCID) fm.PMCID = item.PMCID;
   if (item.URL) fm.URL = item.URL;
   if (item.number) fm.number = item.number;
   if (item.publisher) fm.publisher = item.publisher;
@@ -168,6 +170,7 @@ export function buildNote(item: CSLItem, citekey: string, opts: BuildNoteOpts = 
   fm.added = localDate(); // not toISOString(): that is the UTC date (yesterday before 09:00 KST)
   if (opts.summarySource) fm.summary_source = opts.summarySource;
   if (opts.tags && opts.tags.length) fm.tags = opts.tags;
+  if (opts.meshTerms && opts.meshTerms.length) fm.mesh_terms = opts.meshTerms;
 
   const yaml = stringifyYaml(fm).trimEnd();
   const heading = item.title || citekey;
