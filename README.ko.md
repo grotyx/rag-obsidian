@@ -1,6 +1,6 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.4.5-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.4.6-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
 
@@ -116,7 +116,14 @@ vault를 열고 활성화만 — Node·빌드 불필요.
 
 모두 Obsidian `requestUrl` 경유 (데스크톱·모바일):
 
-- **LLM**(챗 + 요약): Anthropic · OpenAI / 호환 · Ollama(로컬). *Chat model*은 선택 항목으로,
+**설치 직후 채팅과 임베딩 모두 OpenAI 호환 프로바이더가 OpenRouter를 향하도록 맞춰져 있습니다.**
+키 하나로 채팅·논문 요약·임베딩이 전부 돌아가고, 로컬에 설치할 것도 없습니다. 키만 넣으면 끝이고
+나머지는 선택입니다.
+
+> OpenRouter 모델 id에는 공급자 접두어가 붙습니다(`openai/…`, `deepseek/…`). base URL을
+> `https://api.openai.com/v1`로 바꿔 OpenAI에 직접 붙어도 되며, 그때는 접두어를 뺍니다.
+
+- **LLM**(챗 + 요약): OpenAI / 호환(기본) · Anthropic · Ollama(로컬). *Chat model*은 선택 항목으로,
   **Chat with library** 답변에만 기본 모델 대신 적용됩니다. 논문 요약과 PDF 메타데이터 추출은
   기본 모델을 그대로 쓰므로, 답변 품질이 중요한 채팅에만 더 좋은 모델을 지정할 수 있습니다.
 - **임베딩**(검색 + 챗): Ollama(로컬) · OpenAI / 호환 · Transformers.js.

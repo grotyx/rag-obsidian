@@ -58,7 +58,7 @@ export class LLMClient {
 
   private async openai(messages: ChatMessage[], system: string, opts: ChatOpts = {}): Promise<string> {
     const key = this.settings.openaiApiKey;
-    if (!key) throw new Error("OpenAI API key not set (Settings → RAG Obsidian)");
+    if (!key) throw new Error("API key not set — Settings → Academic Paper Citation Manager → OpenAI API key");
     const body: Record<string, unknown> = {
       model: this.settings.llmModel,
       messages: [{ role: "system", content: system }, ...messages],

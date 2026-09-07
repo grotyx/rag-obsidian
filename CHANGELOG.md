@@ -3,7 +3,24 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
-## [Unreleased]
+## [0.4.6] — 2026-09-07
+
+### Changed
+
+- **A fresh install is configured for OpenRouter.** Both providers now default to
+  OpenAI-compatible with the base URL set to `https://openrouter.ai/api/v1`, chat on
+  `deepseek/deepseek-v4-flash-0731` (answers on `deepseek/deepseek-v4-pro-0813`) and embeddings
+  on `openai/text-embedding-3-small`. One key then covers chat, summaries and embeddings and
+  nothing has to be installed locally. Existing vaults keep their own settings.
+- The provider, model and base-URL hints in settings now say which id shape belongs to which
+  endpoint, since OpenRouter prefixes model ids and OpenAI does not.
+
+### Removed
+
+- **The "Enable ontology" toggle**, which never did anything — no code read it. MeSH tags are
+  attached automatically when a paper is added from PubMed; an ontology pack is an optional
+  extra applied by its own command, and the settings text says so now. The pack path hint also
+  spells out that the `.json` extension is required.
 
 ### Fixed
 

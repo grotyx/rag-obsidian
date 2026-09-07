@@ -18,7 +18,7 @@ export class OpenAIProvider implements EmbeddingProvider {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    if (!this.key) throw new Error("OpenAI API key not set (Settings → RAG Obsidian)");
+    if (!this.key) throw new Error("API key not set — Settings → Academic Paper Citation Manager → OpenAI API key");
     const res = await requestUrl({
       url: `${this.base}/embeddings`,
       method: "POST",

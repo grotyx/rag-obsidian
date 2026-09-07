@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.5 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (58 integration checks green)
+**Version**: 0.4.6 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (58 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -144,9 +144,12 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 
 ## Providers & defaults
 
-- **Embeddings**: Ollama `nomic-embed-text` (default, needs `ollama pull` + server with embeddings) ·
-  OpenAI/compatible · Transformers.js (experimental, CDN). Dimension auto-discovered from first response.
-- **LLM (chat)**: Anthropic `claude-haiku-4-5-20251001` (default, needs key) · OpenAI · Ollama.
+- **Embeddings**: OpenAI-compatible `openai/text-embedding-3-small` against OpenRouter (default —
+  one key also covers chat) · Ollama `nomic-embed-text` (local, needs `ollama pull` + a server
+  started with embeddings) · Transformers.js (experimental, CDN). Dimension auto-discovered from
+  the first response.
+- **LLM (chat)**: OpenAI-compatible against OpenRouter (default: `deepseek/deepseek-v4-flash-0731`,
+  chat `deepseek/deepseek-v4-pro-0813`) · Anthropic · Ollama.
   `chatModel` (optional) overrides `llmModel` for "Chat with library" only. `llmMaxTokens`
   (default 8192) caps the **Anthropic** body only; the OpenAI-compatible and Ollama bodies send
   no cap. Reasoning models bill thinking against that budget — a low cap returns empty content.

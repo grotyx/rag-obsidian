@@ -1,6 +1,6 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.4.5-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.4.6-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
 
@@ -122,10 +122,19 @@ open the synced vault and enable the plugin — no Node, no build.
 
 Pluggable, all through Obsidian's `requestUrl` (works on desktop and mobile):
 
-- **LLM** (chat + summaries): Anthropic · OpenAI / compatible · Ollama (local). *Chat model*
-  is optional and overrides the default model for **Chat with library** only — worth a stronger
-  model there, since summaries and PDF metadata extraction stay on the cheaper default.
-- **Embeddings** (search + chat): Ollama (local) · OpenAI / compatible · Transformers.js.
+**Out of the box both are set to the OpenAI-compatible provider pointed at OpenRouter**, so a
+single key covers chat, paper summaries and embeddings and nothing has to be installed locally.
+Paste the key and you are done; everything else is optional.
+
+- **LLM** (chat + summaries): OpenAI / compatible (default) · Anthropic · Ollama (local).
+  *Chat model* is optional and overrides the default model for **Chat with library** only —
+  worth a stronger model there, since summaries and PDF metadata extraction stay on the
+  cheaper default.
+- **Embeddings** (search + chat): OpenAI / compatible (default) · Ollama (local) ·
+  Transformers.js.
+
+> OpenRouter model ids carry a vendor prefix (`openai/…`, `deepseek/…`). Pointing the base URL
+> at `https://api.openai.com/v1` instead works too — drop the prefix from the model ids.
 
 **Using OpenRouter?** Pick the **OpenAI** provider for both chat and embeddings — one key,
 one base URL, hundreds of models:

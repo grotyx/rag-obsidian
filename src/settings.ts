@@ -60,7 +60,11 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Embedding provider")
-      .setDesc("Ollama = recommended local (run `ollama pull nomic-embed-text`). OpenAI = cloud / OpenAI-compatible. Transformers = experimental in-app.")
+      .setDesc(
+        "OpenAI / compatible = recommended — point the base URL at OpenRouter and one key covers " +
+          "embeddings, chat and summaries. Ollama = local, no key (run `ollama pull nomic-embed-text`). " +
+          "Transformers = experimental in-app."
+      )
       .addDropdown((d) =>
         d
           .addOption("ollama", "Ollama (local)")
@@ -82,7 +86,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         provider === "ollama"
           ? "e.g. nomic-embed-text (768-d), bge-m3 (1024-d, multilingual)"
           : provider === "openai"
-            ? "e.g. text-embedding-3-small (1536-d), text-embedding-3-large (3072-d)"
+            ? "On OpenRouter: openai/text-embedding-3-small (1536-d). Straight to OpenAI: the same id without the prefix."
             : "e.g. Xenova/multilingual-e5-small, Xenova/bge-small-en-v1.5"
       )
       .addText((t) =>
@@ -176,7 +180,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         (llm === "anthropic"
           ? "e.g. claude-haiku-4-5-20251001, claude-sonnet-4-6"
           : llm === "openai"
-            ? "e.g. gpt-4o-mini, gpt-4o"
+            ? "On OpenRouter: deepseek/deepseek-v4-flash-0731, openai/gpt-5.1. Straight to OpenAI: gpt-4o-mini."
             : "any local Ollama chat model, e.g. gemma3:4b, qwen2.5:32b") +
           " — used for paper summaries and PDF metadata extraction."
       )
@@ -317,20 +321,20 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       );
 
     containerEl.createEl("h2", { text: "Ontology (optional)" });
-
-    new Setting(containerEl)
-      .setName("Enable ontology")
-      .setDesc("Tag notes with concepts from an ontology pack (built-in sample, or your own JSON).")
-      .addToggle((t) =>
-        t.setValue(this.plugin.settings.ontologyEnabled).onChange(async (v) => {
-          this.plugin.settings.ontologyEnabled = v;
-          await this.plugin.saveSettings();
-        })
-      );
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text:
+        "Most people need nothing here: papers added from PubMed already carry their real MeSH " +
+        "terms as tags. A pack is for tagging with your own vocabulary, applied by the " +
+        '"Tag note with ontology concepts" command on the note you have open.',
+    });
 
     new Setting(containerEl)
       .setName("Ontology pack path")
-      .setDesc("Vault path to a JSON pack { scheme, concepts:[{id,label,synonyms?,parents?}] }. Empty = built-in sample.")
+      .setDesc(
+        "Vault path to a JSON pack { scheme, concepts:[{id,label,synonyms?,parents?}] } — " +
+          "include the .json extension. Empty = the built-in sample (a tiny spine demo)."
+      )
       .addText((t) =>
         t
           .setPlaceholder("Ontologies/mesh-subset.json")

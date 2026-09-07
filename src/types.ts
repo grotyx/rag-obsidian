@@ -35,7 +35,6 @@ export interface ScholarRagSettings {
   renderCitations: boolean;
 
   // Ontology
-  ontologyEnabled: boolean;
   ontologyPackPath: string;
 }
 
@@ -49,17 +48,20 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   citekeyStyle: "authoryeartitle",
   pubmedApiKey: "",
 
-  embeddingProvider: "ollama",
-  embeddingModel: "nomic-embed-text",
+  // Defaults point at OpenRouter through the OpenAI-compatible provider: one key covers chat,
+  // paper summaries and embeddings, and nothing has to be installed locally. Swap the base URL
+  // for api.openai.com (and drop the `openai/` model prefix) to talk to OpenAI directly.
+  embeddingProvider: "openai",
+  embeddingModel: "openai/text-embedding-3-small",
   ollamaUrl: "http://localhost:11434",
-  openaiBaseUrl: "https://api.openai.com/v1",
+  openaiBaseUrl: "https://openrouter.ai/api/v1",
   openaiApiKey: "",
   chunkChars: 1200,
   topK: 8,
 
-  llmProvider: "anthropic",
-  llmModel: "claude-haiku-4-5-20251001",
-  chatModel: "",
+  llmProvider: "openai",
+  llmModel: "deepseek/deepseek-v4-flash-0731",
+  chatModel: "deepseek/deepseek-v4-pro-0813",
   anthropicApiKey: "",
   llmMaxTokens: 8192,
   citeStyle: "apa",
@@ -69,7 +71,6 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
 
   renderCitations: true,
 
-  ontologyEnabled: false,
   ontologyPackPath: "",
 };
 
