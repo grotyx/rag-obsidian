@@ -211,6 +211,36 @@ export function duplicateGroups<T extends { item: { DOI?: unknown; PMID?: unknow
   return [...byRoot.values()].filter((g) => g.length > 1);
 }
 
+/** What "Summarize and tag references (fill gaps)" should run over. */
+export type BackfillScope =
+  | { kind: "all" }
+  | { kind: "note"; path: string }
+  | { kind: "folder"; folder: string }
+  | { kind: "tag"; tag: string };
+
+/** Does this `entries()` row fall inside the given scope? Folder match requires the note path
+ *  to sit strictly under `folder` (so "References/Spine2" never matches a "References/Spine"
+ *  scope). Tag match is case-insensitive and tolerant of a leading "#" on either side. */
+export function inScope(
+  entry: { file: { path: string }; item: Record<string, unknown> },
+  scope: BackfillScope
+): boolean {
+  switch (scope.kind) {
+    case "all":
+      return true;
+    case "note":
+      return entry.file.path === scope.path;
+    case "folder":
+      return entry.file.path.startsWith(scope.folder.replace(/\/+$/, "") + "/");
+    case "tag": {
+      const want = scope.tag.replace(/^#/, "").toLowerCase();
+      const raw = entry.item.tags;
+      const tags = Array.isArray(raw) ? raw.map(String) : typeof raw === "string" ? [raw] : [];
+      return tags.some((t) => t.replace(/^#/, "").toLowerCase() === want);
+    }
+  }
+}
+
 /** Normalize a DOI for comparison: lowercase, strip doi.org URL / "doi:" prefixes
  *  (CSL DOI casing and prefixing vary by source — Crossref vs PubMed vs pasted URLs). */
 export function normDoi(d: unknown): string {

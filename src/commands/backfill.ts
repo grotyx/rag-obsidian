@@ -4,16 +4,22 @@ import { SummarySections } from "../types";
 import { fetchPubmedRecord, fetchPmcFullText, buildTags, MIN_TAGS } from "../ingest/pubmedSearch";
 import { summarizeSource, suggestMeshTerms } from "../ingest/summarize";
 import { summaryBlock } from "../data/reference";
+import { BackfillScope, inScope } from "../data/library";
 import { LLMClient } from "../llm/client";
 import { mapPool, POOL_WIDTH } from "../util/pool";
 import { startBatch } from "../ui/progress";
 
 /** Write the AI summary and MeSH tags into references that were added without them —
  *  the LLM key missing at the time, the paper not yet MeSH-indexed, or the summary toggle off.
- *  Notes that already have both are skipped, so it is safe to re-run. */
-export async function backfillSummaries(plugin: ScholarRagPlugin): Promise<void> {
+ *  Notes that already have both are skipped, so it is safe to re-run. Scoped to the whole
+ *  library by default; pass a `BackfillScope` to narrow it to one note, a folder, or a tag. */
+export async function backfillSummaries(
+  plugin: ScholarRagPlugin,
+  scope: BackfillScope = { kind: "all" }
+): Promise<void> {
   const todo = plugin.library
     .entries()
+    .filter((e) => inScope(e, scope))
     // Also picks up notes that only got author keywords: MeSH is what the graph view clusters on.
     .filter((e) => {
       // Nothing to work from: no PubMed record to read and no abstract to summarize. Selecting
@@ -26,7 +32,11 @@ export async function backfillSummaries(plugin: ScholarRagPlugin): Promise<void>
       return n < MIN_TAGS && !e.item.mesh_backfilled;
     });
   if (!todo.length) {
-    new Notice("Every reference already has a summary and tags");
+    new Notice(
+      scope.kind === "all"
+        ? "Every reference already has a summary and tags"
+        : "Nothing in scope needs a summary or tags"
+    );
     return;
   }
   const apiKey = plugin.settings.pubmedApiKey;
