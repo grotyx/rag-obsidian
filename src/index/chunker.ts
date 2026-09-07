@@ -5,6 +5,8 @@ export interface Chunk {
   year: number;
   section: string;
   tags: string[];
+  /** Author family names, lowercased — the index facet the author filter matches. */
+  authors: string[];
   /** Raw text shown to the user. */
   text: string;
   /** Text actually embedded — carries a contextual prefix `[title | section | year]`. */
@@ -16,6 +18,8 @@ export interface ChunkInput {
   title: string;
   year: number;
   tags: string[];
+  /** Author family names as written; lowercased on the way into the chunk. */
+  authors?: string[];
   abstract?: string;
   /** Markdown body with frontmatter already stripped. */
   body: string;
@@ -36,6 +40,19 @@ export function yearFromIssued(issued: unknown): number {
     }
   }
   return 0;
+}
+
+/** Author family names (or `literal`) out of a CSL `author` frontmatter value. */
+export function authorNames(author: unknown): string[] {
+  if (!Array.isArray(author)) return [];
+  return author
+    .map((a) => {
+      if (!a || typeof a !== "object") return String(a ?? "");
+      const n = a as Record<string, unknown>;
+      return String(n.family ?? n.literal ?? "");
+    })
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 /** Split text into ~maxChars windows on paragraph/sentence boundaries, with overlap. */
@@ -70,6 +87,7 @@ function splitText(text: string, maxChars: number, overlap = 150): string[] {
 /** Build embeddable chunks for one reference note. */
 export function chunkReference(input: ChunkInput, maxChars: number): Chunk[] {
   const { citekey, title, year, tags } = input;
+  const authors = (input.authors ?? []).map((a) => a.trim().toLowerCase()).filter(Boolean);
   const sections: Array<{ section: string; text: string }> = [];
   if (input.abstract) sections.push({ section: "abstract", text: input.abstract });
 
@@ -93,6 +111,7 @@ export function chunkReference(input: ChunkInput, maxChars: number): Chunk[] {
         year,
         section,
         tags,
+        authors,
         text: piece,
         embedText: `${prefix}\n\n${piece}`,
       });
@@ -101,7 +120,7 @@ export function chunkReference(input: ChunkInput, maxChars: number): Chunk[] {
   return chunks;
 }
 
-/** FNV-1a over a note's embedded chunk text (+ tags): cheap "did the content change" check. */
+/** FNV-1a over a note's embedded chunk text (+ tags + authors): cheap "did the content change" check. */
 export function chunkHash(chunks: Chunk[]): string {
   let h = 0x811c9dc5;
   const mix = (s: string) => {
@@ -111,6 +130,7 @@ export function chunkHash(chunks: Chunk[]): string {
   for (const c of chunks) {
     mix(c.embedText);
     mix(c.tags.join(","));
+    mix(c.authors.join(","));
   }
   return h.toString(16);
 }

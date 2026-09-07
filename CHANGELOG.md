@@ -22,6 +22,27 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
   **"Summarize and tag references in a folder or tag…"**, which opens a fuzzy picker over the
   folders under the references folder and every distinct tag in the library. The batch command
   itself is unchanged when run with no scope.
+- **Year, tag and author filters in the search pane.** Under the query box: a **From**/**To**
+  year range, an **Author** box (family name, case-insensitive), and a **Tag** box that
+  autocompletes from the tags already in the library and turns each entry into a removable
+  chip. Several chips are ANDed — a hit must carry every one of them. The filters live on the
+  pane (not in settings), so they reset when Obsidian restarts, and they apply to **"Search
+  library"** only; chat retrieval is unfiltered.
+
+### Changed
+
+- **Search index schema bumped to 2** — chunks now carry `author` (family names, lowercased) as
+  a filterable facet, and `tags` changed from a full-text field to an exact-value one so a
+  multi-word tag such as `Spinal Fusion` can be filtered on as a single value. An index built
+  by an older version can't answer the new filters, so it is dropped on load exactly like an
+  embedding-model change: the pane shows *"Index not built"* until you run **Rebuild search
+  index** once. Nothing in the vault changes — only the plugin's own index files.
+
+### Fixed
+
+- **A two-sided year filter no longer throws.** `SearchFilters` sent Orama `{ gte, lte }` on one
+  property, which it rejects with `INVALID_FILTER_OPERATION` — nothing exercised both bounds at
+  once until the search pane started offering them. It now uses `between`.
 
 ## [0.4.13] — 2026-09-08
 

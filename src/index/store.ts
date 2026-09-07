@@ -11,6 +11,10 @@ import {
 import { persist, restore } from "@orama/plugin-data-persistence";
 import { Chunk } from "./chunker";
 
+/** Bump on any Orama schema change: an index written under an older number cannot be
+ *  restored into the new schema, so `IndexManager.restore` drops it and asks for a rebuild. */
+export const INDEX_SCHEMA = 2;
+
 export interface StoredMeta {
   modelId: string;
   dim: number;
@@ -20,6 +24,8 @@ export interface StoredMeta {
   paths?: Record<string, string>;
   /** note path → hash of its embedded chunk text (optional: absent in pre-0.4.1 metas). */
   hashes?: Record<string, string>;
+  /** `INDEX_SCHEMA` this index was written under (absent = 1, the pre-facet schema). */
+  schema?: number;
 }
 
 export interface SearchHit {
@@ -35,6 +41,10 @@ export interface SearchHit {
 export interface SearchFilters {
   yearFrom?: number;
   yearTo?: number;
+  /** A hit must carry **every** tag (AND). Matched exactly, so pass the tags as written. */
+  tags?: string[];
+  /** Author family name; matched exactly against the lowercased names on the chunk. */
+  author?: string;
 }
 
 /** Thin wrapper over an Orama hybrid (BM25 + vector) index. */
@@ -77,7 +87,10 @@ export class VectorStore {
         title: "string",
         section: "string",
         year: "number",
-        tags: "string[]",
+        // enum[] gives exact, whole-value matching (`containsAll`); string[] would tokenize,
+        // so a multi-word tag like "Spinal Fusion" could never be filtered on as one value.
+        tags: "enum[]",
+        author: "enum[]",
         text: "string",
         embedding: `vector[${dim}]`,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,6 +107,7 @@ export class VectorStore {
       section: c.section,
       year: c.year,
       tags: c.tags,
+      author: c.authors,
       text: c.text,
       embedding: vectors[i],
     }));
@@ -146,12 +160,13 @@ export class VectorStore {
       throw new Error(`Query dim ${queryVec.length} ≠ index dim ${this.dim}. Rebuild the index.`);
     }
     const where: Record<string, unknown> = {};
-    if (filters.yearFrom || filters.yearTo) {
-      where.year = {
-        ...(filters.yearFrom ? { gte: filters.yearFrom } : {}),
-        ...(filters.yearTo ? { lte: filters.yearTo } : {}),
-      };
-    }
+    // Orama allows exactly one operator per property, so a two-sided range must be `between`
+    // rather than `{ gte, lte }` (which throws INVALID_FILTER_OPERATION).
+    if (filters.yearFrom && filters.yearTo) where.year = { between: [filters.yearFrom, filters.yearTo] };
+    else if (filters.yearFrom) where.year = { gte: filters.yearFrom };
+    else if (filters.yearTo) where.year = { lte: filters.yearTo };
+    if (filters.tags?.length) where.tags = { containsAll: filters.tags };
+    if (filters.author) where.author = { containsAll: [filters.author.trim().toLowerCase()] };
     const res = await search(this.db, {
       term: term || " ",
       mode: MODE_HYBRID_SEARCH,
@@ -187,6 +202,7 @@ export class VectorStore {
       count: this.count,
       paths: this.paths,
       hashes: this.hashes,
+      schema: INDEX_SCHEMA,
     };
     return { data, meta };
   }

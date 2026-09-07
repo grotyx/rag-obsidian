@@ -45,6 +45,10 @@ no account, no backend — just your vault.
 **🔎 Search & chat**
 - Hybrid **semantic search** (BM25 + vector) and **citation-grounded chat** that answers
   only from your library, with `[n]` sources.
+- **Filters in the search pane** — narrow a search by publication **year range**, by **author**
+  (family name), and by **tag**: type in the tag box (it autocompletes from the tags already in
+  your library) and press Enter to add a chip; add several and a paper must carry them all.
+  The filters belong to the pane rather than to settings, and apply to search, not to chat.
 
 ---
 

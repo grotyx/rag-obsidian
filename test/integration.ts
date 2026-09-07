@@ -19,7 +19,7 @@ import { parseMeshList } from "../src/ingest/summarize";
 import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
-import { VectorStore } from "../src/index/store";
+import { VectorStore, INDEX_SCHEMA, SearchFilters } from "../src/index/store";
 import { OllamaProvider } from "../src/index/providers/ollama";
 import { LLMClient } from "../src/llm/client";
 import { RagChat } from "../src/chat/rag";
@@ -794,6 +794,53 @@ async function main() {
     ok(
       !inScope(untagged, { kind: "tag", tag: "endoscopy" }) && !inScope(spineA, { kind: "tag", tag: "nope" }),
       "tag scope does not match an unrelated or missing tag"
+    );
+  }
+
+  // ---- 15. search filters: year range, tag AND, author facet ----
+  log("\n[15] Search filters");
+  {
+    const mk = (citekey: string, title: string, year: number, tags: string[], authors: string[]) =>
+      chunkReference(
+        { citekey, title, year, tags, authors, body: `${title}: a study of fusion outcomes.` },
+        800
+      );
+    const docs = [
+      ...mk("old2001", "Lumbar fusion", 2001, ["Spinal Fusion", "Outcome"], ["Kim", "Choi"]),
+      ...mk("mid2012", "Cervical fusion", 2012, ["Spinal Fusion"], ["Park"]),
+      ...mk("new2022", "Adult deformity", 2022, ["Spinal Fusion", "Outcome"], ["Lee", "Kim"]),
+    ];
+    const fstore = new VectorStore();
+    fstore.init(dim, providerId);
+    await fstore.addChunks(docs, await embed(docs.map((c) => c.embedText)));
+    const [fq] = await embed(["fusion outcomes"]);
+    const keys = async (f: SearchFilters, st: VectorStore = fstore) =>
+      [...new Set((await st.search(fq, "fusion outcomes", 20, f)).map((h) => h.citekey))].sort().join(",");
+
+    ok((await keys({})) === "mid2012,new2022,old2001", `no filter returns all three: ${await keys({})}`);
+    ok((await keys({ yearFrom: 2010 })) === "mid2012,new2022", "yearFrom 2010 drops the 2001 note");
+    ok((await keys({ yearFrom: 2005, yearTo: 2015 })) === "mid2012", "yearFrom+yearTo keeps only 2012");
+    ok((await keys({ tags: ["Spinal Fusion"] })) === "mid2012,new2022,old2001", "multi-word tag matches whole");
+    ok(
+      (await keys({ tags: ["Spinal Fusion", "Outcome"] })) === "new2022,old2001",
+      "two tags are ANDed (the note missing 'Outcome' drops out)"
+    );
+    ok((await keys({ tags: ["Nonexistent"] })) === "", "an unknown tag matches nothing");
+    ok((await keys({ author: "kim" })) === "new2022,old2001", "author facet matches a non-first author");
+    ok((await keys({ author: "Park" })) === "mid2012", "author input is case-insensitive");
+    ok(
+      (await keys({ author: "Kim", yearFrom: 2015, tags: ["Outcome"] })) === "new2022",
+      "author + year + tag combine"
+    );
+
+    // persist/restore keeps the new facets filterable, and stamps the schema version
+    const fser = await fstore.serialize();
+    ok(fser.meta.schema === INDEX_SCHEMA, `meta carries schema ${fser.meta.schema}`);
+    const fstore2 = new VectorStore();
+    await fstore2.load(fser.data, fser.meta);
+    ok(
+      (await keys({ tags: ["Spinal Fusion", "Outcome"], yearFrom: 2010 }, fstore2)) === "new2022",
+      "filters still work on a restored index"
     );
   }
 

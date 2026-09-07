@@ -2,8 +2,15 @@ import { App, TFile, normalizePath, debounce } from "obsidian";
 import { ScholarRagSettings } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
-import { VectorStore, SearchHit, SearchFilters, StoredMeta } from "./store";
-import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash, Chunk } from "./chunker";
+import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA } from "./store";
+import {
+  chunkReference,
+  stripFrontmatter,
+  yearFromIssued,
+  authorNames,
+  chunkHash,
+  Chunk,
+} from "./chunker";
 
 /** Orchestrates the embedding index: build, incremental update, persistence, search. */
 export class IndexManager {
@@ -69,6 +76,10 @@ export class IndexManager {
         console.log("[RAG Obsidian] embedding model changed since last build — rebuild required");
         return;
       }
+      if ((meta.schema ?? 1) !== INDEX_SCHEMA) {
+        console.log("[RAG Obsidian] index schema changed since last build — rebuild required");
+        return;
+      }
       const data = await adapter.read(this.oramaPath);
       await this.store.load(data, meta);
       console.log(`[RAG Obsidian] index restored: ${this.store.count} chunks`);
@@ -92,6 +103,7 @@ export class IndexManager {
         title: String(fm.title ?? file.basename),
         year: yearFromIssued(fm.issued),
         tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
+        authors: authorNames(fm.author),
         abstract: typeof fm.abstract === "string" ? fm.abstract : undefined,
         body: stripFrontmatter(content),
       },
