@@ -5,6 +5,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **Summary language setting** — a new "Summary language" dropdown (English / Korean /
+  English + Korean / Custom…) controls what language `summarizeSource` writes AI paper
+  summaries in. Default `en+ko` keeps the existing English-sections-plus-Korean behaviour;
+  `en` or `ko` write structured sections in one language only; a free-text language name (via
+  Custom…) asks for the same structured summary in that language instead. The note heading is
+  now a single stable `## Summary` regardless of language (previously `## Summary (EN)` /
+  `## 요약 (KR)`), so "Re-summarize this reference" and the backfill still find and replace it —
+  the matcher also still recognises the old two-heading shape on existing notes.
+
 ## [0.4.13] — 2026-09-08
 
 ### Added

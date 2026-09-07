@@ -59,7 +59,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `ingest/pdf.ts` | pdfjs (CDN runtime load, injectable) text extraction + `findIdentifier` |
 | `ingest/pdfImport.ts` | PDF → text → metadata (id-fetch or LLM) → dedup → note + stash text |
 | `ingest/pubmedSearch.ts` | esearch/esummary + one `fetchPubmedRecord` efetch (abstract + MeSH + keywords + PMC id), PMC full text, `buildTags` (MeSH-first, tops up to `MIN_TAGS`, verifies suggestions against the MeSH database) |
-| `ingest/summarize.ts` | EN sections + KR summary + MeSH terms from an LLM (`maxTokens` 8192) |
+| `ingest/summarize.ts` | structured-section summary (+ MeSH terms) from an LLM, language controlled by `summaryLanguage` (`en` / `ko` / `en+ko` default / free text) via `buildSysPrompt`; `maxTokens` 8192 |
 | `ingest/unpaywall.ts` | `findOpenAccess` — scans every `oa_locations` entry for a PDF; requires a contact e-mail |
 | `ingest/retraction.ts` | `checkRetraction` via OpenAlex `is_retracted` (+ "RETRACTED:" title guard) |
 | `ingest/import.ts` | BibTeX / RIS / `.nbib` / CSL-JSON parsing → CSLItem[] |

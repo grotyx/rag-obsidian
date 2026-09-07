@@ -218,7 +218,7 @@ export class PubmedSearchModal extends Modal {
           }
           if (src) {
             try {
-              opts.summary = await summarizeSource(llm, item, src, label);
+              opts.summary = await summarizeSource(llm, item, src, label, this.plugin.settings.summaryLanguage);
               opts.summarySource = tag;
               opts.summaryModel = this.plugin.settings.llmModel;
               opts.summarySourceLabel = label;

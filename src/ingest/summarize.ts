@@ -1,17 +1,36 @@
 import { CSLItem, SummarySections } from "../types";
 import { LLMClient } from "../llm/client";
 
-// Delimiter format (not JSON): JSON string-escaping mangles multibyte Korean when the
-// model emits stray/invalid \u escapes. Plain ===MARKERS=== are language-safe.
-const SYS_PROMPT = `You are a meticulous biomedical research summarizer for a citation manager.
+const LANG_NAME: Record<string, string> = { en: "English", ko: "Korean" };
+
+/** Delimiter format (not JSON): JSON string-escaping mangles multibyte non-Latin text when the
+ *  model emits stray/invalid \u escapes. Plain ===MARKERS=== are language-safe.
+ *
+ *  `language` is "en" | "ko" | "en+ko" (legacy default, both blocks) | any free-text language
+ *  name. Only "en+ko" emits the extra ===KR=== block; every other mode writes the structured
+ *  BACKGROUND/METHODS/RESULTS/CONCLUSIONS sections directly in the target language. MeSH headings
+ *  stay in English (NLM's canonical vocabulary) regardless of summary language. */
+export function buildSysPrompt(language: string): string {
+  const wantsBoth = language === "en+ko";
+  const structuredLang = wantsBoth ? "English" : LANG_NAME[language] || language || "English";
+  const langLine =
+    wantsBoth || language === "en" || !language
+      ? ""
+      : `- Write the BACKGROUND/METHODS/RESULTS/CONCLUSIONS sections in ${structuredLang}, not English.\n`;
+  const krRules = wantsBoth
+    ? "- Korean summary must stay concise (4-7 sentences) and cover the main findings in sentence form.\n"
+    : "";
+  const krMarker = wantsBoth
+    ? "===KR===\n<Concise Korean summary in sentence form>\n"
+    : "";
+  return `You are a meticulous biomedical research summarizer for a citation manager.
 Given a paper's source text (abstract, or full text when available), produce a faithful, detailed summary.
 Rules:
 - Do NOT invent facts. Use only what the source states.
 - Preserve ALL quantitative results: sample sizes, p-values, confidence intervals, means, SDs, ranges, percentages, follow-up durations.
 - Write in complete sentences, never bullet fragments or single keywords.
-- The English sections must be THOROUGH and detailed: do not omit secondary outcomes, subgroup or per-timepoint results, comparator arms, effect sizes, adverse events, or the authors' stated limitations. When the full text is available, draw specifics from it (design details, inclusion/exclusion criteria, surgical/technical steps, statistical methods). Length is not constrained — prioritize completeness over brevity for the English sections.
-- Korean summary must stay concise (4-7 sentences) and cover the main findings in sentence form.
-Output EXACTLY this layout with these six markers, nothing before or after. Put the prose on the lines under each marker:
+- The ${structuredLang} sections must be THOROUGH and detailed: do not omit secondary outcomes, subgroup or per-timepoint results, comparator arms, effect sizes, adverse events, or the authors' stated limitations. When the full text is available, draw specifics from it (design details, inclusion/exclusion criteria, surgical/technical steps, statistical methods). Length is not constrained — prioritize completeness over brevity for the ${structuredLang} sections.
+${krRules}${langLine}Output EXACTLY this layout with these markers, nothing before or after. Put the prose on the lines under each marker:
 ===BACKGROUND===
 <Background / Objective, full sentences>
 ===METHODS===
@@ -20,10 +39,9 @@ Output EXACTLY this layout with these six markers, nothing before or after. Put 
 <All key numeric results in sentences>
 ===CONCLUSIONS===
 <Authors' conclusions plus any noted limitations>
-===KR===
-<Concise Korean summary in sentence form>
-===MESH===
+${krMarker}===MESH===
 <5-10 indexing terms for this paper, comma-separated. Use official NLM MeSH Descriptor headings where one applies (e.g. "Diskectomy", "Lumbar Vertebrae", "Intervertebral Disc Displacement", "Endoscopy"); otherwise a precise topical noun phrase. Terms only, no explanations.>`;
+}
 
 const KEY_MAP: Record<string, keyof SummarySections> = {
   BACKGROUND: "background",
@@ -50,19 +68,21 @@ export function parseSections(text: string): SummarySections {
   return out;
 }
 
-/** Summarize a paper's source text into section-wise EN + concise KR via the configured LLM. */
+/** Summarize a paper's source text via the configured LLM, in the given summary language
+ *  ("en" | "ko" | "en+ko" | free-text language name — see `buildSysPrompt`). */
 export async function summarizeSource(
   llm: LLMClient,
   item: CSLItem,
   sourceText: string,
-  sourceLabel: string
+  sourceLabel: string,
+  language = "en+ko"
 ): Promise<SummarySections> {
   const year = item.issued?.["date-parts"]?.[0]?.[0] ?? "n.d.";
   const header =
     `Title: ${item.title}\nJournal: ${item["container-title"] || ""} (${year})\n` +
     `Source type: ${sourceLabel}\n\n`;
   const user = header + sourceText.slice(0, 120000);
-  const reply = await llm.chat([{ role: "user", content: user }], SYS_PROMPT, {
+  const reply = await llm.chat([{ role: "user", content: user }], buildSysPrompt(language), {
     reasoningEffort: "high",
     // 8192: the smallest ceiling among current Anthropic models, and 8x the old 1024 default —
     // enough for EN sections + KR + MESH plus a reasoning model's thinking budget.

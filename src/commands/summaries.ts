@@ -36,7 +36,7 @@ async function rewriteSummary(
       tag = "pmc-fulltext";
     }
   }
-  const summary = await summarizeSource(llm, item, src, label);
+  const summary = await summarizeSource(llm, item, src, label, plugin.settings.summaryLanguage);
   const model = plugin.settings.llmModel;
   // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
   // written before it is silently dropped.

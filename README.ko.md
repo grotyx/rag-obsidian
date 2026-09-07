@@ -23,8 +23,9 @@
 - 기존 라이브러리 **임포트** — **BibTeX · RIS · PubMed `.nbib` · CSL-JSON**.
 
 **🧠 AI 요약**
-- LLM이 **섹션별 영어 요약**(Background / Methods / Results / Conclusions)과
-  **간결한 한글 요약**을 각 노트에 작성.
+- LLM이 **섹션별 요약**(Background / Methods / Results / Conclusions)을 각 노트에 작성.
+  *Summary language*(설정 → Chat)에서 영어, 한글, 둘 다(기본값 — 영어 섹션 + 간결한 한글 요약),
+  또는 원하는 다른 언어를 이름으로 지정 가능.
 - open access 논문은 **본문 전체**(PubMed Central), 그 외는 abstract 기반.
 
 **🏷️ 정리**

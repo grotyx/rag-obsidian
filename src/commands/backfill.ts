@@ -76,7 +76,7 @@ export async function backfillSummaries(plugin: ScholarRagPlugin): Promise<void>
               sourceTag = "pmc-fulltext";
             }
           }
-          summary = await summarizeSource(llm, e.item, src, label);
+          summary = await summarizeSource(llm, e.item, src, label, plugin.settings.summaryLanguage);
         }
 
         // Real MeSH first, topped up from the summary when PubMed has fewer than MIN_TAGS.
