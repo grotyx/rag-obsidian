@@ -50,9 +50,34 @@ no account, no backend — just your vault.
 
 ## 📦 Installation
 
-> Not in the community-plugin store yet — install one of these ways.
+> Not in the community-plugin store yet, so it will not show up in Obsidian's plugin search.
+> Pick whichever route suits you — **A needs no terminal**.
 
-### Option A — Build it (recommended)
+### Option A — BRAT (recommended: installs and auto-updates)
+
+[BRAT](https://github.com/TfTHacker/obsidian42-brat) installs plugins straight from GitHub and
+keeps them updated.
+
+1. Obsidian → **Settings → Community plugins** → Browse → install and enable **BRAT**.
+2. Command palette (`Ctrl/Cmd-P`) → **BRAT: Add a beta plugin for testing**.
+3. Paste `grotyx/rag-obsidian` → **Add plugin**.
+4. **Settings → Community plugins** → enable **Academic Paper Citation Manager**.
+
+BRAT then pulls each new release for you.
+
+### Option B — Download a release (no terminal, no BRAT)
+
+From the [latest release](https://github.com/grotyx/rag-obsidian/releases/latest), download
+`main.js`, `manifest.json` and `styles.css` into
+
+```text
+<your vault>/.obsidian/plugins/rag-obsidian/
+```
+
+(create the folder if it does not exist), then reload Obsidian and enable the plugin under
+**Settings → Community plugins**. Updating means downloading the three files again.
+
+### Option C — Build it yourself
 
 Requires [Node.js 18+](https://nodejs.org) and [git](https://git-scm.com).
 
@@ -70,7 +95,7 @@ npm run deploy              # builds + copies the plugin into your vault
 
 Then in Obsidian: **Settings → Community plugins → enable the plugin** → reload (`Ctrl/Cmd-R`).
 
-### Option B — Cloud-synced vault (no build on the 2nd machine)
+### Option D — Cloud-synced vault (no build on the 2nd machine)
 
 If your vault is in OneDrive / iCloud / Dropbox / Obsidian Sync, the built plugin travels
 **inside** the vault (`<vault>/.obsidian/plugins/rag-obsidian/`). On another machine just

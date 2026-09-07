@@ -46,9 +46,32 @@
 
 ## 📦 설치
 
-> 아직 커뮤니티 플러그인 스토어에 없습니다 — 아래 중 하나로 설치.
+> 아직 커뮤니티 플러그인 스토어에 없어서 Obsidian 플러그인 검색에는 나오지 않습니다.
+> 편한 방법을 고르세요 — **방법 A는 터미널이 필요 없습니다.**
 
-### 방법 A — 빌드 (권장)
+### 방법 A — BRAT (권장: 설치와 자동 업데이트)
+
+[BRAT](https://github.com/TfTHacker/obsidian42-brat)은 GitHub에서 바로 플러그인을 설치하고
+새 릴리스가 나오면 자동으로 갱신해 줍니다.
+
+1. Obsidian → **설정 → 커뮤니티 플러그인** → 탐색 → **BRAT** 설치 후 활성화
+2. 명령 팔레트(`Ctrl/Cmd-P`) → **BRAT: Add a beta plugin for testing**
+3. `grotyx/rag-obsidian` 붙여넣기 → **Add plugin**
+4. **설정 → 커뮤니티 플러그인**에서 **Academic Paper Citation Manager** 활성화
+
+### 방법 B — 릴리스 파일 내려받기 (터미널·BRAT 없이)
+
+[최신 릴리스](https://github.com/grotyx/rag-obsidian/releases/latest)에서 `main.js`,
+`manifest.json`, `styles.css` 세 파일을 받아 아래 폴더에 넣습니다(없으면 만드세요).
+
+```text
+<보관함>/.obsidian/plugins/rag-obsidian/
+```
+
+Obsidian을 새로고침한 뒤 **설정 → 커뮤니티 플러그인**에서 활성화합니다. 업데이트하려면
+세 파일을 다시 받으면 됩니다.
+
+### 방법 C — 직접 빌드
 
 [Node.js 18+](https://nodejs.org) 와 [git](https://git-scm.com) 필요.
 
@@ -66,7 +89,7 @@ npm run deploy              # 빌드 + 플러그인을 vault로 복사
 
 이후 Obsidian: **Settings → Community plugins → 플러그인 활성화** → 다시 로드(`Ctrl/Cmd-R`).
 
-### 방법 B — 클라우드 동기화 vault (둘째 PC는 빌드 불필요)
+### 방법 D — 클라우드 동기화 vault (둘째 PC는 빌드 불필요)
 
 vault가 OneDrive / iCloud / Dropbox / Obsidian Sync에 있으면 빌드된 플러그인이 vault
 **안에**(`<vault>/.obsidian/plugins/rag-obsidian/`) 같이 따라옵니다. 다른 PC에선 동기화된

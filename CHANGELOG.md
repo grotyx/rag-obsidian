@@ -3,6 +3,14 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [Unreleased]
+
+### Changed
+
+- README (en + ko): the install section leads with **BRAT** and a plain release download,
+  so the plugin can be installed without a terminal. Building from source moved down to
+  option C.
+
 ## [0.4.4] — 2026-09-07
 
 ### Changed
