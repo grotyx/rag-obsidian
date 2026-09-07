@@ -28,6 +28,7 @@ import * as libraryCmd from "./src/commands/library";
 import * as writingCmd from "./src/commands/writing";
 import * as oaCmd from "./src/commands/openaccess";
 import { backfillSummaries } from "./src/commands/backfill";
+import { cancelBatch } from "./src/ui/progress";
 
 export default class ScholarRagPlugin extends Plugin {
   settings!: ScholarRagSettings;
@@ -210,6 +211,13 @@ export default class ScholarRagPlugin extends Plugin {
       id: "backfill-summaries",
       name: "Summarize and tag references (fill gaps)",
       callback: () => void backfillSummaries(this),
+    });
+    this.addCommand({
+      id: "cancel-batch",
+      name: "Cancel current batch",
+      callback: () => {
+        if (!cancelBatch()) new Notice("No batch is running");
+      },
     });
     this.addCommand({
       id: "enrich-metadata",

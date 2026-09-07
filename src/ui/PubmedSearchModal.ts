@@ -1,9 +1,10 @@
-import { App, Modal, Notice, Setting, TextComponent } from "obsidian";
+import { App, ButtonComponent, Modal, Notice, Setting, TextComponent } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { CSLItem } from "../types";
 import { BuildNoteOpts } from "../data/reference";
 import { LLMClient } from "../llm/client";
 import { mapPool, POOL_WIDTH } from "../util/pool";
+import { startBatch, cancelBatch, Batch } from "./progress";
 import { summarizeSource } from "../ingest/summarize";
 import {
   searchPubmed,
@@ -21,6 +22,8 @@ export class PubmedSearchModal extends Modal {
   private rows: { hit: PubmedHit; checkbox: HTMLInputElement }[] = [];
   private resultsEl!: HTMLDivElement;
   private footerEl!: HTMLDivElement;
+  private addBtn: ButtonComponent | null = null;
+  private batch: Batch | null = null;
 
   constructor(app: App, plugin: ScholarRagPlugin) {
     super(app);
@@ -138,9 +141,29 @@ export class PubmedSearchModal extends Modal {
           for (const r of this.rows) r.checkbox.checked = false;
         })
       )
-      .addButton((b) =>
-        b.setButtonText("Add selected").setCta().onClick(() => void this.addSelected())
-      );
+      .addButton((b) => {
+        this.addBtn = b;
+        // Doubles as the cancel button while a batch runs — one button, one place to look.
+        b.setButtonText("Add selected")
+          .setCta()
+          .onClick(() => {
+            if (this.batch) cancelBatch();
+            else
+              // A throw here would otherwise leave the status bar stuck on a finished batch.
+              this.addSelected().catch((e) => {
+                console.error("[RAG Obsidian] add selected failed", e);
+                this.endBatch("Adding failed (see console)");
+              });
+          });
+      });
+  }
+
+  /** Clear the status bar and put the button back. Safe to call when no batch is running. */
+  private endBatch(summary: string): void {
+    if (!this.batch) return;
+    this.batch.finish(summary);
+    this.batch = null;
+    this.addBtn?.setButtonText("Add selected");
   }
 
   private async addSelected(): Promise<void> {
@@ -162,8 +185,12 @@ export class PubmedSearchModal extends Modal {
       return;
     }
 
-    const notice = new Notice(`Fetching 0/${fresh.length}…`, 0);
+    const batch = startBatch(this.plugin, "Adding", fresh.length);
+    if (!batch) return;
+    this.batch = batch;
+    this.addBtn?.setButtonText("Cancel");
     let done = 0;
+    let failed = 0;
     let added = 0;
     let lastFile = null as import("obsidian").TFile | null;
 
@@ -210,13 +237,16 @@ export class PubmedSearchModal extends Modal {
         if (tags.length) opts.tags = tags;
         return { hit, item, opts, error: null as unknown };
       } catch (e) {
+        failed++;
         return { hit, item, opts, error: e };
       } finally {
-        notice.setMessage(`Fetching ${++done}/${fresh.length}…`);
+        batch.tick(++done, failed);
       }
-    });
+    }, batch.signal);
 
     for (const p of prepared) {
+      // Empty slot: the batch was cancelled before this paper started.
+      if (!p) continue;
       if (p.error) {
         console.error("[RAG Obsidian] add failed", p.hit.pmid, p.error);
         new Notice(`Failed PMID ${p.hit.pmid}: ${p.error instanceof Error ? p.error.message : String(p.error)}`);
@@ -226,12 +256,16 @@ export class PubmedSearchModal extends Modal {
       if (this.plugin.library.findDuplicate(p.item)) continue;
       lastFile = await this.plugin.library.createReference(p.item, p.opts);
       added++;
-      notice.setMessage(`Writing ${added}/${prepared.length}…`);
     }
 
-    notice.hide();
-    const dupes = chosen.length - added;
-    new Notice(`Added ${added} reference${added === 1 ? "" : "s"}${dupes ? `, skipped ${dupes}` : ""}.`);
+    const notStarted = fresh.length - done;
+    const summary =
+      `Added ${added} reference${added === 1 ? "" : "s"}` +
+      (chosen.length - added - notStarted ? `, skipped ${chosen.length - added - notStarted}` : "") +
+      (notStarted ? ` · cancelled, ${notStarted} not started` : "") +
+      ".";
+    this.endBatch(summary);
+    new Notice(summary);
     this.close();
     if (lastFile) await this.app.workspace.getLeaf(true).openFile(lastFile);
   }
