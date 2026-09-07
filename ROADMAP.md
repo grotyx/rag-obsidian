@@ -1,7 +1,7 @@
 # Roadmap — from a full read of the code at 0.4.12 (2026-09-08)
 
 What the code looks like today: 6.4k lines of TypeScript, 34 commands, 21 settings, three runtime
-dependencies (Orama, citeproc-js, and Obsidian itself). 71 live integration checks. Three code-review
+dependencies (Orama, citeproc-js, and Obsidian itself). 66 live integration checks. Three code-review
 passes and two days of in-vault testing sit behind the 0.4.x line, so the *existing* features are in
 good shape. What follows is what is missing, what is fragile, and what should be cut — ordered by how
 much it changes the daily experience for a clinician-researcher running PubMed searches through

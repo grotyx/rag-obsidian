@@ -319,30 +319,5 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         })
       );
-
-    containerEl.createEl("h2", { text: "Ontology (optional)" });
-    containerEl.createEl("p", {
-      cls: "setting-item-description",
-      text:
-        "Most people need nothing here: papers added from PubMed already carry their real MeSH " +
-        "terms as tags. A pack is for tagging with your own vocabulary, applied by the " +
-        '"Tag note with ontology concepts" command on the note you have open.',
-    });
-
-    new Setting(containerEl)
-      .setName("Ontology pack path")
-      .setDesc(
-        "Vault path to a JSON pack { scheme, concepts:[{id,label,synonyms?,parents?}] } — " +
-          "include the .json extension. Empty = the built-in sample (a tiny spine demo)."
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder("Ontologies/mesh-subset.json")
-          .setValue(this.plugin.settings.ontologyPackPath)
-          .onChange(async (v) => {
-            this.plugin.settings.ontologyPackPath = v.trim();
-            await this.plugin.saveSettings();
-          })
-      );
   }
 }

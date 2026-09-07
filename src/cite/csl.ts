@@ -93,7 +93,6 @@ export class CiteEngine {
     "status",
     "added",
     "tags",
-    "concepts",
     "pdf",
     "summary_source",
     "oa_url",

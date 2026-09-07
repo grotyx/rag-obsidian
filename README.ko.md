@@ -197,7 +197,7 @@ csl: springer-basic-brackets
 |---|---|
 | **추가** | Search PubMed · DOI / PMID / arXiv / 제목 추가 · Import(BibTeX / RIS / nbib / CSL-JSON) · Import PDF |
 | **독서** | 읽기 상태(unread / reading / read) · Reading queue · OA PDF 찾기 · OA PDF 다운로드 · PDF 형광펜 추출 · 온라인으로 열기 |
-| **정리** | 요약·태그 일괄 채우기 · 대시보드 · 중복 찾기 · 인용수 채우기 · 철회 확인 · 태그 변경 · 메타데이터 보강 · 관련 논문 추천 · 온톨로지 개념 태깅 · 인용 네트워크 내보내기 |
+| **정리** | 요약·태그 일괄 채우기 · 대시보드 · 중복 찾기 · 인용수 채우기 · 철회 확인 · 태그 변경 · 메타데이터 보강 · 관련 논문 추천 · 인용 네트워크 내보내기 |
 | **집필** | `@` 자동완성 · Update bibliography · Compile manuscript · 인용 복사 · 주석 참고문헌 |
 | **검색** | 의미 검색 · 챗 · 관련 논문 · 인덱스 재생성 |
 | **내보내기** | 라이브러리 → BibTeX / RIS / CSL-JSON |
@@ -210,7 +210,7 @@ csl: springer-basic-brackets
 npm run dev        # esbuild watch → main.js
 npm run deploy     # 빌드 + vault로 복사 (.env의 VAULT_PLUGIN_DIR)
 npm run build      # tsc + esbuild production
-npm test           # 라이브 통합 테스트 (71개 체크)
+npm test           # 라이브 통합 테스트 (66개 체크)
 ```
 
 헬퍼 스크립트 (터미널, Obsidian 불필요) — 경로는 `.env`에서:

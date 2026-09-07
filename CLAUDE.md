@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.12 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (71 integration checks green)
+**Version**: 0.4.12 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (66 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -27,7 +27,7 @@ is shared — see PLAN.md §8 for what was ported conceptually.
 |---|---|
 | Architecture | Pure Obsidian plugin (TypeScript), local-first, no companion server |
 | Bib source of truth | One markdown note per reference, CSL-JSON field names in YAML frontmatter |
-| Domain | General academic; ontology is an **optional** pluggable pack |
+| Domain | General academic (domain-agnostic core) |
 | Goal | Personal tool first, open-source later |
 
 ## Architecture / data flow
@@ -51,7 +51,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | File | Responsibility |
 |---|---|
 | `types.ts` | `ScholarRagSettings`, `DEFAULT_SETTINGS`, CSL-JSON types, enums |
-| `settings.ts` | Settings tab UI (Library / Retrieval / Chat / Citation graph / Writing / Ontology) |
+| `settings.ts` | Settings tab UI (Library / Retrieval / Chat / Citation graph / Writing) |
 | `data/reference.ts` | citekey generation, CSL-JSON → markdown note builder |
 | `data/library.ts` | CRUD over `References/`, `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` (add-time) + `matchKeys`/`duplicateGroups` (report, groups on any shared identifier) |
 | `ingest/metadata.ts` | `detectId` + Crossref / PubMed / arXiv fetchers → CSLItem |
@@ -78,12 +78,13 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `cite/bibliography.ts` | citation grammar shared by every renderer: `extractCitekeys`, `citePattern`/`keysInCite`, `replaceCitations` (skips code), `resolveCluster` (all keys or none), `splitAtReferences`, `buildBibliography`, `inTextLabel` |
 | `cite/export.ts` | library → BibTeX / RIS / CSL-JSON |
 | `cite/suggest.ts` | `@`-autocomplete EditorSuggest → inserts `[@citekey]` |
-| `ontology/pack.ts` | `Ontology`: alias linking + IS_A ancestors/descendants/expand |
-| `ontology/sample.ts` | built-in tiny spine pack |
-| `ontology/manager.ts` | load pack (user JSON or sample) + tag active note |
+| `commands/library.ts` | dashboard, duplicates, reading queue, status, citation-count backfill, enrich, rename tag, export, citation network, suggest related |
+| `commands/writing.ts` | update bibliography, compile manuscript, copy citation, annotated bibliography |
+| `commands/openaccess.ts` | Unpaywall lookup, OA PDF download, retraction check, PDF highlight extraction |
+| `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them |
 | `ui/{LibraryView,SearchView,ChatView,RelatedView}.ts` | sidebar panes |
 | `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal}.ts` | modals |
-| `main.ts` | plugin lifecycle, views, commands, ribbons, events, bibliography + citation rendering |
+| `main.ts` | plugin lifecycle, views, `addCommand` wiring, ribbons, events, citation rendering + shared plumbing (`writeAndOpen`, `activeRef`, `styleForNote`) |
 
 ## Commands (dev)
 
@@ -92,7 +93,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (71 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (66 checks)
 ```
 
 ## Testing approach (important)
@@ -106,7 +107,7 @@ plugin is validated this way. Run with `npm test`. Extend by adding numbered sec
 **Verified live**: metadata fetch, note build, chunking, Orama hybrid + persist/restore, embedding
 provider contract (Ollama 896-dim), LLM client request/parse (mock), citation formatting,
 OpenAlex citation graph (real edges + "missing"), pdf text extraction (real 19-page PDF),
-bibliography, ontology link/IS_A.
+bibliography.
 
 **Needs in-vault (runtime-CDN, can't node-test)**: pdfjs loaded from CDN in the plugin (the
 *algorithm* is verified against the local build), Transformers.js embeddings from CDN.
@@ -168,7 +169,7 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 - Obsidian Properties UI may warn on nested CSL frontmatter (`author`/`issued`) — data is valid.
 - Cross-identifier dedup on add: session registry + normalized-DOI/PMID/title match in
   `findDuplicate`; bare-digit PMID input requires a confirm click in the Add modal.
-- Plugin-managed frontmatter (`citekey`, `status`, `added`, `tags`, `concepts`, `pdf`,
+- Plugin-managed frontmatter (`citekey`, `status`, `added`, `tags`, `pdf`,
   `summary_source`, `oa_url`, `oa_pdf`, `oa_version`, `retracted`, `cited_by_count`,
   `openalex_id`) shares the note with CSL-JSON fields and is stripped in `cite/csl.ts`
   (`PLUGIN_FIELDS`) — CSL defines `status`, so leaving it in printed "Unread." in every entry.
@@ -181,9 +182,10 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 
 See [ROADMAP.md](ROADMAP.md) — a phased plan from a full read of the code at 0.4.12. Phase 1 (cancel +
 progress for batches, persist PMCID/MeSH on notes, per-note re-summarize, delete the Gemini-era
-scripts, split `main.ts`) comes first; the ontology pack is slated for removal (MeSH covers it).
+scripts) comes first.
 
-Done: citeproc-js full CSL (v0.3.0) · cross-identifier dedup on add · secretStorage for API keys (v0.4.0).
+Done: citeproc-js full CSL (v0.3.0) · cross-identifier dedup on add · secretStorage for API keys
+(v0.4.0) · `main.ts` split into `src/commands/` + the concept-pack feature dropped (MeSH covers it).
 
 ## Resuming from another folder
 

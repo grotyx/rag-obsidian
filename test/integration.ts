@@ -37,8 +37,6 @@ import {
   resolveCluster,
   splitAtReferences,
 } from "../src/cite/bibliography";
-import { Ontology } from "../src/ontology/pack";
-import { SAMPLE_PACK } from "../src/ontology/sample";
 import { ScholarRagSettings, DEFAULT_SETTINGS, CSLItem } from "../src/types";
 
 const MODEL = process.env.EMBED_MODEL || "qwen2.5:0.5b"; // any local Ollama model works for /api/embed
@@ -403,7 +401,7 @@ async function main() {
         "edition", "genre", "medium", "source", "archive", "call-number", "citation-key",
       ]);
       const PLUGIN_FIELDS = new Set([
-        "citekey", "status", "added", "tags", "concepts", "pdf", "summary_source", "oa_url",
+        "citekey", "status", "added", "tags", "pdf", "summary_source", "oa_url",
         "oa_pdf", "oa_version", "retracted", "cited_by_count", "openalex_id", "csl",
         "citation-style", "aliases", "position",
       ]);
@@ -464,25 +462,6 @@ async function main() {
     ok(s2.base === "" && s2.tail === "", `splitAtReferences (first line): ${JSON.stringify(s2)}`);
     const s3 = splitAtReferences("Body\n\n## References\n\n- old\n\n# Appendix\nkeep\n");
     ok(s3.base === "Body" && s3.tail === "\n# Appendix\nkeep\n", `splitAtReferences (tail kept): ${JSON.stringify(s3)}`);
-  }
-
-  // ---- 11. ontology pack (link + IS_A traversal) ----
-  log("\n[11] Ontology (sample pack)");
-  {
-    const onto = new Ontology();
-    onto.load(SAMPLE_PACK);
-    ok(onto.size === 8, `loaded ${onto.size} concepts [${onto.scheme}]`);
-    const linked = onto
-      .link("posterior lumbar interbody fusion improved outcomes in lumbar spinal stenosis with arthrodesis")
-      .map((c) => c.id);
-    log(`     linked: ${linked.join(", ")}`);
-    ok(linked.includes("PLIF") && linked.includes("LSS"), "link found PLIF + LSS");
-    const anc = onto.ancestors("PLIF").map((c) => c.id);
-    ok(anc.includes("FUSION") && anc.includes("SPINE"), `ancestors(PLIF): ${anc.join(" → ")}`);
-    const desc = onto.descendants("FUSION").map((c) => c.id).sort();
-    ok(desc.includes("PLIF") && desc.includes("TLIF"), `descendants(FUSION): ${desc.join(", ")}`);
-    const exp = onto.expand("STENOSIS");
-    ok(exp.includes("Lumbar spinal stenosis"), `expand(STENOSIS): ${exp.length} labels incl descendants`);
   }
 
   // ---- 12. small pure helpers touched by the src/ review ----

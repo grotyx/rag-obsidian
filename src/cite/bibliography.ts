@@ -98,3 +98,25 @@ export function inTextLabel(item: CSLItem): string {
   const yr = dp && dp[0] ? dp[0] : "n.d.";
   return `(${fam}, ${yr})`;
 }
+
+/** citeproc emits HTML entities (`&#38;`, `&amp;`) — decode them (and collapse whitespace)
+ *  for the plain-text and DOM renderers of its output. */
+export function decodeEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => safeCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, n) => safeCodePoint(parseInt(n, 10)))
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function safeCodePoint(n: number): string {
+  try {
+    return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "";
+  } catch {
+    return "";
+  }
+}
