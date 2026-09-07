@@ -66,8 +66,8 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `index/embedding.ts` | `EmbeddingProvider` interface + factory |
 | `util/pool.ts` | `mapPool` bounded concurrency + `POOL_WIDTH` (15, sized for the LLM wait) — the network/LLM half of a batch; vault writes stay sequential. Takes an optional `AbortSignal`: cancelling lets in-flight items finish, starts no new ones, and still resolves (unstarted slots come back empty) |
 | `index/providers/{ollama,openai,transformers}.ts` | embedding backends |
-| `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers, `chunkHash` (reindex change detector) |
-| `index/store.ts` | Orama hybrid index wrapper + JSON persist/restore |
+| `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers (`yearFromIssued`, `authorNames`), `chunkHash` (reindex change detector) |
+| `index/store.ts` | Orama hybrid index wrapper + JSON persist/restore + `SearchFilters` (year range, tag AND, author) over the `tags`/`author` `enum[]` facets; `INDEX_SCHEMA` is the rebuild marker |
 | `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding) |
 | `graph/openalex.ts` | OpenAlex client (`resolveWork`, `fetchTitles`) |
 | `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` |
@@ -83,7 +83,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `commands/openaccess.ts` | Unpaywall lookup, OA PDF download, retraction check, PDF highlight extraction |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them |
 | `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
-| `ui/{LibraryView,SearchView,ChatView,RelatedView}.ts` | sidebar panes |
+| `ui/{LibraryView,SearchView,ChatView,RelatedView}.ts` | sidebar panes (`SearchView` holds the year/author/tag-chip filter state — pane-local, search only) |
 | `ui/progress.ts` | `startBatch`/`cancelBatch` — status-bar progress with a ✕ for the two batch commands, one batch at a time, hands out the `AbortSignal` |
 | `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal}.ts` | modals |
 | `main.ts` | plugin lifecycle, views, `addCommand` wiring, ribbons, events, citation rendering + shared plumbing (`writeAndOpen`, `activeRef`, `styleForNote`) |
