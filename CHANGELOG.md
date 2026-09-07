@@ -7,6 +7,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Fixed
 
+- **"Find duplicates" now catches the case it was written for** — it compared one signature
+  per note (DOI, else PMID, else title), so the same paper added once by DOI and once from
+  PubMed sat in different groups and the report said "No duplicates found". Notes are
+  grouped when they share **any** identifier, transitively, which is the rule add-time dedup
+  has always used. The grouping is now a pure function (`duplicateGroups`) with a test.
 - **Docs pointed at a citation style that does not exist** — every example used
   `csl: european-spine-journal`, which is not in the CSL repository (404) and not bundled,
   so anyone following the README got "Citation style not found" and a silent fall back to

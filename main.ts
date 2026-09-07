@@ -1,7 +1,7 @@
 import { Plugin, WorkspaceLeaf, TFile, TAbstractFile, Notice, SecretStorage } from "obsidian";
 import { ScholarRagSettings, DEFAULT_SETTINGS, SECRET_FIELDS, SecretField } from "./src/types";
 import { ScholarRagSettingTab } from "./src/settings";
-import { Library, normDoi, normTitle } from "./src/data/library";
+import { Library, duplicateGroups } from "./src/data/library";
 import { IndexManager } from "./src/index/manager";
 import { AddReferenceModal } from "./src/ui/AddReferenceModal";
 import { PubmedSearchModal } from "./src/ui/PubmedSearchModal";
@@ -677,17 +677,7 @@ export default class ScholarRagPlugin extends Plugin {
 
   /** Group library notes by DOI / PMID / normalized title and report duplicate clusters. */
   async findDuplicates(): Promise<void> {
-    const groups = new Map<string, string[]>();
-    for (const e of this.library.entries()) {
-      const it = e.item;
-      const doi = normDoi(it.DOI);
-      const title = normTitle(it.title);
-      // Same signature as Library.findDuplicate (short titles like "Editorial" are not a match).
-      const sig = doi ? `doi:${doi}` : it.PMID ? `pmid:${it.PMID}` : title.length > 12 ? `title:${title}` : "";
-      if (!sig) continue;
-      (groups.get(sig) ?? groups.set(sig, []).get(sig)!).push(e.file.basename);
-    }
-    const dups = [...groups.values()].filter((g) => g.length > 1);
+    const dups = duplicateGroups(this.library.entries()).map((g) => g.map((e) => e.file.basename));
     if (!dups.length) {
       new Notice("No duplicates found");
       return;

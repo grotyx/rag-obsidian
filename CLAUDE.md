@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.4 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (57 integration checks green)
+**Version**: 0.4.4 · **Status**: Phase 0–5 + ontology + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (58 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -53,7 +53,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `types.ts` | `ScholarRagSettings`, `DEFAULT_SETTINGS`, CSL-JSON types, enums |
 | `settings.ts` | Settings tab UI (Library / Retrieval / Chat / Citation graph / Writing / Ontology) |
 | `data/reference.ts` | citekey generation, CSL-JSON → markdown note builder |
-| `data/library.ts` | CRUD over `References/`, `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` |
+| `data/library.ts` | CRUD over `References/`, `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` (add-time) + `matchKeys`/`duplicateGroups` (report, groups on any shared identifier) |
 | `ingest/metadata.ts` | `detectId` + Crossref / PubMed / arXiv fetchers → CSLItem |
 | `ingest/pdf.ts` | pdfjs (CDN runtime load, injectable) text extraction + `findIdentifier` |
 | `ingest/pdfImport.ts` | PDF → text → metadata (id-fetch or LLM) → dedup → note + stash text |
@@ -90,7 +90,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (57 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (58 checks)
 ```
 
 ## Testing approach (important)

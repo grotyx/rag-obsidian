@@ -11,6 +11,7 @@ import * as http from "http";
 import * as yaml from "js-yaml";
 
 import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
+import { duplicateGroups } from "../src/data/library";
 import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
@@ -483,6 +484,20 @@ async function main() {
   // ---- 12. small pure helpers touched by the src/ review ----
   log("\n[12] Helpers");
   {
+    // "Find duplicates" must group on ANY shared identifier, like add-time dedup does.
+    const notes = [
+      { name: "byDoi", item: { DOI: "10.1/X", PMID: "111", title: "Deep learning for spine" } },
+      { name: "byPmid", item: { PMID: "111", title: "Deep learning for spine surgery" } },
+      { name: "unrelated", item: { DOI: "10.9/Z", title: "Something else entirely here" } },
+      { name: "noIds", item: { title: "Editorial" } },
+      { name: "noIds2", item: { title: "Editorial" } },
+    ];
+    const groups = duplicateGroups(notes).map((g) => g.map((n) => n.name).sort().join("+"));
+    ok(
+      groups.length === 1 && groups[0] === "byDoi+byPmid",
+      `duplicateGroups joins on a shared PMID and ignores short titles: ${JSON.stringify(groups)}`
+    );
+
     const pm = detectId("https://pubmed.ncbi.nlm.nih.gov/26017442/");
     ok(pm.kind === "pmid" && pm.value === "26017442", `detectId(pubmed URL) → ${pm.kind}:${pm.value}`);
     ok(JSON.stringify(parsePubDate("2020 Mar 15")) === '{"date-parts":[[2020,3,15]]}', "parsePubDate keeps the day");

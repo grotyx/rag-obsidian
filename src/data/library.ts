@@ -165,6 +165,52 @@ export class Library {
   }
 }
 
+/** Identifiers a note can be matched on — the same three `findDuplicate` compares, in the same
+ *  normalized form. A short title is not an identifier ("Editorial" would group unrelated notes). */
+export function matchKeys(item: { DOI?: unknown; PMID?: unknown; title?: unknown }): string[] {
+  const keys: string[] = [];
+  const doi = normDoi(item.DOI);
+  if (doi) keys.push(`doi:${doi}`);
+  if (item.PMID) keys.push(`pmid:${String(item.PMID)}`);
+  const title = normTitle(item.title);
+  if (title.length > 12) keys.push(`title:${title}`);
+  return keys;
+}
+
+/** Group notes that are the same work. Two notes belong together when they share **any**
+ *  identifier — the rule `findDuplicate` applies on add. Comparing one signature per note
+ *  instead (DOI else PMID else title) missed the ordinary case: the same paper added once by
+ *  DOI, whose note also carries a PMID, and once from PubMed, whose note carries only the PMID.
+ *  Sharing is transitive, so A-B by DOI and B-C by PMID is one group of three. */
+export function duplicateGroups<T extends { item: { DOI?: unknown; PMID?: unknown; title?: unknown } }>(
+  entries: T[]
+): T[][] {
+  const parent = entries.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const union = (a: number, b: number): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  };
+  const seen = new Map<string, number>();
+  const identified = new Set<number>();
+  entries.forEach((e, i) => {
+    for (const k of matchKeys(e.item)) {
+      identified.add(i);
+      const prev = seen.get(k);
+      if (prev === undefined) seen.set(k, i);
+      else union(prev, i);
+    }
+  });
+  const byRoot = new Map<number, T[]>();
+  entries.forEach((e, i) => {
+    if (!identified.has(i)) return; // nothing to match on — never a duplicate
+    const r = find(i);
+    (byRoot.get(r) ?? byRoot.set(r, []).get(r)!).push(e);
+  });
+  return [...byRoot.values()].filter((g) => g.length > 1);
+}
+
 /** Normalize a DOI for comparison: lowercase, strip doi.org URL / "doi:" prefixes
  *  (CSL DOI casing and prefixing vary by source — Crossref vs PubMed vs pasted URLs). */
 export function normDoi(d: unknown): string {
