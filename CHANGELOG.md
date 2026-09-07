@@ -3,6 +3,13 @@
 All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
+## [Unreleased]
+
+### Fixed
+
+- Korean README: the version badge had been stuck at 0.3.0 since that release — only the
+  English badge was being bumped. CLAUDE.md's release procedure now names both.
+
 ## [0.4.5] — 2026-09-07
 
 ### Fixed

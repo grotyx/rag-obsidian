@@ -192,7 +192,9 @@ npm run dev
 ## Version bump procedure
 
 Update **all three** on a release: `manifest.json`, `package.json`, `versions.json` (+ a
-CHANGELOG.md entry + the Version line in this file and README). Then commit `vX.Y.Z: summary`.
+CHANGELOG.md entry + the Version line in this file and the **version badge in both
+`README.md` and `README.ko.md`** — the Korean badge sat at 0.3.0 for four releases because
+only the English one was being edited). Then commit `vX.Y.Z: summary`.
 The deck (`presentation/build_deck.py`) reads its version from `manifest.json`, but the prose
 docs (`lecture_script.md`, `slides_content.md`, `lecture_script_tts.md`) hardcode it — grep `v0.X`
 under `presentation/`; the TTS script spells it in Hangul (`영 점 사`), grep `점` there.
