@@ -44,12 +44,23 @@ export async function backfillSummaries(plugin: ScholarRagPlugin): Promise<void>
     const prepared = await mapPool(todo, POOL_WIDTH, async (e) => {
       try {
         const pmid = e.item.PMID ? String(e.item.PMID) : "";
-        // One efetch gives the abstract, the MeSH headings and the PMC id.
-        const rec = pmid
+        const noteAbstract = (typeof e.item.abstract === "string" && e.item.abstract) || "";
+        const noteMesh = (Array.isArray(e.item.mesh_terms) ? e.item.mesh_terms.map(String) : [])
+          .filter(Boolean);
+        const nTags = Array.isArray(e.item.tags) ? e.item.tags.length : e.item.tags ? 1 : 0;
+        // One efetch gives the abstract, the MeSH headings and the PMC id — so skip it when the
+        // note already stores everything this run would read from it. A note still missing its
+        // PMCID keeps the lookup: the summary below wants the PMC full text.
+        const needRecord =
+          !!pmid &&
+          (!noteAbstract ||
+            (nTags < MIN_TAGS && !noteMesh.length) ||
+            (!e.item.summary_source && !e.item.PMCID));
+        const rec = needRecord
           ? await fetchPubmedRecord(pmid, apiKey, email)
           : { abstract: "", descriptors: [], keywords: [], pmc: "" };
-        const abstract =
-          (typeof e.item.abstract === "string" && e.item.abstract) || rec.abstract || "";
+        const abstract = noteAbstract || rec.abstract || "";
+        const pmc = (typeof e.item.PMCID === "string" && e.item.PMCID) || rec.pmc;
 
         let summary: SummarySections | null = null;
         let sourceTag = "";
@@ -57,11 +68,11 @@ export async function backfillSummaries(plugin: ScholarRagPlugin): Promise<void>
           let src = abstract;
           let label = "PubMed abstract (not open access — full text not retrieved)";
           sourceTag = "pubmed-abstract";
-          if (rec.pmc) {
-            const full = await fetchPmcFullText(rec.pmc, apiKey, email);
+          if (pmc) {
+            const full = await fetchPmcFullText(pmc, apiKey, email);
             if (full) {
               src = full;
-              label = `PMC full text (${rec.pmc}) — summarized from the complete article body`;
+              label = `PMC full text (${pmc}) — summarized from the complete article body`;
               sourceTag = "pmc-fulltext";
             }
           }
@@ -80,7 +91,9 @@ export async function backfillSummaries(plugin: ScholarRagPlugin): Promise<void>
           const add = (list: string[]) => {
             for (const t of list) if (!merged.includes(t)) merged.push(t);
           };
-          add(await buildTags({ ...opts, meshFromSummary: summary?.mesh }));
+          // The note's own mesh_terms stand in for a fresh model reply when it has them.
+          const stored = noteMesh.length ? noteMesh.join("\n") : undefined;
+          add(await buildTags({ ...opts, meshFromSummary: summary?.mesh || stored }));
           // Still short? A note summarized earlier kept no MeSH line — the summary body never
           // stored one — so ask for headings alone rather than re-summarizing the paper.
           if (merged.length < MIN_TAGS && abstract) {

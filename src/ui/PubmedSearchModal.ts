@@ -10,7 +10,7 @@ import {
   searchPubmed,
   fetchPubmedRecord,
   fetchPmcFullText,
-  buildTags,
+  buildTagsWithMesh,
   PubmedHit,
 } from "../ingest/pubmedSearch";
 
@@ -202,6 +202,7 @@ export class PubmedSearchModal extends Modal {
       try {
         const { abstract, descriptors, keywords } = await fetchPubmedRecord(hit.pmid, apiKey, email);
         if (abstract) item.abstract = abstract.replace(/\s+/g, " ").trim().slice(0, 6000);
+        if (hit.pmc) item.PMCID = hit.pmc; // PMCID is a CSL variable — it belongs on the note
 
         if (this.summarize) {
           let src = abstract;
@@ -227,7 +228,7 @@ export class PubmedSearchModal extends Modal {
           }
         }
 
-        const tags = await buildTags({
+        const { tags, mesh } = await buildTagsWithMesh({
           descriptors,
           keywords,
           meshFromSummary: opts.summary?.mesh,
@@ -235,6 +236,7 @@ export class PubmedSearchModal extends Modal {
           email,
         });
         if (tags.length) opts.tags = tags;
+        if (mesh.length) opts.meshTerms = mesh;
         return { hit, item, opts, error: null as unknown };
       } catch (e) {
         failed++;

@@ -32,6 +32,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Changed
 
+- **Notes now keep what a lookup already learned: `PMCID` and `mesh_terms`.** A PubMed note
+  stores its PMC id (CSL's own `PMCID` variable — not stripped from citations) and the canonical
+  MeSH headings that produced its tags. "Summarize and tag references (fill gaps)" reads both
+  instead of re-fetching the PubMed record and re-asking the model for headings it already
+  produced; a note that already has an abstract, a `PMCID` and `mesh_terms` makes no network
+  call at all for the MeSH step.
 - **`main.ts` split into `src/commands/`** (`library`, `writing`, `openaccess`, `backfill`).
   `main.ts` keeps the plugin lifecycle, command wiring and the shared plumbing the modules call.
   Internal only — command ids, names and behaviour are unchanged.

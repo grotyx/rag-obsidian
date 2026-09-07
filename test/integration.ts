@@ -24,6 +24,7 @@ import { OllamaProvider } from "../src/index/providers/ollama";
 import { LLMClient } from "../src/llm/client";
 import { RagChat } from "../src/chat/rag";
 import { formatCitation } from "../src/cite/format";
+import { CiteEngine } from "../src/cite/csl";
 import { CitationGraph } from "../src/graph/citations";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { findOpenAccess } from "../src/ingest/unpaywall";
@@ -389,7 +390,12 @@ async function main() {
     // Every field buildNote writes must be either a real CSL variable or declared plugin-managed,
     // or citeproc renders it into the entry (that is how `status: unread` printed "Unread.").
     {
-      const noteText = buildNote(items.get(keys[0])!, "x2024test", { tags: ["t"], summarySource: "s" });
+      // PMCID and mesh_terms ride along: one is CSL (citeproc may use it), the other is ours.
+      const noteText = buildNote(
+        { ...items.get(keys[0])!, PMCID: "PMC2707599" },
+        "x2024test",
+        { tags: ["t"], summarySource: "s", meshTerms: ["Lumbar Vertebrae"] }
+      );
       const fmKeys = (noteText.match(/^---\n([\s\S]*?)\n---/) || ["", ""])[1]
         .split("\n")
         .filter((l) => /^[A-Za-z][A-Za-z0-9_-]*:/.test(l))
@@ -401,12 +407,22 @@ async function main() {
         "edition", "genre", "medium", "source", "archive", "call-number", "citation-key",
       ]);
       const PLUGIN_FIELDS = new Set([
-        "citekey", "status", "added", "tags", "pdf", "summary_source", "oa_url",
+        "citekey", "status", "added", "tags", "pdf", "summary_source", "mesh_terms", "oa_url",
         "oa_pdf", "oa_version", "retracted", "cited_by_count", "openalex_id", "csl",
         "citation-style", "aliases", "position",
       ]);
       const stray = fmKeys.filter((k) => !CSL_VARS.has(k) && !PLUGIN_FIELDS.has(k));
       ok(stray.length === 0, `every buildNote field is CSL or declared plugin-managed${stray.length ? ": " + stray.join(", ") : ""}`);
+      ok(
+        fmKeys.includes("PMCID") && fmKeys.includes("mesh_terms"),
+        `a PubMed note carries its PMC id and the MeSH headings behind its tags: ${fmKeys.join(", ")}`
+      );
+      // What citeproc actually sees: mesh_terms is stripped, PMCID is not (CSL defines it).
+      const engineFields = (CiteEngine as unknown as { PLUGIN_FIELDS: Set<string> }).PLUGIN_FIELDS;
+      ok(
+        engineFields.has("mesh_terms") && !engineFields.has("PMCID"),
+        "CiteEngine strips mesh_terms and leaves PMCID for citeproc"
+      );
     }
 
     // Plugin-managed frontmatter must not reach citeproc: CSL has a `status` variable, so
@@ -660,6 +676,14 @@ async function main() {
     ok(
       groups.length === 1 && groups[0] === "byDoi+byPmid",
       `duplicateGroups joins on a shared PMID and ignores short titles: ${JSON.stringify(groups)}`
+    );
+
+    // "Add by PMID" keeps the PMC id the esummary payload already carries, so the fill-gaps
+    // command need not re-fetch the record to find it. PMID 19621072 = the PRISMA statement.
+    const prisma = await fetchMetadata(detectId("pmid:19621072"), "");
+    ok(
+      /^PMC\d+$/.test(String(prisma.PMCID || "")),
+      `fetchMetadata(PMID) keeps the PMC id: ${String(prisma.PMCID)}`
     );
 
     const pm = detectId("https://pubmed.ncbi.nlm.nih.gov/26017442/");

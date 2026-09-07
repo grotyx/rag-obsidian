@@ -14,3 +14,6 @@ _testvault-auto/
 
 # runtime-fetched CSL styles (bundled ones are committed)
 styles/cache/
+
+# Claude Code worktrees / session files
+.claude/
