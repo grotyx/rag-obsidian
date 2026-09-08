@@ -72,6 +72,26 @@ OpenRouter.
     `sqlite-vec` backend (desktop only, via the Electron sqlite) can be swapped in without touching
     callers. Not before a real library shows the pain.
 
+## Phase 5 — from "ask" to "write" (planned 2026-09-08)
+
+14. **Filters reach the chat.** The year/author/tag filters exist only in the search pane; the chat
+    retrieves from the whole library. Show the same filter row in the chat pane and pass its
+    `SearchFilters` into `RagChat.answer` → `IndexManager.search`. A filtered answer says so in its
+    source list ("from 12 papers, 2022–2025, tag: endoscopy"). Half a day.
+15. **Index the PDFs you already have.** Only the abstract, the PMC full text and the note body are
+    chunked; a note whose `pdf:` links a file in the vault (OA download, manual link) contributes
+    nothing beyond its abstract. One command — "Index linked PDFs" — extracts text from every linked
+    PDF that has no `## Full text (extracted)` section yet (the marker `pdfImport.ts` already writes),
+    stashes it the same way, and lets the incremental reindex pick it up; the OA download command
+    does the same for the file it just saved. Progress + cancel via `startBatch`. One day.
+16. **Evidence for the paragraph you are writing.** Two editor commands. *Suggest citations for
+    selection*: hybrid-search the selected text (or the current paragraph), show the top hits in a
+    suggest modal with title/year/score, and insert `[@citekey]` at the cursor — the same grammar
+    the bibliography already reads. *Find unsupported claims*: walk the paragraphs of the active
+    manuscript (above `## References`), flag the ones with no `[@…]` cluster and a declarative shape,
+    and list them with a one-click "suggest" per paragraph. Pure logic (paragraph split, claim
+    heuristic, hit ranking) in `src/write/`, tested; UI in `src/commands/writing.ts`. Two days.
+
 ## Cut
 
 - **Ontology packs.** The toggle never worked (removed in 0.4.6), the pack path silently fell back to
@@ -96,6 +116,7 @@ OpenRouter.
 | 2 | chat persistence + save-as-note, summary language, search filters, fill-gaps scope | 2–3 days |
 | 3 | visual graph, store submission, mobile QA | 3–4 days |
 | 4 | sqlite-vec | when needed |
+| 5 | chat filters, index linked PDFs, citation suggestions + unsupported claims | 3–4 days |
 | Cut | ontology | half a day |
 
 Phase 1 first: items 1–3 are what you hit every day, item 4 removes a live footgun, item 5 makes the
