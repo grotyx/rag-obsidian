@@ -70,7 +70,8 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `index/store.ts` | Orama hybrid index wrapper + JSON persist/restore + `SearchFilters` (year range, tag AND, author) over the `tags`/`author` `enum[]` facets; `INDEX_SCHEMA` is the rebuild marker |
 | `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding) |
 | `graph/openalex.ts` | OpenAlex client (`resolveWork`, `fetchTitles`) |
-| `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` |
+| `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` + `refIds` (raw cited ids, for the map's dashed nodes) |
+| `graph/layout.ts` | `layoutGraph` — deterministic force-directed layout (circle seeding, no RNG) + `topByDegree` node cap; pure math behind the Related pane's SVG map |
 | `llm/client.ts` | provider-agnostic chat (Anthropic / OpenAI / Ollama) via `requestUrl`, with 429/5xx backoff |
 | `chat/rag.ts` | retrieve → number sources → [n] grounded answer → resolve citations |
 | `cite/csl.ts` | citeproc-js rendering: bundled styles + CSL-repo fetch/cache, per-note `csl:` override |
@@ -83,7 +84,8 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `commands/openaccess.ts` | Unpaywall lookup, OA PDF download, retraction check, PDF highlight extraction |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them, scoped via `BackfillScope`/`inScope` (`src/data/library.ts`) to all, one note, a folder, or a tag |
 | `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
-| `ui/{LibraryView,SearchView,RelatedView}.ts` | sidebar panes (`SearchView` holds the year/author/tag-chip filter state — pane-local, search only) |
+| `ui/{LibraryView,SearchView}.ts` | sidebar panes (`SearchView` holds the year/author/tag-chip filter state — pane-local, search only) |
+| `ui/RelatedView.ts` | citation-graph pane: SVG map (`graph/layout.ts`, ≤40 nodes; dashed node → `AddReferenceModal` prefilled with the OpenAlex id) above the unchanged text lists |
 | `ui/ChatView.ts` | chat pane — history persisted to `<pluginDir>/chat.json` (last 50 messages; the model still sees the last 8), Clear chat, and "Save as note" per answer → `Chat/<date> <question>.md` |
 | `ui/progress.ts` | `startBatch`/`cancelBatch` — status-bar progress with a ✕ for the two batch commands, one batch at a time, hands out the `AbortSignal` |
 | `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal,BackfillScopeModal}.ts` | modals |

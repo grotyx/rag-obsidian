@@ -26,6 +26,7 @@ import { RagChat } from "../src/chat/rag";
 import { formatCitation } from "../src/cite/format";
 import { CiteEngine } from "../src/cite/csl";
 import { CitationGraph } from "../src/graph/citations";
+import { layoutGraph, topByDegree, LayoutNode, LayoutEdge } from "../src/graph/layout";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { wrapCdnImportError } from "../src/util/cdn";
 import { findOpenAccess } from "../src/ingest/unpaywall";
@@ -935,6 +936,71 @@ async function main() {
     ok(
       rLang.includes("new") && !rLang.includes("alt") && rLang.endsWith("# Appendix\nkeep\n"),
       "replaceSummaryBlock recognises a language-suffixed ## Summary (X) heading"
+    );
+  }
+
+  // ---- 17. citation map layout (pure force-directed layout behind RelatedView's SVG) ----
+  log("\n[17] Citation map layout");
+  {
+    const W = 320;
+    const H = 260;
+    // a = the active note (pinned centre) with one cited paper b; c—d are a separate pair.
+    const mapNodes: LayoutNode[] = [{ id: "a", pinned: true }, { id: "b" }, { id: "c" }, { id: "d" }];
+    const mapEdges: LayoutEdge[] = [
+      { source: "a", target: "b" },
+      { source: "c", target: "d" },
+    ];
+    const p1 = layoutGraph(mapNodes, mapEdges, { width: W, height: H });
+
+    ok(p1.size === mapNodes.length, `every node placed: ${p1.size}/${mapNodes.length}`);
+    ok(
+      [...p1.values()].every(
+        (p) => Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.x <= W && p.y >= 0 && p.y <= H
+      ),
+      `all positions finite and inside ${W}×${H}: ${JSON.stringify([...p1.entries()])}`
+    );
+
+    const centre = p1.get("a");
+    ok(centre?.x === W / 2 && centre?.y === H / 2, `pinned node stays at the centre: ${JSON.stringify(centre)}`);
+
+    const dist = (i: string, j: string) => {
+      const a = p1.get(i);
+      const b = p1.get(j);
+      if (!a || !b) return Infinity;
+      return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+    };
+    ok(
+      dist("a", "b") < dist("a", "c") && dist("c", "d") < dist("a", "c"),
+      `springs pull connected nodes together: a-b ${dist("a", "b").toFixed(1)}, c-d ${dist("c", "d").toFixed(
+        1
+      )}, both under the unconnected a-c ${dist("a", "c").toFixed(1)}`
+    );
+
+    // Seeded on a circle by index, never Math.random — same input, same output.
+    const p2 = layoutGraph(mapNodes, mapEdges, { width: W, height: H });
+    ok(
+      [...p1.keys()].every((k) => p1.get(k)?.x === p2.get(k)?.x && p1.get(k)?.y === p2.get(k)?.y),
+      "layout is deterministic across two runs"
+    );
+
+    // Degree cap: a hub note's map keeps the pinned centre plus the best-connected nodes.
+    const hubNodes: LayoutNode[] = [{ id: "hub", pinned: true }];
+    for (let i = 0; i < 6; i++) hubNodes.push({ id: `n${i}` });
+    // n0 has 3 edges, n1 has 2, n2 has 1, n3..n5 none.
+    const hubEdges: LayoutEdge[] = [
+      { source: "n0", target: "n1" },
+      { source: "n0", target: "n2" },
+      { source: "n0", target: "hub" },
+      { source: "n1", target: "hub" },
+    ];
+    const keptIds = topByDegree(hubNodes, hubEdges, 3).map((n) => n.id);
+    ok(
+      JSON.stringify(keptIds) === JSON.stringify(["hub", "n0", "n1"]),
+      `degree cap keeps the pinned node then the best-connected: ${JSON.stringify(keptIds)}`
+    );
+    ok(
+      topByDegree(hubNodes, hubEdges, 99).length === hubNodes.length,
+      "degree cap is a no-op when the graph already fits"
     );
   }
 
