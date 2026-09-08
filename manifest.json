@@ -1,7 +1,7 @@
 {
   "id": "rag-obsidian",
   "name": "Academic Paper Citation Manager",
-  "version": "0.4.14",
+  "version": "0.4.15",
   "minAppVersion": "1.7.2",
   "description": "AI-native citation manager for Obsidian: PubMed keyword search, LLM paper summaries, MeSH topic tags, and CSL-JSON markdown reference notes with @-cite + bibliography.",
   "author": "Sang-Min Park, M.D., Ph.D.",

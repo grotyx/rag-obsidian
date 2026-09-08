@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.14 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (106 integration checks green)
+**Version**: 0.4.15 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (117 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -99,7 +99,7 @@ npm run dev            # esbuild watch → main.js (use while testing in a vault
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (106 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (117 checks)
 ```
 
 ## Testing approach (important)
@@ -127,7 +127,9 @@ real Obsidian API; the vault's plugin folder must hold copies of `main.js`/`mani
 rendering (`document.visibilityState === "hidden"`, so reading-view checks return nothing) —
 restore it from the same console with
 `require("@electron/remote").getCurrentWindow().restore()`. Obsidian caches `manifest.json`, so
-a version bump needs `app.commands.executeCommandById("app:reload")`, not just a plugin toggle.
+a version bump needs `app.commands.executeCommandById("app:reload")`, not just a plugin toggle — and a
+`disablePlugin`/`enablePlugin` toggle has been seen to keep the *previous* `main.js`, so after copying a
+new build, `app:reload` before trusting any in-app check.
 
 **Environment**: `EMBED_MODEL` picks the Ollama model for the embedding section (default
 `qwen2.5:0.5b`; without a local Ollama it falls back to a deterministic embedder and still
@@ -199,9 +201,9 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 
 ## Roadmap / next
 
-See [ROADMAP.md](ROADMAP.md) — a phased plan from a full read of the code at 0.4.12. Phase 1 (cancel +
-progress for batches, persist PMCID/MeSH on notes, per-note re-summarize, delete the Gemini-era
-scripts) comes first.
+See [ROADMAP.md](ROADMAP.md). Phases 1–3 are shipped (0.4.13–0.4.15); what remains is the store
+submission (`docs/STORE_SUBMISSION.md`), an on-device iOS pass (`docs/MOBILE.md`) and Phase 4 (sqlite-vec,
+only when a library outgrows Orama).
 
 Done: citeproc-js full CSL (v0.3.0) · cross-identifier dedup on add · secretStorage for API keys
 (v0.4.0) · `main.ts` split into `src/commands/` + the concept-pack feature dropped (MeSH covers it).

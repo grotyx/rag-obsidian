@@ -5,6 +5,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.4.15] — 2026-09-08
+
+> Requires Obsidian 1.7.2 or newer (`Workspace.revealLeaf`); earlier releases claimed 1.5.0.
+
 ### Added
 
 - **A drawn citation map in the Related pane.** Above the existing lists, the pane renders the

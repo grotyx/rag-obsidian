@@ -7,6 +7,11 @@ good shape. What follows is what is missing, what is fragile, and what should be
 much it changes the daily experience for a clinician-researcher running PubMed searches through
 OpenRouter.
 
+> **Status (2026-09-08):** Phases 1–3 shipped — Phase 1 in 0.4.13, Phase 2 in 0.4.14, Phase 3 in 0.4.15
+> (visual citation map, review pass with `npm run lint`, mobile guards + `docs/MOBILE.md`). Two items
+> stay with the user: the community-store submission itself (`docs/STORE_SUBMISSION.md` has the text)
+> and the on-device iOS run (`docs/MOBILE.md` has the script). Phase 4 waits for a library that needs it.
+
 ## Phase 1 — things that bite during normal use (do first)
 
 1. **Cancel and progress for batches.** Adding 50 papers or filling gaps over a whole library now runs
