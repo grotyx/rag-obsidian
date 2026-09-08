@@ -228,6 +228,62 @@
   font-weight: 600;
 }
 
+/* Citation map (SVG force layout above the lists) */
+.rag-obsidian-related .srag-map-wrap {
+  margin: 6px 0 4px;
+}
+.rag-obsidian-related .srag-map {
+  display: block;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+.rag-obsidian-related .srag-map-edge {
+  stroke: var(--background-modifier-border);
+  stroke-width: 1;
+}
+.rag-obsidian-related .srag-map-edge-coupled,
+.rag-obsidian-related .srag-map-edge-missing {
+  stroke-dasharray: 3 3;
+}
+.rag-obsidian-related .srag-map-arrow {
+  fill: var(--background-modifier-border);
+}
+.rag-obsidian-related .srag-map-node {
+  cursor: pointer;
+}
+.rag-obsidian-related .srag-map-node circle {
+  fill: var(--background-primary);
+  stroke: var(--text-normal);
+  stroke-width: 1.5;
+}
+.rag-obsidian-related .srag-map-node:hover circle {
+  stroke: var(--interactive-accent);
+}
+.rag-obsidian-related .srag-map-node text {
+  font-size: 7px;
+  fill: var(--text-muted);
+  pointer-events: none;
+}
+.rag-obsidian-related .srag-map-active circle {
+  fill: var(--interactive-accent);
+  stroke: var(--interactive-accent);
+}
+.rag-obsidian-related .srag-map-active text {
+  fill: var(--text-normal);
+}
+.rag-obsidian-related .srag-map-cited circle {
+  fill: var(--background-modifier-border);
+}
+.rag-obsidian-related .srag-map-coupled circle {
+  stroke: var(--text-muted);
+}
+.rag-obsidian-related .srag-map-missing circle {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 2;
+}
+
 /* Citation autocomplete suggestion */
 .srag-suggestion .srag-sug-key {
   font-weight: 600;

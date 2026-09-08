@@ -14,9 +14,12 @@ export class AddReferenceModal extends Modal {
   private pendingItem: CSLItem | null = null;
   private previewEl?: HTMLElement;
 
-  constructor(app: App, plugin: ScholarRagPlugin) {
+  /** `prefill` seeds the identifier field — the citation map passes the OpenAlex id of a
+   *  "missing" work so one click on a dashed node lands in the normal add flow. */
+  constructor(app: App, plugin: ScholarRagPlugin, private prefill = "") {
     super(app);
     this.plugin = plugin;
+    this.input = prefill;
   }
 
   onOpen(): void {
@@ -31,6 +34,7 @@ export class AddReferenceModal extends Modal {
     new Setting(contentEl).setName("Identifier").addText((t) => {
       textComp = t;
       t.setPlaceholder("10.1038/nature14539  ·  26017442  ·  2005.11401");
+      if (this.prefill) t.setValue(this.prefill);
       t.onChange((v) => {
         this.input = v;
         this.clearPending();
@@ -100,7 +104,11 @@ export class AddReferenceModal extends Modal {
       let item: CSLItem;
       if (id.kind === "unknown") {
         // Treat free text as a title search (OpenAlex → DOI/PMID → rich metadata).
-        const w = await resolveWork({ type: "article-journal", title: raw }, this.plugin.settings.openalexMailto);
+        // A bare OpenAlex work id (W123…) resolves directly; anything else is a title search.
+        const seed: CSLItem = /^W\d+$/i.test(raw)
+          ? { type: "article-journal", openalex_id: raw }
+          : { type: "article-journal", title: raw };
+        const w = await resolveWork(seed, this.plugin.settings.openalexMailto);
         if (!w) {
           notice.hide();
           new Notice("No match — paste a DOI / PMID / arXiv ID, or refine the title");

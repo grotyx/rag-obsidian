@@ -94,6 +94,12 @@ export class CitationGraph {
     }
   }
 
+  /** Raw OpenAlex ids this paper cites, in or out of the library — the map uses it to
+   *  draw a "missing" work only when the active paper actually cites it. */
+  refIds(citekey: string): string[] {
+    return this.data.byCitekey[citekey]?.refs ?? [];
+  }
+
   /** Library papers that THIS paper cites. */
   referencesInLibrary(citekey: string): string[] {
     const node = this.data.byCitekey[citekey];

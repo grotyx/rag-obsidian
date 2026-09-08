@@ -33,7 +33,8 @@ no account, no backend — just your vault.
 - Auto-tags every note with **MeSH topic terms** → Obsidian's **graph view** clusters your
   papers by subject.
 - **Citation graph** (OpenAlex): references / cited-by in your library, and *"frequently
-  cited but missing"* recommendations.
+  cited but missing"* recommendations — drawn as a **map** in the Related pane (solid nodes are
+  notes you have, dashed ones are papers you don't; click a dashed node to add it).
 - Reading status, **dashboard**, duplicate finder, citation counts, retraction check.
 
 **✍️ Cite & write**

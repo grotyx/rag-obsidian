@@ -5,6 +5,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **A drawn citation map in the Related pane.** Above the existing lists, the pane renders the
+  active reference's neighbourhood as an SVG force layout: the active paper pinned at the centre,
+  the library papers it cites and that cite it as solid nodes (a small arrowhead shows which way
+  the citation runs), bibliographically coupled papers on a dashed edge, and the frequently-cited
+  works you *don't* have as dashed nodes. Clicking a solid node opens that note; clicking a dashed
+  one opens **Add reference** prefilled with the work's OpenAlex id, so a gap in the library is one
+  click from being filled. Hovering a node shows the full title. The map caps at the 40
+  best-connected nodes so a hub paper stays readable, and says how many were left out; the text
+  lists below are unchanged and remain the accessible fallback.
+
 ## [0.4.14] — 2026-09-08
 
 ### Added
