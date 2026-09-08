@@ -1,7 +1,7 @@
 import { Editor, EditorPosition, Notice, normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { CiteSuggestModal, UnsupportedClaimsModal } from "../ui/CiteSuggestModal";
-import { Paragraph, paragraphsOf, rankHits, unsupportedClaims } from "../write/evidence";
+import { Paragraph, paragraphsOf, rankHits, unsupportedClaims, citationInsertion } from "../write/evidence";
 import {
   keysInCite,
   extractCitekeys,
@@ -248,8 +248,13 @@ function insertCitation(editor: Editor, at: EditorPosition, key: string): void {
     new Notice(`Already cited: [@${key}]`);
     return;
   }
-  if (keys.length) editor.replaceRange(`; @${key}]`, editor.offsetToPos(off - 1), at);
-  else editor.replaceRange(`[@${key}]`, at, at);
+  if (keys.length) {
+    editor.replaceRange(`; @${key}]`, editor.offsetToPos(off - 1), at);
+    return;
+  }
+  const ins = citationInsertion(editor.getValue().slice(0, off), key);
+  const pos = editor.offsetToPos(off - ins.back);
+  editor.replaceRange(ins.text, pos, pos);
 }
 
 /** Insert at the end of `claim` — offsets are recomputed, so an earlier insert can't shift it. */
@@ -264,7 +269,8 @@ function insertAtParagraph(editor: Editor, claim: Paragraph, key: string): void 
 
 /** Pull the EN summary (else KR) section body out of a reference note. */
 function extractSummary(content: string): string {
-  const en = content.match(/##\s+Summary \(EN\)\s*\n([\s\S]*?)(?=\n#{1,2}\s|$)/i);
+  // `## Summary` (0.4.14+, any language) or the older `## Summary (EN)`.
+  const en = content.match(/##\s+Summary(?:\s*\([^)\n]*\))?\s*\n([\s\S]*?)(?=\n#{1,2}\s|$)/i);
   if (en && en[1].trim()) return en[1].trim();
   const kr = content.match(/##\s+요약 \(KR\)\s*\n([\s\S]*?)(?=\n#{1,2}\s|$)/);
   return kr ? kr[1].trim() : "";

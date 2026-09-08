@@ -20,7 +20,7 @@ import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote, summaryBlock } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
 import { VectorStore, INDEX_SCHEMA, SearchFilters, SearchHit, describeFilters } from "../src/index/store";
-import { paragraphsOf, looksLikeClaim, unsupportedClaims, rankHits } from "../src/write/evidence";
+import { paragraphsOf, looksLikeClaim, unsupportedClaims, rankHits, citationInsertion } from "../src/write/evidence";
 import { OllamaProvider } from "../src/index/providers/ollama";
 import { LLMClient } from "../src/llm/client";
 import { RagChat } from "../src/chat/rag";
@@ -1195,6 +1195,15 @@ async function main() {
     );
     ok(ranked[0].score === 0.7, `rankHits: keeps the best-scoring chunk per reference → ${ranked[0].score}`);
     ok(rankHits(hits, 2).length === 2, "rankHits: caps at max");
+
+    const ins1 = citationInsertion("Outcomes were comparable.", "a");
+    const ins2 = citationInsertion("Outcomes were comparable", "a");
+    const ins3 = citationInsertion("Outcomes were comparable ", "a");
+    ok(
+      ins1.back === 1 && ins1.text === " [@a]" && ins2.back === 0 && ins2.text === " [@a]" && ins3.back === 0 && ins3.text === "[@a]",
+      `citationInsertion: before the full stop, after a space → ${JSON.stringify([ins1, ins2, ins3])}`
+    );
+    ok(citationInsertion("", "a").text === "[@a]" && citationInsertion("wait...", "a").back === 0, "citationInsertion: empty prefix and an ellipsis are left alone");
   }
 
   // ---- 20. Linked-PDF stash (pdfStash + chunk growth) ----

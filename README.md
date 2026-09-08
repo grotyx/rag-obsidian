@@ -227,7 +227,7 @@ csl: springer-basic-brackets
 npm run dev        # esbuild watch → main.js
 npm run deploy     # build + copy into the vault (VAULT_PLUGIN_DIR in .env)
 npm run build      # tsc + esbuild production
-npm test           # live integration suite (156 checks)
+npm test           # live integration suite (158 checks)
 ```
 
 Helper script (terminal, no Obsidian needed) — path from `.env`:

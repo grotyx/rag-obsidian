@@ -91,3 +91,16 @@ export function rankHits(hits: SearchHit[], max = 8): SearchHit[] {
   }
   return [...best.values()].slice(0, max);
 }
+
+/** Where a new `[@key]` goes relative to the text before the cursor: inside the sentence
+ *  ("stays [@key].", not "stays.[@key]") and after a space. `back` is how many characters
+ *  before the cursor the insertion starts (1 when stepping in front of terminal punctuation). */
+export function citationInsertion(before: string, key: string): { back: number; text: string } {
+  const cite = `[@${key}]`;
+  const m = before.match(/([.!?])$/);
+  if (m && !/\.\.\.$/.test(before)) {
+    const body = before.slice(0, -1);
+    return { back: 1, text: (body.length && !/\s$/.test(body) ? " " : "") + cite };
+  }
+  return { back: 0, text: (before.length && !/\s$/.test(before) ? " " : "") + cite };
+}

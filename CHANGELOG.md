@@ -7,6 +7,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Added
 
+- **Citations land inside the sentence.** Suggest-citations / unsupported-claims insert `[@key]` before the terminal full stop and after a space (`stays [@key].`), merging into an existing cluster when the cursor sits on one.
+
 - **The search pane's filters reach the chat.** The year-range / author / tag-chip row is now a
   shared component (`src/ui/FilterRow.ts`) and sits in the chat pane too, between the log and the
   input: whatever is set there scopes the retrieval behind the next answer. A scoped answer labels
@@ -34,6 +36,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
   The stash marker, the ~200k-character cap and the `pdf:` link parsing live in one place
   (`src/ingest/pdfStash.ts`), which PDF import now writes through too — so its stash grew from
   20k to the same 200k cap.
+
+### Fixed
+
+- **Annotated bibliography reads the new `## Summary` heading** (0.4.14 changed the heading; the export still only matched `## Summary (EN)`).
 
 ## [0.4.15] — 2026-09-08
 
