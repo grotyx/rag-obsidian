@@ -19,7 +19,7 @@ import { parseMeshList, buildSysPrompt, summarizeSource } from "../src/ingest/su
 import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote, summaryBlock } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
-import { VectorStore, INDEX_SCHEMA, SearchFilters } from "../src/index/store";
+import { VectorStore, INDEX_SCHEMA, SearchFilters, describeFilters } from "../src/index/store";
 import { OllamaProvider } from "../src/index/providers/ollama";
 import { LLMClient } from "../src/llm/client";
 import { RagChat } from "../src/chat/rag";
@@ -1031,6 +1031,61 @@ async function main() {
         wrapped2.message.includes("not an Error object"),
       `wrapCdnImportError: handles a non-Error throw: "${wrapped2.message}"`
     );
+  }
+
+  // ---- 19. filters reach the chat ----
+  log("\n[19] Filters in the chat pane");
+  {
+    ok(describeFilters({}) === "", "no filter describes as the empty string");
+    ok(
+      describeFilters({ yearFrom: 2022, yearTo: 2025 }) === "2022–2025",
+      `two-sided year range: "${describeFilters({ yearFrom: 2022, yearTo: 2025 })}"`
+    );
+    ok(describeFilters({ yearFrom: 2022 }) === "2022–", "an open-ended 'from' keeps the dash");
+    ok(describeFilters({ yearTo: 2025 }) === "–2025", "an open-ended 'to' keeps the dash");
+    ok(describeFilters({ tags: ["endoscopy"] }) === "tag: endoscopy", "one tag is singular");
+    ok(
+      describeFilters({ tags: ["endoscopy", "stent"], author: "kim" }) ===
+        "tags: endoscopy + stent · author: kim",
+      `tags (ANDed with +) and author: "${describeFilters({ tags: ["endoscopy", "stent"], author: "kim" })}"`
+    );
+
+    // End-to-end: the same question, filtered and not, against a real Orama index.
+    const cdocs = chunkReference(
+      { citekey: "old2001", title: "Lumbar fusion", year: 2001, tags: [], authors: ["Kim"], body: "Fusion outcomes at ten years." },
+      800
+    );
+    const cstore = new VectorStore();
+    cstore.init(dim, providerId);
+    await cstore.addChunks(cdocs, await embed(cdocs.map((c) => c.embedText)));
+    const { server: cserver, port: cport } = await startMockLLM();
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cidx: any = {
+        ready: true,
+        search: async (q: string, f: SearchFilters = {}) =>
+          cstore.search((await embed([q]))[0], q, 20, f),
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clib: any = { getItem: () => null };
+      const chat = new RagChat(cidx, clib, {
+        ...settings,
+        llmProvider: "openai" as const,
+        llmModel: "mock",
+        openaiApiKey: "x",
+        openaiBaseUrl: `http://127.0.0.1:${cport}`,
+      });
+      const open = await chat.answer("fusion outcomes");
+      ok(open.sources.length > 0, `unfiltered chat retrieves ${open.sources.length} source(s)`);
+      const scoped = await chat.answer("fusion outcomes", [], { yearFrom: 2030 });
+      ok(scoped.sources.length === 0, "a yearFrom past every note leaves the answer with no sources");
+      ok(
+        describeFilters(scoped.filters ?? {}) === "2030–",
+        `the answer echoes its filters for the source header: "${describeFilters(scoped.filters ?? {})}"`
+      );
+    } finally {
+      cserver.close();
+    }
   }
 
   log("\nDONE.");

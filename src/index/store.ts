@@ -47,6 +47,16 @@ export interface SearchFilters {
   author?: string;
 }
 
+/** One-line, human-readable summary of a filter set, e.g. "2022–2025 · tag: endoscopy ·
+ *  author: kim". Empty string when nothing is filtered, so callers can test it as a flag. */
+export function describeFilters(f: SearchFilters): string {
+  const parts: string[] = [];
+  if (f.yearFrom || f.yearTo) parts.push(`${f.yearFrom ?? ""}–${f.yearTo ?? ""}`);
+  if (f.tags?.length) parts.push(`${f.tags.length > 1 ? "tags" : "tag"}: ${f.tags.join(" + ")}`);
+  if (f.author) parts.push(`author: ${f.author}`);
+  return parts.join(" · ");
+}
+
 /** Thin wrapper over an Orama hybrid (BM25 + vector) index. */
 export class VectorStore {
   private db: any = null;

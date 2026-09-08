@@ -1,4 +1,5 @@
 import { IndexManager } from "../index/manager";
+import { SearchFilters } from "../index/store";
 import { Library } from "../data/library";
 import { LLMClient, ChatMessage } from "../llm/client";
 import { formatCitation } from "../cite/format";
@@ -8,6 +9,9 @@ import { ScholarRagSettings } from "../types";
  *  of the sources they were generated against, so anchors stay resolvable. */
 export interface ChatTurn extends ChatMessage {
   sources?: string[];
+  /** `describeFilters` of the filters that turn was retrieved under, so a replayed
+   *  answer still shows the scope it was answered in. Absent = unfiltered. */
+  filterSummary?: string;
 }
 
 export interface AnswerSource {
@@ -20,6 +24,8 @@ export interface AnswerSource {
 export interface RagAnswer {
   text: string;
   sources: AnswerSource[];
+  /** The filters the retrieval ran under, echoed back so the UI can label the answer. */
+  filters?: SearchFilters;
 }
 
 /** Retrieval-augmented chat with passage-level citation grounding:
@@ -31,14 +37,23 @@ export class RagChat {
     private settings: ScholarRagSettings
   ) {}
 
-  async answer(query: string, history: ChatTurn[] = []): Promise<RagAnswer> {
+  async answer(
+    query: string,
+    history: ChatTurn[] = [],
+    filters: SearchFilters = {}
+  ): Promise<RagAnswer> {
     if (!this.index.ready) {
       throw new Error("Search index not built — open the search pane and click “Rebuild index”.");
     }
 
-    const hits = await this.index.search(query);
+    const hits = await this.index.search(query, filters);
     if (hits.length === 0) {
-      return { text: "No relevant passages found in your library for that question.", sources: [] };
+      const hint = Object.keys(filters).length ? " Try loosening the filters." : "";
+      return {
+        text: `No relevant passages found in your library for that question.${hint}`,
+        sources: [],
+        filters,
+      };
     }
 
     // Number sources by first appearance (one number per cited reference).
@@ -107,6 +122,6 @@ export class RagChat {
       };
     });
 
-    return { text, sources };
+    return { text, sources, filters };
   }
 }

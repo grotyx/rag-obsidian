@@ -2,6 +2,8 @@ import { ItemView, WorkspaceLeaf, Notice, MarkdownRenderer, normalizePath } from
 import type ScholarRagPlugin from "../../main";
 import { RagChat, RagAnswer, AnswerSource, ChatTurn } from "../chat/rag";
 import { anchorsToCitekeys } from "../cite/bibliography";
+import { describeFilters } from "../index/store";
+import { FilterRow } from "./FilterRow";
 import { formatCitation } from "../cite/format";
 
 export const VIEW_TYPE_CHAT = "rag-obsidian-chat";
@@ -15,6 +17,7 @@ export class ChatView extends ItemView {
   private history: ChatTurn[] = [];
   private logEl!: HTMLElement;
   private inputEl!: HTMLTextAreaElement;
+  private filterRow!: FilterRow;
 
   constructor(leaf: WorkspaceLeaf, plugin: ScholarRagPlugin) {
     super(leaf);
@@ -38,6 +41,8 @@ export class ChatView extends ItemView {
     c.addClass("rag-obsidian-chat");
 
     this.logEl = c.createDiv({ cls: "srag-chat-log" });
+    // Scopes the next question only — view-local, never stored with the chat log.
+    this.filterRow = new FilterRow(c, this.plugin);
 
     const composer = c.createDiv({ cls: "srag-chat-composer" });
     this.inputEl = composer.createEl("textarea", {
@@ -88,7 +93,8 @@ export class ChatView extends ItemView {
             !!t &&
             typeof t.content === "string" &&
             (t.role === "user" || t.role === "assistant") &&
-            (t.sources === undefined || Array.isArray(t.sources))
+            (t.sources === undefined || Array.isArray(t.sources)) &&
+            (t.filterSummary === undefined || typeof t.filterSummary === "string")
         )
         .slice(-MAX_TURNS);
     } catch {
@@ -112,7 +118,7 @@ export class ChatView extends ItemView {
         continue;
       }
       const sources = this.sourcesFor(turn.sources ?? []);
-      await this.renderAnswer({ text: turn.content, sources }, this.questionBefore(i));
+      await this.renderAnswer({ text: turn.content, sources }, this.questionBefore(i), turn.filterSummary);
     }
   }
 
@@ -122,6 +128,7 @@ export class ChatView extends ItemView {
     const adapter = this.app.vault.adapter;
     const path = this.historyPath();
     if (await adapter.exists(path)) await adapter.remove(path);
+    this.filterRow.clear();
     this.bubble("system", "Chat cleared.");
   }
 
@@ -160,12 +167,20 @@ export class ChatView extends ItemView {
 
     const thinking = this.bubble("assistant", "…");
     try {
-      const ans = await this.rag.answer(query, this.history.slice(-CONTEXT_TURNS));
+      const filters = this.filterRow.filters();
+      const ans = await this.rag.answer(query, this.history.slice(-CONTEXT_TURNS), filters);
+      const summary = describeFilters(ans.filters ?? filters);
       thinking.remove();
-      await this.renderAnswer(ans, query);
+      await this.renderAnswer(ans, query, summary);
       this.history.push({ role: "user", content: query });
-      // Keep this turn's source order so follow-up turns can resolve its [n] anchors.
-      this.history.push({ role: "assistant", content: ans.text, sources: ans.sources.map((s) => s.citekey) });
+      // Keep this turn's source order so follow-up turns can resolve its [n] anchors, and
+      // the filter label so a replayed answer still shows the scope it was answered in.
+      this.history.push({
+        role: "assistant",
+        content: ans.text,
+        sources: ans.sources.map((s) => s.citekey),
+        ...(summary ? { filterSummary: summary } : {}),
+      });
       if (this.history.length > MAX_TURNS) this.history = this.history.slice(-MAX_TURNS);
       await this.saveHistory();
     } catch (e) {
@@ -175,7 +190,7 @@ export class ChatView extends ItemView {
     }
   }
 
-  private async renderAnswer(ans: RagAnswer, question: string): Promise<void> {
+  private async renderAnswer(ans: RagAnswer, question: string, filterSummary = ""): Promise<void> {
     const wrap = this.logEl.createDiv({ cls: "srag-bubble srag-assistant" });
     const body = wrap.createDiv({ cls: "srag-answer" });
     // Neutralize embeds/images before rendering (`![[…]]` → `[[…]]`, `![…](…)` → `[…](…)`):
@@ -186,7 +201,10 @@ export class ChatView extends ItemView {
 
     if (ans.sources.length) {
       const src = wrap.createDiv({ cls: "srag-sources" });
-      src.createDiv({ cls: "srag-sources-head", text: "Sources" });
+      src.createDiv({
+        cls: "srag-sources-head",
+        text: filterSummary ? `Sources (${filterSummary})` : "Sources",
+      });
       for (const s of ans.sources) {
         const row = src.createDiv({ cls: "srag-source" });
         row.createSpan({ cls: "srag-source-n", text: `[${s.n}]` });
