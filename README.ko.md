@@ -205,7 +205,7 @@ csl: springer-basic-brackets
 | **추가** | Search PubMed · DOI / PMID / arXiv / 제목 추가 · Import(BibTeX / RIS / nbib / CSL-JSON) · Import PDF |
 | **독서** | 읽기 상태(unread / reading / read) · Reading queue · OA PDF 찾기 · OA PDF 다운로드 · PDF 형광펜 추출 · 온라인으로 열기 |
 | **정리** | 요약·태그 일괄 채우기 · 이 참고문헌 요약·태그 채우기 · 폴더/태그 범위로 요약·태그 채우기… · 이 참고문헌 다시 요약 · 옛 모델로 만든 요약 다시 생성 · 대시보드 · 중복 찾기 · 인용수 채우기 · 철회 확인 · 태그 변경 · 메타데이터 보강 · 관련 논문 추천 · 인용 네트워크 내보내기 |
-| **집필** | `@` 자동완성 · Update bibliography · Compile manuscript · 인용 복사 · 주석 참고문헌 · 최근 챗 답변을 노트로 저장 |
+| **집필** | `@` 자동완성 · 선택 문단에 인용 추천 · 근거 없는 주장 찾기 · Update bibliography · Compile manuscript · 인용 복사 · 주석 참고문헌 · 최근 챗 답변을 노트로 저장 |
 | **검색** | 의미 검색 · 챗 · 관련 논문 · 인덱스 재생성 |
 | **내보내기** | 라이브러리 → BibTeX / RIS / CSL-JSON |
 

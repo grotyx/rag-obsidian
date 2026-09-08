@@ -80,7 +80,8 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `cite/export.ts` | library → BibTeX / RIS / CSL-JSON |
 | `cite/suggest.ts` | `@`-autocomplete EditorSuggest → inserts `[@citekey]` |
 | `commands/library.ts` | dashboard, duplicates, reading queue, status, citation-count backfill, enrich, rename tag, export, citation network, suggest related |
-| `commands/writing.ts` | update bibliography, compile manuscript, copy citation, annotated bibliography |
+| `write/evidence.ts` | `paragraphsOf` (prose paragraphs above `## References`, with offsets + `cited`), `looksLikeClaim` heuristic, `unsupportedClaims`, `rankHits` (chunk hits → one row per citekey) |
+| `commands/writing.ts` | update bibliography, compile manuscript, copy citation, annotated bibliography, suggest citations for selection, find unsupported claims |
 | `commands/openaccess.ts` | Unpaywall lookup, OA PDF download, retraction check, PDF highlight extraction |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them, scoped via `BackfillScope`/`inScope` (`src/data/library.ts`) to all, one note, a folder, or a tag |
 | `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
@@ -89,6 +90,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `ui/RelatedView.ts` | citation-graph pane: SVG map (`graph/layout.ts`, ≤40 nodes; dashed node → `AddReferenceModal` prefilled with the OpenAlex id) above the unchanged text lists |
 | `ui/ChatView.ts` | chat pane — a `FilterRow` between log and input scopes the next answer (its `describeFilters` label rides along on the persisted turn and heads the source list), history persisted to `<pluginDir>/chat.json` (last 50 messages; the model still sees the last 8), Clear chat, and "Save as note" per answer → `Chat/<date> <question>.md` |
 | `ui/progress.ts` | `startBatch`/`cancelBatch` — status-bar progress with a ✕ for the two batch commands, one batch at a time, hands out the `AbortSignal` |
+| `ui/CiteSuggestModal.ts` | `CiteSuggestModal` (pick a retrieved reference → insert `[@citekey]`) + `UnsupportedClaimsModal` (uncited claim paragraphs, one **Suggest** button each) |
 | `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal,BackfillScopeModal}.ts` | modals |
 | `main.ts` | plugin lifecycle, views, `addCommand` wiring, ribbons, events, citation rendering + shared plumbing (`writeAndOpen`, `activeRef`, `styleForNote`) |
 
