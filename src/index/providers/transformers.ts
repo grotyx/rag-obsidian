@@ -10,7 +10,6 @@ import { EmbeddingProvider } from "../embedding";
 export class TransformersProvider implements EmbeddingProvider {
   readonly id: string;
   private model: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private pipe: any = null;
 
   constructor(settings: ScholarRagSettings) {

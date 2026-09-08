@@ -49,7 +49,6 @@ async function requestRetry429(url: string) {
   return res;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toWork(w: any): OAWork {
   return {
     openalexId: shortId(w.id),
@@ -126,7 +125,6 @@ export async function fetchTitles(
       ),
       throw: false,
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const w of (r.json?.results || []) as any[]) {
       out.set(shortId(w.id), { title: w.title || "", citedByCount: w.cited_by_count || 0 });
     }

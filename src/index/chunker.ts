@@ -36,7 +36,7 @@ export function yearFromIssued(issued: unknown): number {
   if (issued && typeof issued === "object") {
     const dp = (issued as Record<string, unknown>)["date-parts"];
     if (Array.isArray(dp) && Array.isArray(dp[0]) && typeof dp[0][0] === "number") {
-      return dp[0][0] as number;
+      return dp[0][0];
     }
   }
   return 0;

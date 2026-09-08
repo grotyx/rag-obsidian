@@ -96,6 +96,7 @@ npm install            # deps
 npm run dev            # esbuild watch → main.js (use while testing in a vault; Cmd-R to reload Obsidian)
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
+npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (106 checks)
 ```
 

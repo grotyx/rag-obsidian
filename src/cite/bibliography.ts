@@ -3,7 +3,7 @@ import { formatCitation } from "./format";
 import { CiteStyle, CSLItem } from "../types";
 
 const CITE_RE = /\[([^\]]*@[^\]]*)\]/g; // [@key]  ·  [-@key]  ·  [@a; @b]  ·  [@key, p. 23]
-const KEY_RE = /-?@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+?<>~\/-]*)/g; // Pandoc citekey (locators ignored)
+const KEY_RE = /-?@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+?<>~/-]*)/g; // Pandoc citekey (locators ignored)
 
 /** Fresh global regex over `[...@...]` citation brackets (own lastIndex per caller). */
 export function citePattern(): RegExp {

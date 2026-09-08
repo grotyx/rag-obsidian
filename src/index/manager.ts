@@ -73,16 +73,16 @@ export class IndexManager {
       if (!(await adapter.exists(this.metaPath))) return;
       const meta = JSON.parse(await adapter.read(this.metaPath)) as StoredMeta;
       if (meta.modelId !== this.modelId) {
-        console.log("[RAG Obsidian] embedding model changed since last build — rebuild required");
+        console.debug("[RAG Obsidian] embedding model changed since last build — rebuild required");
         return;
       }
       if ((meta.schema ?? 1) !== INDEX_SCHEMA) {
-        console.log("[RAG Obsidian] index schema changed since last build — rebuild required");
+        console.debug("[RAG Obsidian] index schema changed since last build — rebuild required");
         return;
       }
       const data = await adapter.read(this.oramaPath);
       await this.store.load(data, meta);
-      console.log(`[RAG Obsidian] index restored: ${this.store.count} chunks`);
+      console.debug(`[RAG Obsidian] index restored: ${this.store.count} chunks`);
     } catch (e) {
       console.error("[RAG Obsidian] failed to restore index", e);
     }

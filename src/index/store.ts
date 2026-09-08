@@ -49,7 +49,6 @@ export interface SearchFilters {
 
 /** Thin wrapper over an Orama hybrid (BM25 + vector) index. */
 export class VectorStore {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private db: any = null;
   dim = 0;
   modelId = "";
@@ -93,7 +92,6 @@ export class VectorStore {
         author: "enum[]",
         text: "string",
         embedding: `vector[${dim}]`,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
     });
   }
@@ -175,9 +173,7 @@ export class VectorStore {
       includeVectors: false,
       limit: k,
       ...(Object.keys(where).length ? { where } : {}),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (res.hits as any[]).map((h) => ({
       id: String(h.document.id),
       citekey: String(h.document.citekey),
@@ -208,7 +204,6 @@ export class VectorStore {
   }
 
   async load(data: string, meta: StoredMeta): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db: any = await restore("json", data);
     // DB/meta written separately — a crash between writes can desync them; treat as absent.
     const tracked = Object.values(meta.chunkIds || {}).reduce((a, b) => a + b.length, 0);

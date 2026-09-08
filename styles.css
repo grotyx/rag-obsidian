@@ -245,3 +245,34 @@
 .srag-cite:hover {
   text-decoration: underline;
 }
+
+/* Shared modal form controls */
+.srag-input-full {
+  width: 100%;
+}
+.srag-input-narrow {
+  width: 5em;
+}
+.srag-textarea-mono {
+  width: 100%;
+  height: 12em;
+  font-family: var(--font-monospace);
+}
+
+/* Batch progress status-bar item */
+.srag-batch-cancel {
+  cursor: pointer;
+}
+
+/* PubMed search modal results */
+.rag-pubmed-row {
+  display: flex;
+  gap: 0.5em;
+  align-items: flex-start;
+  padding: 0.3em 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.rag-pubmed-oa-badge {
+  color: var(--text-success);
+  font-weight: 600;
+}

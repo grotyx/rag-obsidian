@@ -69,7 +69,6 @@ export class PdfImporter {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private parseJson(raw: string): any {
     const m = raw.match(/\{[\s\S]*\}/);
     try {

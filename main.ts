@@ -52,13 +52,13 @@ export default class ScholarRagPlugin extends Plugin {
     this.registerView(VIEW_TYPE_CHAT, (leaf) => new ChatView(leaf, this));
     this.registerView(VIEW_TYPE_RELATED, (leaf) => new RelatedView(leaf, this));
 
-    this.addRibbonIcon("book-open", "RAG Obsidian: Open library", () => {
+    this.addRibbonIcon("book-open", "Open library", () => {
       void this.activateView(VIEW_TYPE_LIBRARY);
     });
-    this.addRibbonIcon("messages-square", "RAG Obsidian: Chat with library", () => {
+    this.addRibbonIcon("messages-square", "Chat with library", () => {
       void this.activateView(VIEW_TYPE_CHAT);
     });
-    this.addRibbonIcon("search", "RAG Obsidian: Search PubMed", () => {
+    this.addRibbonIcon("search", "Search PubMed", () => {
       new PubmedSearchModal(this.app, this).open();
     });
 
@@ -298,7 +298,7 @@ export default class ScholarRagPlugin extends Plugin {
 
   /** Obsidian's OS-keychain secret store (1.11.4+), or null on older apps (minAppVersion is 1.5.0). */
   private secretStore(): SecretStorage | null {
-    return (this.app.secretStorage as SecretStorage | undefined) ?? null;
+    return this.app.secretStorage ?? null;
   }
 
   /** secretStorage id for a settings field — lowercase alphanumeric + dashes, as the API requires. */
@@ -423,7 +423,7 @@ export default class ScholarRagPlugin extends Plugin {
     const byKey = new Map(this.library.entries().map((e) => [e.citekey, e.item]));
     for (const text of targets) {
       const value = text.nodeValue ?? "";
-      const frag = document.createDocumentFragment();
+      const frag = createFragment();
       let last = 0;
       let touched = false;
       const re = citePattern();
@@ -439,8 +439,7 @@ export default class ScholarRagPlugin extends Plugin {
         if (m.index > last) frag.appendChild(document.createTextNode(value.slice(last, m.index)));
         resolved.forEach(({ key: k, item, label }, i) => {
           if (i) frag.appendChild(document.createTextNode("; "));
-          const span = document.createElement("span");
-          span.className = "srag-cite";
+          const span = createSpan({ cls: "srag-cite" });
           if (label) setCiteLabel(span, label);
           else span.textContent = item ? inTextLabel(item) : `[@${k}]`;
           if (item) span.onclick = () => void this.openCitekey(k);
@@ -537,7 +536,7 @@ export default class ScholarRagPlugin extends Plugin {
       if (!leaf) return;
       await leaf.setViewState({ type, active: true });
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
 }
 
@@ -545,8 +544,7 @@ export default class ScholarRagPlugin extends Plugin {
 function setCiteLabel(span: HTMLElement, html: string): void {
   const sup = html.match(/^\s*<sup>([\s\S]*?)<\/sup>\s*$/i);
   if (sup) {
-    const s = document.createElement("sup");
-    s.textContent = decodeEntities(sup[1].replace(/<[^>]+>/g, ""));
+    const s = createEl("sup", { text: decodeEntities(sup[1].replace(/<[^>]+>/g, "")) });
     span.appendChild(s);
     return;
   }

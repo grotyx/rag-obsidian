@@ -3,10 +3,8 @@
 
 import { cleanDoi } from "./metadata";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PdfjsLike = {
   GlobalWorkerOptions: { workerSrc: string };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getDocument: (opts: any) => { promise: Promise<any> };
 };
 
@@ -41,7 +39,6 @@ export async function extractPdfText(data: ArrayBuffer): Promise<{ text: string;
   for (let i = 1; i <= pages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     text += content.items.map((it: any) => ("str" in it ? it.str : "")).join(" ") + "\n\n";
     if (text.length > 200000) break; // safety cap for huge PDFs
   }
@@ -54,7 +51,6 @@ export interface PdfHighlight {
   text: string; // highlighted text (for highlights) or the note body (for sticky notes)
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function quadRects(ann: any): number[][] {
   // pdfjs ≥ 4 hands quadPoints over as a Float32Array (flat x/y octets); older builds as an Array.
   const q = ArrayBuffer.isView(ann.quadPoints) ? Array.from(ann.quadPoints as ArrayLike<number>) : ann.quadPoints;
@@ -67,18 +63,14 @@ function quadRects(ann: any): number[][] {
         rects.push([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
       }
     } else if (Array.isArray(q[0])) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const quad of q as any[]) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const quad of q) {
         const xs = quad.map((p: any) => p.x);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ys = quad.map((p: any) => p.y);
         rects.push([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
       }
     } else if (q[0] && typeof q[0] === "object") {
       for (let i = 0; i + 4 <= q.length; i += 4) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pts = q.slice(i, i + 4) as any[];
+        const pts = q.slice(i, i + 4);
         const xs = pts.map((p) => p.x);
         const ys = pts.map((p) => p.y);
         rects.push([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
@@ -97,11 +89,9 @@ export async function extractPdfHighlights(data: ArrayBuffer): Promise<PdfHighli
   const MARKUP = new Set(["Highlight", "Underline", "StrikeOut", "Squiggly"]);
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anns: any[] = await page.getAnnotations();
     if (!anns.some((a) => MARKUP.has(a.subtype) || a.subtype === "Text" || a.subtype === "FreeText")) continue;
     const content = await page.getTextContent();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const items = (content.items as any[])
       .filter((it) => "str" in it && it.str.trim())
       .map((it) => {

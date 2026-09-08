@@ -25,14 +25,18 @@ export class TagRenameModal extends Modal {
     const counts = new Map<string, number>();
     for (const file of this.app.vault.getMarkdownFiles()) {
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      if (fm && Array.isArray(fm.tags)) for (const t of fm.tags) counts.set(t, (counts.get(t) || 0) + 1);
+      if (fm && Array.isArray(fm.tags))
+        for (const t of fm.tags as unknown[]) {
+          const tag = String(t);
+          counts.set(tag, (counts.get(tag) || 0) + 1);
+        }
     }
     const top = [...counts.entries()].sort((a, b) => b[1] - a[1]);
 
     let fromInput: HTMLInputElement | undefined;
     new Setting(contentEl).setName("Old tag").addText((t) => {
       fromInput = t.inputEl;
-      t.setPlaceholder("discectomy").onChange((v) => (this.from = v.trim()));
+      t.setPlaceholder("Discectomy").onChange((v) => (this.from = v.trim()));
     });
     if (top.length) {
       const dl = contentEl.createEl("datalist", { attr: { id: "rag-tag-list" } });
@@ -42,7 +46,7 @@ export class TagRenameModal extends Modal {
     new Setting(contentEl)
       .setName("New tag")
       .setDesc("Empty = delete the old tag.")
-      .addText((t) => t.setPlaceholder("diskectomy").onChange((v) => (this.to = v.trim())));
+      .addText((t) => t.setPlaceholder("Diskectomy").onChange((v) => (this.to = v.trim())));
 
     new Setting(contentEl).addButton((b) =>
       b.setButtonText("Apply").setCta().onClick(() => void this.run())

@@ -25,7 +25,7 @@ export class SearchView extends ItemView {
     return VIEW_TYPE_SEARCH;
   }
   getDisplayText(): string {
-    return "RAG Obsidian search";
+    return "Search";
   }
   getIcon(): string {
     return "search";
@@ -179,12 +179,12 @@ export class SearchView extends ItemView {
     for (const h of hits) {
       const row = this.resultsEl.createDiv({ cls: "srag-hit" });
       const head = row.createDiv({ cls: "srag-hit-head" });
-      head.createEl("span", { cls: "srag-title", text: h.title });
-      head.createEl("span", {
+      head.createSpan({ cls: "srag-title", text: h.title });
+      head.createSpan({
         cls: "srag-badge",
         text: `${h.section}${h.year ? " · " + h.year : ""}`,
       });
-      row.createEl("div", {
+      row.createDiv({
         cls: "srag-snippet",
         text: h.text.length > 320 ? h.text.slice(0, 320) + "…" : h.text,
       });
