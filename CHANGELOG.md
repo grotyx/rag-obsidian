@@ -40,6 +40,34 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 ### Fixed
 
 - **Annotated bibliography reads the new `## Summary` heading** (0.4.14 changed the heading; the export still only matched `## Summary (EN)`).
+- **A whole-paragraph selection cites at the right place.** A triple-click selection carries its
+  trailing newline, so "Suggest citations for selection" put the `[@key]` at the start of the
+  *next* line; the insertion point is now the paragraph's own end.
+- **Suggest citations offers more than one reference.** Only the top-K chunks were retrieved
+  before being collapsed to one row per reference, so a paper indexed with its full text could
+  own the whole list; retrieval now asks for five times top-K.
+- **"Index linked PDFs" and "Extract PDF highlights" find the same file.** Both now share one
+  resolver: the `pdf:` link first, then `PDFs/<citekey>.pdf`. A link with a page anchor
+  (`[[paper.pdf#page=3]]`) resolves too, instead of counting as "no PDF".
+- **A citation can no longer land in the wrong note.** If you open another note while the
+  evidence search is running, the suggestion says so instead of inserting into the note you
+  switched to.
+- **Cancelling "Index linked PDFs" reports honestly.** The notes the cancel stopped are counted
+  as `· N cancelled` rather than as "skipped (no PDF / already indexed)".
+- **Cluster merge is stricter and punctuation-aware.** Citing next to `[@a].` now yields
+  `[@a; @b].` instead of `[@a] [@b].`, and a bracket that merely contains an `@` (an e-mail
+  address, say) is left alone: a cluster is only merged into when every key in it is a citekey
+  in your library.
+- **Callouts, tables and comments are not claims.** `%%…%%` and `<!-- … -->` blocks, `>` quote
+  lines and `|` table rows are no longer offered by "Find unsupported claims" or picked up as
+  the paragraph under the cursor.
+
+### Changed
+
+- Internal: the extracted-text cap and the "no extractable text" check live once in
+  `src/ingest/pdf.ts`/`src/ingest/pdfStash.ts` instead of at each call site; "Index linked PDFs"
+  writes each note as its text lands (a crash mid-batch keeps what is done); `RagAnswer` no
+  longer echoes the filters back and `FilterRow` lost its unused `onChange` argument.
 
 ## [0.4.15] — 2026-09-08
 

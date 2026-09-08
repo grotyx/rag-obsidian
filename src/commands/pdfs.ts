@@ -1,4 +1,4 @@
-import { Notice, TFile } from "obsidian";
+import { Notice, TFile, normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { extractPdfText } from "../ingest/pdf";
 import { appendStash, hasStashedText, resolvePdfLink } from "../ingest/pdfStash";
@@ -10,6 +10,22 @@ import { startBatch } from "../ui/progress";
  *  stay sequential. */
 const PDF_WIDTH = 2;
 
+/** The one way a reference note's PDF is located: the `pdf:` link first, then the
+ *  `PDFs/<citekey>.pdf` the download command writes. Shared so "Index linked PDFs" and
+ *  "Extract PDF highlights" can never disagree about which file a note points at. */
+export function findPdfFile(
+  plugin: ScholarRagPlugin,
+  pdfValue: unknown,
+  notePath: string,
+  citekey: string
+): TFile | null {
+  const link = resolvePdfLink(pdfValue);
+  const linked = link ? plugin.app.metadataCache.getFirstLinkpathDest(link, notePath) : null;
+  if (linked) return linked;
+  const guess = plugin.app.vault.getAbstractFileByPath(normalizePath(`PDFs/${citekey}.pdf`));
+  return guess instanceof TFile ? guess : null;
+}
+
 /** Extract the text of every linked PDF that has no `## Full text (extracted)` section yet and
  *  stash it in the note, so the incremental reindex picks the full text up. `only` limits the
  *  run to one note. */
@@ -18,8 +34,7 @@ export async function indexLinkedPdfs(plugin: ScholarRagPlugin, only?: TFile): P
   let skipped = 0;
   for (const e of plugin.library.entries()) {
     if (only && e.file.path !== only.path) continue;
-    const link = resolvePdfLink(e.item.pdf);
-    const pdf = link ? plugin.app.metadataCache.getFirstLinkpathDest(link, e.file.path) : null;
+    const pdf = findPdfFile(plugin, e.item.pdf, e.file.path, e.citekey);
     if (!pdf || hasStashedText(await plugin.app.vault.cachedRead(e.file))) {
       skipped++;
       continue;
@@ -37,33 +52,36 @@ export async function indexLinkedPdfs(plugin: ScholarRagPlugin, only?: TFile): P
   let failed = 0;
   let indexed = 0;
   let outcome = "Indexing PDFs failed (see console)";
+  // Vault writes stay sequential (and off the extraction pool) but happen as each text lands:
+  // a crash mid-batch keeps what was already stashed, and only the in-flight texts are held.
+  let writes: Promise<void> = Promise.resolve();
   try {
-    const texts = await mapPool(
+    await mapPool(
       todo,
       PDF_WIDTH,
       async (t) => {
         try {
           const { text } = await extractPdfText(await plugin.app.vault.readBinary(t.pdf));
-          if (!text) throw new Error("no extractable text (scanned/image PDF?)");
-          return text;
+          writes = writes
+            .catch(() => {}) // an earlier note's failed write must not fail this one
+            .then(async () => {
+              await plugin.app.vault.process(t.note, (body) => appendStash(body, text));
+              indexed++;
+            });
+          await writes;
         } catch (err) {
           failed++;
           console.error("[RAG Obsidian] PDF text extraction failed", t.pdf.path, err);
-          return "";
         } finally {
           batch.tick(++done, failed);
         }
       },
       batch.signal
     );
-    for (let i = 0; i < todo.length; i++) {
-      // Empty slot: cancelled before this one started, or extraction failed.
-      if (!texts[i]) continue;
-      await plugin.app.vault.process(todo[i].note, (body) => appendStash(body, texts[i]));
-      indexed++;
-    }
-    skipped += todo.length - done; // never started — the user cancelled
-    outcome = `${indexed} indexed · ${skipped} skipped (no PDF / already indexed) · ${failed} failed`;
+    const cancelled = todo.length - done; // never started — the user cancelled
+    outcome =
+      `${indexed} indexed · ${skipped} skipped (no PDF / already indexed) · ${failed} failed` +
+      (cancelled ? ` · ${cancelled} cancelled` : "");
   } finally {
     batch.finish(outcome);
   }

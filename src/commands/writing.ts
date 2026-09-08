@@ -1,9 +1,8 @@
-import { Editor, EditorPosition, Notice, normalizePath } from "obsidian";
+import { Editor, Notice, normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { CiteSuggestModal, UnsupportedClaimsModal } from "../ui/CiteSuggestModal";
-import { Paragraph, paragraphsOf, rankHits, unsupportedClaims, citationInsertion } from "../write/evidence";
+import { Paragraph, paragraphsOf, rankHits, unsupportedClaims, citationEdit } from "../write/evidence";
 import {
-  keysInCite,
   extractCitekeys,
   buildBibliography,
   inTextLabel,
@@ -185,19 +184,25 @@ function plainText(html: string): string {
 
 /** Hybrid-search the selection (else the paragraph at the cursor) and insert the chosen `[@citekey]`. */
 export async function suggestCitations(plugin: ScholarRagPlugin, editor: Editor): Promise<void> {
-  const selection = editor.getSelection().trim();
-  let text = selection;
-  const at = editor.getCursor(selection ? "to" : "from");
-  if (!text) {
-    const off = editor.posToOffset(at);
-    const para = paragraphsOf(editor.getValue()).find((p) => off >= p.start && off <= p.end);
+  const raw = editor.getSelection();
+  const selected = raw.trim();
+  const paras = paragraphsOf(editor.getValue());
+  let off = editor.posToOffset(editor.getCursor(selected ? "to" : "from"));
+  let text = selected;
+  if (selected) {
+    // A triple-click selection carries its trailing newline — citing at the raw end would land
+    // at the start of the next line. Use the paragraph's own end, else step back over it.
+    const whole = paras.find((p) => p.text === selected);
+    off = whole ? whole.end : off - (raw.length - raw.replace(/\s+$/, "").length);
+  } else {
+    const para = paras.find((p) => off >= p.start && off <= p.end);
     if (!para) {
       new Notice("Select some text, or put the cursor in a paragraph");
       return;
     }
     text = para.text;
   }
-  await suggestFor(plugin, text, (key) => insertCitation(editor, at, key));
+  await suggestFor(plugin, text, (key) => insertCitation(plugin, editor, off, key));
 }
 
 /** List the paragraphs that assert something and cite nothing; "Suggest" cites one. */
@@ -208,7 +213,7 @@ export async function findUnsupportedClaims(plugin: ScholarRagPlugin, editor: Ed
     return;
   }
   new UnsupportedClaimsModal(plugin.app, claims, (claim) => {
-    void suggestFor(plugin, claim.text, (key) => insertAtParagraph(editor, claim, key));
+    void suggestFor(plugin, claim.text, (key) => insertAtParagraph(plugin, editor, claim, key));
   }).open();
 }
 
@@ -223,9 +228,14 @@ async function suggestFor(
     return;
   }
   const notice = new Notice("Searching for evidence…", 0);
+  // The note the offsets belong to: the search is async, and inserting into whatever note the
+  // user opened meanwhile would corrupt it.
+  const file = plugin.app.workspace.getActiveFile();
   let hits;
   try {
-    hits = rankHits(await plugin.indexManager.search(text));
+    // Retrieve well past topK: `rankHits` keeps one row per reference, and a full-text-indexed
+    // paper can easily own all topK chunks — the modal would then offer a single reference.
+    hits = rankHits(await plugin.indexManager.search(text, {}, plugin.settings.topK * 5));
   } catch (e) {
     new Notice(`Search failed: ${e instanceof Error ? e.message : String(e)}`);
     return;
@@ -236,35 +246,35 @@ async function suggestFor(
     new Notice("No matching references in the library");
     return;
   }
-  new CiteSuggestModal(plugin.app, hits, (h) => insert(h.citekey)).open();
+  new CiteSuggestModal(plugin.app, hits, (h) => {
+    if (plugin.app.workspace.getActiveFile() !== file) {
+      new Notice("Active note changed — citation not inserted");
+      return;
+    }
+    insert(h.citekey);
+  }).open();
 }
 
-/** Insert `[@key]` at `at`, merging into the cluster the cursor sits right behind (`[@a]` → `[@a; @b]`). */
-function insertCitation(editor: Editor, at: EditorPosition, key: string): void {
-  const off = editor.posToOffset(at);
-  const cluster = editor.getValue().slice(0, off).match(/\[([^[\]]*@[^[\]]*)\]$/);
-  const keys = cluster ? keysInCite(cluster[1]) : [];
-  if (keys.includes(key)) {
+/** Insert `[@key]` at offset `off`, merging into the cluster the cursor sits behind
+ *  (`[@a].` → `[@a; @b].`). */
+function insertCitation(plugin: ScholarRagPlugin, editor: Editor, off: number, key: string): void {
+  const ins = citationEdit(editor.getValue().slice(0, off), key, (k) => !!plugin.library.getItem(k));
+  if (!ins) {
     new Notice(`Already cited: [@${key}]`);
     return;
   }
-  if (keys.length) {
-    editor.replaceRange(`; @${key}]`, editor.offsetToPos(off - 1), at);
-    return;
-  }
-  const ins = citationInsertion(editor.getValue().slice(0, off), key);
   const pos = editor.offsetToPos(off - ins.back);
   editor.replaceRange(ins.text, pos, pos);
 }
 
 /** Insert at the end of `claim` — offsets are recomputed, so an earlier insert can't shift it. */
-function insertAtParagraph(editor: Editor, claim: Paragraph, key: string): void {
+function insertAtParagraph(plugin: ScholarRagPlugin, editor: Editor, claim: Paragraph, key: string): void {
   const now = paragraphsOf(editor.getValue()).find((p) => p.text === claim.text);
   if (!now) {
     new Notice("Paragraph has changed — citation not inserted");
     return;
   }
-  insertCitation(editor, editor.offsetToPos(now.end), key);
+  insertCitation(plugin, editor, now.end, key);
 }
 
 /** Pull the EN summary (else KR) section body out of a reference note. */

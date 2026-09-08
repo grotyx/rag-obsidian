@@ -11,18 +11,11 @@ export class FilterRow {
   private textInputs: HTMLInputElement[] = [];
   private chipsEl: HTMLElement;
 
-  constructor(
-    host: HTMLElement,
-    private plugin: ScholarRagPlugin,
-    private onChange: () => void = () => {}
-  ) {
+  constructor(host: HTMLElement, private plugin: ScholarRagPlugin) {
     const row = host.createDiv({ cls: "srag-filters" });
     const field = (type: string, cls: string, ph: string, set: (v: string) => void) => {
       const el = row.createEl("input", { type, placeholder: ph, cls });
-      el.addEventListener("change", () => {
-        set(el.value.trim());
-        this.onChange();
-      });
+      el.addEventListener("change", () => set(el.value.trim()));
       this.textInputs.push(el);
       return el;
     };
@@ -43,7 +36,6 @@ export class FilterRow {
       if (t && !this.tags.includes(t)) {
         this.tags.push(t);
         this.renderChips();
-        this.onChange();
       }
       tagInput.value = "";
     });
@@ -80,7 +72,6 @@ export class FilterRow {
       x.onclick = () => {
         this.tags = this.tags.filter((v) => v !== t);
         this.renderChips();
-        this.onChange();
       };
     }
   }

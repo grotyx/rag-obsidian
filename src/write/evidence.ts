@@ -1,5 +1,5 @@
 import type { SearchHit } from "../index/store";
-import { extractCitekeys, splitAtReferences } from "../cite/bibliography";
+import { extractCitekeys, keysInCite, splitAtReferences } from "../cite/bibliography";
 
 export interface Paragraph {
   /** The paragraph's text, exactly as it appears in the note (offsets index the raw markdown). */
@@ -11,8 +11,9 @@ export interface Paragraph {
 }
 
 /** Prose paragraphs of a manuscript, above `## References` only. Headings, fenced code,
- *  frontmatter and bare list markers are skipped; offsets point into the original string
- *  so a caller can insert a citation at `end`. */
+ *  frontmatter, comments (`%%…%%`, `<!-- … -->`), blockquotes/callouts, tables and bare list
+ *  markers are skipped; offsets point into the original string so a caller can insert a
+ *  citation at `end`. */
 export function paragraphsOf(markdown: string): Paragraph[] {
   const base = splitAtReferences(markdown).base;
   const lines = base.split("\n");
@@ -22,6 +23,7 @@ export function paragraphsOf(markdown: string): Paragraph[] {
   let bufEnd = 0;
   let offset = 0;
   let fenced = false;
+  let comment: RegExp | null = null; // the closer of the comment block we are inside
   let inFrontmatter = /^---\s*$/.test(lines[0] ?? "");
 
   const flush = () => {
@@ -47,7 +49,19 @@ export function paragraphsOf(markdown: string): Paragraph[] {
       continue;
     }
     if (fenced) continue;
-    if (!line.trim() || /^\s*#{1,6}\s/.test(line)) {
+    if (comment) {
+      if (comment.test(line)) comment = null;
+      continue;
+    }
+    const opens = line.match(/^\s*(%%|<!--)/);
+    if (opens) {
+      flush();
+      const closer = opens[1] === "%%" ? /%%/ : /-->/;
+      if (!closer.test(line.slice(opens[0].length))) comment = closer; // else it closed on this line
+      continue;
+    }
+    // blank / heading / blockquote-callout / table row — structure, not prose
+    if (!line.trim() || /^\s*(#{1,6}\s|>|\|)/.test(line)) {
       flush();
       continue;
     }
@@ -103,4 +117,24 @@ export function citationInsertion(before: string, key: string): { back: number; 
     return { back: 1, text: (body.length && !/\s$/.test(body) ? " " : "") + cite };
   }
   return { back: 0, text: (before.length && !/\s$/.test(before) ? " " : "") + cite };
+}
+
+/** Same, but merging into the citation cluster the cursor sits behind: `[@a].` + b →
+ *  `[@a; @b].`. A bracket only counts as a cluster when every key in it is `@`-prefixed and
+ *  `isKnown` (so `[john@x.org]` gets a citation appended after it, not merged into it).
+ *  `null` = the key is already in that cluster. */
+export function citationEdit(
+  before: string,
+  key: string,
+  isKnown: (key: string) => boolean
+): { back: number; text: string } | null {
+  const m = before.match(/\[([^[\]]*@[^[\]]*)\]([.,;:!?)]*)$/);
+  if (m) {
+    const keys = keysInCite(m[1]);
+    if (keys.length && m[1].split(";").every((part) => /^\s*-?@/.test(part)) && keys.every(isKnown)) {
+      if (keys.includes(key)) return null;
+      return { back: m[2].length + 1, text: `; @${key}` }; // insert in front of the closing "]"
+    }
+  }
+  return citationInsertion(before, key);
 }

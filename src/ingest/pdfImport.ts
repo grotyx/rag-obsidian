@@ -17,8 +17,7 @@ export class PdfImporter {
 
   async importFile(pdf: TFile): Promise<TFile> {
     const data = await this.app.vault.readBinary(pdf);
-    const { text } = await extractPdfText(data);
-    if (!text) throw new Error("No extractable text (scanned/image PDF?)");
+    const { text } = await extractPdfText(data); // throws on a scanned/image PDF
 
     let item: CSLItem | null = null;
     const id = findIdentifier(text);

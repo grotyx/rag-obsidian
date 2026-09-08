@@ -24,8 +24,6 @@ export interface AnswerSource {
 export interface RagAnswer {
   text: string;
   sources: AnswerSource[];
-  /** The filters the retrieval ran under, echoed back so the UI can label the answer. */
-  filters?: SearchFilters;
 }
 
 /** Retrieval-augmented chat with passage-level citation grounding:
@@ -52,7 +50,6 @@ export class RagChat {
       return {
         text: `No relevant passages found in your library for that question.${hint}`,
         sources: [],
-        filters,
       };
     }
 
@@ -122,6 +119,6 @@ export class RagChat {
       };
     });
 
-    return { text, sources, filters };
+    return { text, sources };
   }
 }
