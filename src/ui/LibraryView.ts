@@ -24,7 +24,7 @@ export class LibraryView extends ItemView {
     return VIEW_TYPE_LIBRARY;
   }
   getDisplayText(): string {
-    return "RAG Obsidian library";
+    return "Library";
   }
   getIcon(): string {
     return "book-open";
@@ -53,7 +53,7 @@ export class LibraryView extends ItemView {
     c.addClass("rag-obsidian-library");
 
     const header = c.createDiv({ cls: "srag-header" });
-    const addBtn = header.createEl("button", { text: "+ Add" });
+    const addBtn = header.createEl("button", { text: "+ add" });
     addBtn.onclick = () => new AddReferenceModal(this.app, this.plugin).open();
 
     const searchBtn = header.createEl("button", { text: "🔍 Search" });
@@ -83,14 +83,14 @@ export class LibraryView extends ItemView {
     if (!this.listEl) return;
     this.listEl.empty();
     const entries = this.plugin.library.list().filter((e) => this.match(e));
-    this.listEl.createEl("div", {
+    this.listEl.createDiv({
       cls: "srag-count",
       text: `${entries.length} reference(s)`,
     });
     for (const e of entries) {
       const row = this.listEl.createDiv({ cls: "srag-row" });
-      row.createEl("div", { cls: "srag-title", text: e.title });
-      row.createEl("div", {
+      row.createDiv({ cls: "srag-title", text: e.title });
+      row.createDiv({
         cls: "srag-meta",
         text: [e.authors, e.year].filter(Boolean).join(" · "),
       });

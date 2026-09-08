@@ -41,9 +41,9 @@ export class PubmedSearchModal extends Modal {
     let queryComp: TextComponent | undefined;
     new Setting(contentEl).setName("Query").addText((t) => {
       queryComp = t;
-      t.setPlaceholder("biportal endoscopic discectomy outcomes");
+      t.setPlaceholder("Biportal endoscopic discectomy outcomes");
       t.onChange((v) => (this.query = v));
-      t.inputEl.style.width = "100%";
+      t.inputEl.addClass("srag-input-full");
       t.inputEl.addEventListener("keydown", (e) => {
         if (e.key === "Enter") void this.runSearch();
       });
@@ -53,7 +53,7 @@ export class PubmedSearchModal extends Modal {
       t.setValue(String(this.maxResults));
       t.onChange((v) => (this.maxResults = Math.max(1, Math.min(50, parseInt(v, 10) || 20))));
       t.inputEl.type = "number";
-      t.inputEl.style.width = "5em";
+      t.inputEl.addClass("srag-input-narrow");
     });
 
     new Setting(contentEl)
@@ -106,26 +106,19 @@ export class PubmedSearchModal extends Modal {
     for (const hit of hits) {
       const { item } = hit;
       const row = this.resultsEl.createDiv({ cls: "rag-pubmed-row" });
-      row.style.display = "flex";
-      row.style.gap = "0.5em";
-      row.style.alignItems = "flex-start";
-      row.style.padding = "0.3em 0";
-      row.style.borderBottom = "1px solid var(--background-modifier-border)";
 
       const cb = row.createEl("input", { type: "checkbox" });
       cb.checked = true;
       this.rows.push({ hit, checkbox: cb });
 
       const meta = row.createDiv();
-      meta.createEl("div", { text: item.title || "(untitled)", cls: "rag-pubmed-title" });
+      meta.createDiv({ text: item.title || "(untitled)", cls: "rag-pubmed-title" });
       const year = item.issued?.["date-parts"]?.[0]?.[0] ?? "n.d.";
       const authors = (item.author?.[0]?.family || "") + (item.author && item.author.length > 1 ? " et al." : "");
-      const sub = meta.createEl("div", { cls: "setting-item-description" });
+      const sub = meta.createDiv({ cls: "setting-item-description" });
       sub.setText(`${authors} · ${item["container-title"] || ""} · ${year}`);
       if (hit.pmc) {
-        const badge = sub.createSpan({ text: "  Open Access" });
-        badge.style.color = "var(--text-success)";
-        badge.style.fontWeight = "600";
+        sub.createSpan({ text: "  Open Access", cls: "rag-pubmed-oa-badge" });
       }
     }
 

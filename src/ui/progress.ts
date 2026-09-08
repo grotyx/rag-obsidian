@@ -34,8 +34,7 @@ export function startBatch(plugin: ScholarRagPlugin, label: string, total: numbe
   active = controller;
   const el = plugin.addStatusBarItem();
   const text = el.createSpan({ text: `${label} 0/${total}` });
-  const cancel = el.createSpan({ text: " ✕" });
-  cancel.style.cursor = "pointer";
+  const cancel = el.createSpan({ text: " ✕", cls: "srag-batch-cancel" });
   cancel.setAttr("aria-label", "Cancel batch");
   cancel.onclick = () => void cancelBatch();
   return {

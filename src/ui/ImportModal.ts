@@ -22,24 +22,23 @@ export class ImportModal extends Modal {
 
     const fileInput = contentEl.createEl("input", { type: "file" });
     fileInput.accept = ".bib,.ris,.nbib,.json,.txt";
-    fileInput.addEventListener("change", async () => {
-      const f = fileInput.files?.[0];
-      if (f) {
-        this.text = await f.text();
-        area.value = this.text;
-      }
-    });
+    fileInput.addEventListener("change", () => void this.loadFile(fileInput, area));
 
-    const area = contentEl.createEl("textarea");
-    area.style.width = "100%";
-    area.style.height = "12em";
-    area.style.fontFamily = "var(--font-monospace)";
+    const area = contentEl.createEl("textarea", { cls: "srag-textarea-mono" });
     area.placeholder = "@article{smith2020, title={...}, author={Smith, Jane}, year={2020}, ... }";
     area.addEventListener("input", () => (this.text = area.value));
 
     new Setting(contentEl).addButton((b) =>
       b.setButtonText("Import").setCta().onClick(() => void this.run())
     );
+  }
+
+  private async loadFile(fileInput: HTMLInputElement, area: HTMLTextAreaElement): Promise<void> {
+    const f = fileInput.files?.[0];
+    if (f) {
+      this.text = await f.text();
+      area.value = this.text;
+    }
   }
 
   private async run(): Promise<void> {

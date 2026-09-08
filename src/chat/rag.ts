@@ -2,7 +2,7 @@ import { IndexManager } from "../index/manager";
 import { Library } from "../data/library";
 import { LLMClient, ChatMessage } from "../llm/client";
 import { formatCitation } from "../cite/format";
-import { ScholarRagSettings, CiteStyle } from "../types";
+import { ScholarRagSettings } from "../types";
 
 /** A chat-history message; assistant turns may carry the citekeys (in [n] order)
  *  of the sources they were generated against, so anchors stay resolvable. */
@@ -96,7 +96,7 @@ export class RagChat {
       return n >= 1 && n <= order.length ? m : "";
     });
 
-    const style = this.settings.citeStyle as CiteStyle;
+    const style = this.settings.citeStyle;
     const sources: AnswerSource[] = order.map((ck, i) => {
       const item = this.library.getItem(ck);
       return {

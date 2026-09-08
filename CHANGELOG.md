@@ -13,6 +13,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
   instead of a raw fetch error when the dynamic import is blocked, and the settings tab now
   states whether API keys are in the OS keychain or in `data.json`. See `docs/MOBILE.md` for
   the full feature matrix and a manual iOS QA script.
+- **Community-store review pass.** Added `eslint-plugin-obsidianmd` (`npm run lint`) and worked
+  through its findings against the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines):
+  settings-tab headings now use `setHeading()` instead of raw `<h2>`, inline `element.style.*`
+  assignments moved to CSS classes, `document.createElement`/`createDocumentFragment` in the
+  citation-rendering path switched to the cross-window-safe `createSpan`/`createEl`/`createFragment`
+  helpers, stray `console.log` calls became `console.debug`, redundant ribbon/pane "RAG Obsidian"
+  self-branding was dropped, and `minAppVersion` was corrected to `1.7.2` (the real floor for
+  `Workspace.revealLeaf`, found by the linter's API-version check). See
+  `docs/STORE_SUBMISSION.md` for the full checklist, the remaining known exceptions (the CDN
+  dynamic-import trick, `secretStorage` feature-detection, and the untyped-JSON `no-unsafe-*`
+  backlog), and the submission text.
 
 ## [0.4.14] — 2026-09-08
 

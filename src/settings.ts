@@ -15,7 +15,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Library" });
+    new Setting(containerEl).setName("Library").setHeading();
 
     containerEl.createEl("p", {
       cls: "setting-item-description",
@@ -39,8 +39,8 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       .setDesc("How citekeys / filenames are generated.")
       .addDropdown((d) =>
         d
-          .addOption("authoryeartitle", "smith2020deep")
-          .addOption("authoryear", "smith2020")
+          .addOption("authoryeartitle", "Smith2020deep")
+          .addOption("authoryear", "Smith2020")
           .setValue(this.plugin.settings.citekeyStyle)
           .onChange(async (v) => {
             this.plugin.settings.citekeyStyle = v as "authoryeartitle" | "authoryear";
@@ -59,7 +59,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         t.inputEl.type = "password";
       });
 
-    containerEl.createEl("h2", { text: "Retrieval (semantic search)" });
+    new Setting(containerEl).setName("Retrieval (semantic search)").setHeading();
     containerEl.createEl("p", {
       cls: "setting-item-description",
       text: "Changing the provider or model invalidates the index — rebuild it from the search pane afterward.",
@@ -135,7 +135,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     }
 
     new Setting(containerEl)
-      .setName("Results (top-K)")
+      .setName("Results (top-k)")
       .setDesc("How many chunks a search returns.")
       .addSlider((s) =>
         s
@@ -162,7 +162,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl("h2", { text: "Chat (citation-grounded answers)" });
+    new Setting(containerEl).setName("Chat (citation-grounded answers)").setHeading();
 
     new Setting(containerEl)
       .setName("LLM provider")
@@ -203,7 +203,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       .setDesc('Model for "Chat with library" answers. Leave empty to use the default model.')
       .addText((t) =>
         t
-          .setPlaceholder("same as default")
+          .setPlaceholder("Same as default")
           .setValue(this.plugin.settings.chatModel)
           .onChange(async (v) => {
             this.plugin.settings.chatModel = v.trim();
@@ -317,7 +317,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Custom CSL style id (optional)")
+      .setName("Custom CSL style ID (optional)")
       .setDesc(
         "Any style from github.com/citation-style-language/styles — e.g. nature, the-lancet, " +
           "jbjs. Fetched + cached on first use. Overrides the dropdown when set."
@@ -332,7 +332,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl("h2", { text: "Citation graph" });
+    new Setting(containerEl).setName("Citation graph").setHeading();
 
     new Setting(containerEl)
       .setName("Contact e-mail")
@@ -351,7 +351,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl("h2", { text: "Writing" });
+    new Setting(containerEl).setName("Writing").setHeading();
 
     new Setting(containerEl)
       .setName("Render [@citekey] in reading view")

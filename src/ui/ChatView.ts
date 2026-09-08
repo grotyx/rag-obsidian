@@ -3,7 +3,6 @@ import type ScholarRagPlugin from "../../main";
 import { RagChat, RagAnswer, AnswerSource, ChatTurn } from "../chat/rag";
 import { anchorsToCitekeys } from "../cite/bibliography";
 import { formatCitation } from "../cite/format";
-import { CiteStyle } from "../types";
 
 export const VIEW_TYPE_CHAT = "rag-obsidian-chat";
 
@@ -27,7 +26,7 @@ export class ChatView extends ItemView {
     return VIEW_TYPE_CHAT;
   }
   getDisplayText(): string {
-    return "RAG Obsidian chat";
+    return "Chat";
   }
   getIcon(): string {
     return "messages-square";
@@ -134,7 +133,7 @@ export class ChatView extends ItemView {
 
   /** Rebuild the numbered source list of a stored answer from its citekeys. */
   private sourcesFor(citekeys: string[]): AnswerSource[] {
-    const style = this.plugin.settings.citeStyle as CiteStyle;
+    const style = this.plugin.settings.citeStyle;
     return citekeys.map((ck, i) => {
       const item = this.plugin.library.getItem(ck);
       return {
@@ -187,7 +186,7 @@ export class ChatView extends ItemView {
 
     if (ans.sources.length) {
       const src = wrap.createDiv({ cls: "srag-sources" });
-      src.createEl("div", { cls: "srag-sources-head", text: "Sources" });
+      src.createDiv({ cls: "srag-sources-head", text: "Sources" });
       for (const s of ans.sources) {
         const row = src.createDiv({ cls: "srag-source" });
         row.createSpan({ cls: "srag-source-n", text: `[${s.n}]` });

@@ -17,7 +17,7 @@ export class RelatedView extends ItemView {
     return VIEW_TYPE_RELATED;
   }
   getDisplayText(): string {
-    return "RAG Obsidian related";
+    return "Related papers";
   }
   getIcon(): string {
     return "git-fork";
@@ -72,7 +72,7 @@ export class RelatedView extends ItemView {
 
   private section(title: string, count: number): HTMLElement {
     const sec = this.bodyEl.createDiv({ cls: "srag-rel-section" });
-    sec.createEl("div", { cls: "srag-rel-head", text: `${title} (${count})` });
+    sec.createDiv({ cls: "srag-rel-head", text: `${title} (${count})` });
     return sec;
   }
 
@@ -88,18 +88,18 @@ export class RelatedView extends ItemView {
     this.bodyEl.empty();
     const graph = this.plugin.citationGraph;
 
-    this.bodyEl.createEl("div", {
+    this.bodyEl.createDiv({
       cls: "srag-count",
       text: graph.size ? `Graph: ${graph.size} papers` : "Graph not built — click above.",
     });
 
     const ck = this.activeCitekey();
     if (!ck) {
-      this.bodyEl.createEl("div", { cls: "srag-count", text: "Open a reference note to see related papers." });
+      this.bodyEl.createDiv({ cls: "srag-count", text: "Open a reference note to see related papers." });
       return;
     }
     if (!graph.has(ck)) {
-      this.bodyEl.createEl("div", {
+      this.bodyEl.createDiv({
         cls: "srag-count",
         text: "This note isn't in the citation graph yet (rebuild after adding it).",
       });

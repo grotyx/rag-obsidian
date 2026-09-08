@@ -35,7 +35,7 @@ export class AddReferenceModal extends Modal {
         this.input = v;
         this.clearPending();
       });
-      t.inputEl.style.width = "100%";
+      t.inputEl.addClass("srag-input-full");
       t.inputEl.addEventListener("keydown", (e) => {
         if (e.key === "Enter") void this.submit();
       });
