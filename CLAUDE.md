@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.15 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (126 integration checks green)
+**Version**: 0.4.15 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (156 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -104,7 +104,7 @@ npm run dev            # esbuild watch → main.js (use while testing in a vault
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (126 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (156 checks)
 ```
 
 ## Testing approach (important)
