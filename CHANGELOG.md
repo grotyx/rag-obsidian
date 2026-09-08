@@ -7,6 +7,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Changed
 
+- **`npm run lint` is a usable gate.** The untyped-JSON `no-unsafe-*` backlog and the six documented exceptions (feature-detected `secretStorage`, the two CDN loaders) are warnings in `eslint.config.mjs`; the run fails only on findings a store review would block on.
+- **Unverifiable MeSH terms split on commas.** When NCBI cannot be reached, a comma-separated suggestion is kept as its pieces rather than as one long tag.
+
 - **Mobile guards.** Code-level mobile audit (no device changes behavior on desktop): the
   citation-graph "missing paper" link now falls back to a `Notice` when `window.open` isn't
   available, the pdfjs/Transformers.js CDN loaders raise a clear "…is unavailable" message

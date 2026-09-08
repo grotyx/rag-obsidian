@@ -178,7 +178,10 @@ async function canonicalizeMeshTerms(
       continue;
     }
     if (hit === undefined) {
-      out.push(term); // unverifiable, not unknown: keep verbatim rather than drop
+      // Unverifiable, not unknown: keep the text rather than drop it. Split on commas first so
+      // a model's comma list never becomes one sixty-character tag; an inverted heading such as
+      // "Decompression, Surgical" degrades to two plain words until the next verified run.
+      for (const piece of term.split(",")) if (piece.trim()) out.push(piece.trim());
       continue;
     }
     // The line was not a heading on its own. It may still be a comma-separated list from a model
