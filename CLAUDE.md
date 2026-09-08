@@ -58,6 +58,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `ingest/ncbi.ts` | the one queue every E-utilities request waits in (3/s, 10/s with a key) |
 | `ingest/pdf.ts` | pdfjs (CDN runtime load, injectable) text extraction + `findIdentifier` |
 | `ingest/pdfImport.ts` | PDF → text → metadata (id-fetch or LLM) → dedup → note + stash text |
+| `ingest/pdfStash.ts` | the one writer of the `## Full text (extracted)` stash: `hasStashedText` / `appendStash` (idempotent, 200k cap + `…[truncated]`) / `resolvePdfLink` (`pdf:` frontmatter → linkpath) |
 | `ingest/pubmedSearch.ts` | esearch/esummary + one `fetchPubmedRecord` efetch (abstract + MeSH + keywords + PMC id), PMC full text, `buildTags` (MeSH-first, tops up to `MIN_TAGS`, verifies suggestions against the MeSH database) |
 | `ingest/summarize.ts` | structured-section summary (+ MeSH terms) from an LLM, language controlled by `summaryLanguage` (`en` / `ko` / `en+ko` default / free text) via `buildSysPrompt`; `maxTokens` 8192 |
 | `ingest/unpaywall.ts` | `findOpenAccess` — scans every `oa_locations` entry for a PDF; requires a contact e-mail |
@@ -81,7 +82,8 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `cite/suggest.ts` | `@`-autocomplete EditorSuggest → inserts `[@citekey]` |
 | `commands/library.ts` | dashboard, duplicates, reading queue, status, citation-count backfill, enrich, rename tag, export, citation network, suggest related |
 | `commands/writing.ts` | update bibliography, compile manuscript, copy citation, annotated bibliography |
-| `commands/openaccess.ts` | Unpaywall lookup, OA PDF download, retraction check, PDF highlight extraction |
+| `commands/openaccess.ts` | Unpaywall lookup, OA PDF download (+ stashes the saved PDF's text), retraction check, PDF highlight extraction |
+| `commands/pdfs.ts` | `indexLinkedPdfs` / `indexLinkedPdfActive` — extract + stash the text of linked PDFs that have none (pool width 2: pdfjs is CPU-bound in the renderer; writes sequential) |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them, scoped via `BackfillScope`/`inScope` (`src/data/library.ts`) to all, one note, a folder, or a tag |
 | `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
 | `ui/{LibraryView,SearchView}.ts` | sidebar panes (`SearchView` holds the year/author/tag-chip filter state — pane-local, search only) |

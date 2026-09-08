@@ -5,6 +5,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **Index the PDFs you already have.** A note whose `pdf:` links a file in the vault (an OA
+  download, or a link you made by hand) contributed nothing to search beyond its abstract. Two
+  commands now fix that: **Index linked PDFs** walks the library, extracts the text of every
+  linked PDF that has no `## Full text (extracted)` section yet, and stashes it in the note so the
+  incremental reindex embeds it (progress + ✕ cancel in the status bar); **Index this note's PDF**
+  does the one in the active pane. **Download open-access PDF** now stashes the text of the file it
+  just saved, so a downloaded paper is searchable without a second command — if pdfjs cannot load
+  (mobile webview, CDN blocked) the download still succeeds and says the text was not indexed.
+  The stash marker, the ~200k-character cap and the `pdf:` link parsing live in one place
+  (`src/ingest/pdfStash.ts`), which PDF import now writes through too — so its stash grew from
+  20k to the same 200k cap.
+
 ## [0.4.15] — 2026-09-08
 
 > Requires Obsidian 1.7.2 or newer (`Workspace.revealLeaf`); earlier releases claimed 1.5.0.

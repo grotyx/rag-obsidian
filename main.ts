@@ -31,6 +31,7 @@ import * as oaCmd from "./src/commands/openaccess";
 import { backfillSummaries } from "./src/commands/backfill";
 import { cancelBatch } from "./src/ui/progress";
 import { resummarizeActive, resummarizeOutdated } from "./src/commands/summaries";
+import { indexLinkedPdfs, indexLinkedPdfActive } from "./src/commands/pdfs";
 
 export default class ScholarRagPlugin extends Plugin {
   settings!: ScholarRagSettings;
@@ -198,6 +199,16 @@ export default class ScholarRagPlugin extends Plugin {
       id: "rename-tag",
       name: "Rename a tag across the library",
       callback: () => new TagRenameModal(this.app, this).open(),
+    });
+    this.addCommand({
+      id: "index-linked-pdfs",
+      name: "Index linked PDFs",
+      callback: () => void indexLinkedPdfs(this),
+    });
+    this.addCommand({
+      id: "index-linked-pdf-active",
+      name: "Index this note's PDF",
+      callback: () => void indexLinkedPdfActive(this),
     });
     this.addCommand({
       id: "extract-highlights",

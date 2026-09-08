@@ -2,7 +2,8 @@ import { Notice, TFile, normalizePath, requestUrl } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { findOpenAccess } from "../ingest/unpaywall";
 import { checkRetraction } from "../ingest/retraction";
-import { extractPdfHighlights } from "../ingest/pdf";
+import { extractPdfHighlights, extractPdfText } from "../ingest/pdf";
+import { appendStash, resolvePdfLink } from "../ingest/pdfStash";
 
 /** Look up an open-access PDF for the active reference note (Unpaywall) and store it. */
 export async function findOpenAccessForActive(plugin: ScholarRagPlugin): Promise<void> {
@@ -103,6 +104,16 @@ export async function downloadOaPdf(plugin: ScholarRagPlugin): Promise<void> {
   else await plugin.app.vault.createBinary(path, res.arrayBuffer);
   await plugin.app.fileManager.processFrontMatter(r.file, (fm) => (fm.pdf = `[[${safe}.pdf]]`));
   new Notice(`Saved PDFs/${safe}.pdf`);
+  // Stash the text right away so the paper is searchable without a second command. pdfjs comes
+  // from a CDN and may be unavailable (mobile webview, network blocked) — the download stands
+  // either way, and "Index linked PDFs" can pick the note up later.
+  try {
+    const { text } = await extractPdfText(res.arrayBuffer);
+    if (!text) throw new Error("no extractable text (scanned/image PDF?)");
+    await plugin.app.vault.process(r.file, (body) => appendStash(body, text));
+  } catch (e) {
+    new Notice(`PDF saved, but its text was not indexed: ${e instanceof Error ? e.message : e}`);
+  }
 }
 
 export async function checkRetractionForActive(plugin: ScholarRagPlugin): Promise<void> {
@@ -135,7 +146,7 @@ export async function extractHighlights(plugin: ScholarRagPlugin): Promise<void>
   if (!r) return;
   const key = String(r.fm.citekey);
   let pdf: TFile | null = null;
-  const linked = typeof r.fm.pdf === "string" ? String(r.fm.pdf).replace(/^\[\[|\]\]$/g, "") : "";
+  const linked = resolvePdfLink(r.fm.pdf);
   if (linked) pdf = plugin.app.metadataCache.getFirstLinkpathDest(linked, r.file.path);
   if (!pdf) {
     const guess = plugin.app.vault.getAbstractFileByPath(normalizePath(`PDFs/${key}.pdf`));
