@@ -296,7 +296,7 @@ export default class ScholarRagPlugin extends Plugin {
     );
   }
 
-  /** Obsidian's OS-keychain secret store (1.11.4+), or null on older apps (minAppVersion is 1.5.0). */
+  /** Obsidian's OS-keychain secret store (1.11.4+), or null on older apps (minAppVersion is 1.7.2). */
   private secretStore(): SecretStorage | null {
     return this.app.secretStorage ?? null;
   }

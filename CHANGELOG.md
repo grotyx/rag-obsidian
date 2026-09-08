@@ -19,6 +19,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Changed
 
+- **Review pass on the Phase 3 work.** The citation map draws its local neighbourhood immediately and adds the dashed "missing" nodes when OpenAlex answers (offline, the local map stays and the list heading says so); titles are looked up once per pane refresh instead of one vault scan per node; `missingFrequent` is cached per graph build; rim labels are no longer clipped. `detectId` recognises OpenAlex ids and `openalex.org` URLs (`fetchMetadata` resolves them to a DOI/PMID), so the Add-reference box and the map's dashed nodes share one path. A MeSH term NCBI could not be asked about stays a tag but is no longer written to `mesh_terms`.
+
 - **Citation map nodes render.** `createSvg` adds class tokens one at a time, so the node group's two classes are passed as an array; a space-joined string threw and left the map with edges only (caught in the vault, not by the layout tests).
 
 - **`npm run lint` is a usable gate.** The untyped-JSON `no-unsafe-*` backlog and the six documented exceptions (feature-detected `secretStorage`, the two CDN loaders) are warnings in `eslint.config.mjs`; the run fails only on findings a store review would block on.

@@ -716,6 +716,13 @@ async function main() {
 
     const pm = detectId("https://pubmed.ncbi.nlm.nih.gov/26017442/");
     ok(pm.kind === "pmid" && pm.value === "26017442", `detectId(pubmed URL) → ${pm.kind}:${pm.value}`);
+    const oaUrl = detectId("https://openalex.org/W2741809807");
+    const oaBare = detectId("w2741809807");
+    ok(
+      oaUrl.kind === "openalex" && oaUrl.value === "W2741809807" && oaBare.kind === "openalex" && oaBare.value === "W2741809807",
+      `detectId(OpenAlex URL / bare id) → ${oaUrl.kind}:${oaUrl.value}, ${oaBare.kind}:${oaBare.value}`
+    );
+    ok(detectId("W2741809807 is great").kind !== "openalex", "a sentence starting with W+digits is not an OpenAlex id");
     ok(JSON.stringify(parsePubDate("2020 Mar 15")) === '{"date-parts":[[2020,3,15]]}', "parsePubDate keeps the day");
     ok(JSON.stringify(parsePubDate("2020")) === '{"date-parts":[[2020]]}', "parsePubDate year only");
     const numericPage = { ...items.get([...items.keys()][0])!, page: 155 as unknown as string };

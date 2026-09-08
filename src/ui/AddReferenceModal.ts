@@ -103,11 +103,9 @@ export class AddReferenceModal extends Modal {
     try {
       let item: CSLItem;
       if (id.kind === "unknown") {
-        // Treat free text as a title search (OpenAlex → DOI/PMID → rich metadata).
-        // A bare OpenAlex work id (W123…) resolves directly; anything else is a title search.
-        const seed: CSLItem = /^W\d+$/i.test(raw)
-          ? { type: "article-journal", openalex_id: raw }
-          : { type: "article-journal", title: raw };
+        // Treat free text as a title search (OpenAlex → DOI/PMID → rich metadata). An OpenAlex
+        // work id or URL is its own `detectId` kind and takes the fetchMetadata branch below.
+        const seed: CSLItem = { type: "article-journal", title: raw };
         const w = await resolveWork(seed, this.plugin.settings.openalexMailto);
         if (!w) {
           notice.hide();
@@ -119,7 +117,7 @@ export class AddReferenceModal extends Modal {
           ? { type: "article-journal", title: w.title, openalex_id: w.openalexId }
           : await fetchMetadata(sub, this.plugin.settings.pubmedApiKey);
       } else {
-        item = await fetchMetadata(id, this.plugin.settings.pubmedApiKey);
+        item = await fetchMetadata(id, this.plugin.settings.pubmedApiKey, this.plugin.settings.openalexMailto);
       }
       const dup = this.plugin.library.findDuplicate(item);
       if (dup) {

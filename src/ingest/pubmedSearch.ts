@@ -149,7 +149,7 @@ async function canonicalizeMeshTerms(
   terms: string[],
   apiKey?: string,
   email?: string,
-  opts: { dropUnmatched?: boolean; splitFallback?: boolean } = {}
+  opts: { dropUnmatched?: boolean; splitFallback?: boolean; unverified?: string[] } = {}
 ): Promise<string[]> {
   const a = auth(apiKey, email);
   const hasKey = !!apiKey;
@@ -178,10 +178,11 @@ async function canonicalizeMeshTerms(
       continue;
     }
     if (hit === undefined) {
-      // Unverifiable, not unknown: keep the text rather than drop it. Split on commas first so
-      // a model's comma list never becomes one sixty-character tag; an inverted heading such as
-      // "Decompression, Surgical" degrades to two plain words until the next verified run.
-      for (const piece of term.split(",")) if (piece.trim()) out.push(piece.trim());
+      // Unverifiable, not unknown: keep the term whole as a tag rather than drop it, and report
+      // it so the caller never records it as a canonical heading. Not splitting keeps an inverted
+      // heading ("Decompression, Surgical") intact for the verified split on a later run.
+      out.push(term);
+      opts.unverified?.push(term);
       continue;
     }
     // The line was not a heading on its own. It may still be a comma-separated list from a model
@@ -261,14 +262,19 @@ export async function buildTagsWithMesh(opts: {
   // not recognise is dropped, so a chatty reply cannot reach the note's frontmatter.
   const suggested = parseMeshList(opts.meshFromSummary);
   if (!suggested.length) return { tags, mesh: [] };
+  const unverified: string[] = [];
   const canon = await canonicalizeMeshTerms(suggested, opts.apiKey, opts.email, {
     dropUnmatched: true,
     splitFallback: true,
+    unverified,
   });
   const all = keywordsToTags([...opts.descriptors, ...canon, ...opts.keywords]);
   // Only the headings that actually reached the note: a blanket term such as "Humans" is
-  // dropped by keywordsToTags, and storing it would re-suggest a tag that never lands.
+  // dropped by keywordsToTags, and storing it would re-suggest a tag that never lands. A term
+  // NLM could not be asked about stays a tag but is not a heading — `mesh_terms` is what the
+  // fill-gaps command trusts without re-checking.
   const mesh = canon.filter((m) => {
+    if (unverified.includes(m)) return false;
     const [slug] = keywordsToTags([m]);
     return !!slug && all.includes(slug);
   });

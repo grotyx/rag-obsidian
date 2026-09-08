@@ -24,6 +24,9 @@ export interface CoupledPaper {
 export class CitationGraph {
   private data: GraphData = { byCitekey: {}, idToCitekey: {} };
   private path: string;
+  /** `missingFrequent` costs an OpenAlex round trip and the Related pane asks on every note
+   *  switch; the answer only changes when the graph does. A rejected lookup is not kept. */
+  private missingCache = new Map<number, Promise<MissingPaper[]>>();
 
   constructor(
     private app: App,
@@ -46,6 +49,7 @@ export class CitationGraph {
     if (await a.exists(this.path)) {
       try {
         this.data = JSON.parse(await a.read(this.path));
+        this.missingCache.clear();
       } catch {
         /* ignore corrupt cache */
       }
@@ -80,6 +84,7 @@ export class CitationGraph {
       onProgress?.(++done, entries.length);
     }
     this.data = data;
+    this.missingCache.clear();
     await this.persist();
     return this.size;
   }
@@ -134,7 +139,18 @@ export class CitationGraph {
   }
 
   /** Works cited by ≥minCount library papers but absent from the library. */
-  async missingFrequent(minCount = 2): Promise<MissingPaper[]> {
+  missingFrequent(minCount = 2): Promise<MissingPaper[]> {
+    const cached = this.missingCache.get(minCount);
+    if (cached) return cached;
+    const p = this.computeMissing(minCount).catch((e: unknown) => {
+      this.missingCache.delete(minCount);
+      throw e;
+    });
+    this.missingCache.set(minCount, p);
+    return p;
+  }
+
+  private async computeMissing(minCount: number): Promise<MissingPaper[]> {
     const count: Record<string, number> = {};
     for (const n of Object.values(this.data.byCitekey)) {
       for (const r of new Set(n.refs)) {

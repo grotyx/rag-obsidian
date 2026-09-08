@@ -60,9 +60,20 @@ export class RelatedView extends ItemView {
     return fm?.citekey ? String(fm.citekey) : null;
   }
 
+  /** citekey → title, rebuilt once per refresh: `getItem` is a full-vault scan and the pane
+   *  asks for up to ~100 titles per note switch. */
+  private titles = new Map<string, string>();
+
   private titleOf(citekey: string): string {
-    const item = this.plugin.library.getItem(citekey);
-    return item?.title ? String(item.title) : citekey;
+    return this.titles.get(citekey) ?? citekey;
+  }
+
+  private refreshTitles(): void {
+    this.titles.clear();
+    for (const e of this.plugin.library.entries()) {
+      const ck = e.item.citekey;
+      if (typeof ck === "string" && ck) this.titles.set(ck, e.item.title ? String(e.item.title) : ck);
+    }
   }
 
   private async build(): Promise<void> {
@@ -96,6 +107,7 @@ export class RelatedView extends ItemView {
     if (!this.bodyEl) return;
     const gen = ++this.gen;
     this.bodyEl.empty();
+    this.refreshTitles();
     const graph = this.plugin.citationGraph;
 
     this.bodyEl.createDiv({
@@ -134,6 +146,9 @@ export class RelatedView extends ItemView {
 
     // Missing frequently-cited (async)
     const s4 = this.section("Frequently cited by your library, but missing", 0);
+    // The local neighbourhood needs no network: draw it now, add the dashed "missing" nodes
+    // when OpenAlex answers, and keep the local map if it never does.
+    this.renderMap(mapEl, ck, refs, citedBy, coupled, []);
     void graph.missingFrequent().then((missing) => {
       if (gen !== this.gen) return;
       this.renderMap(mapEl, ck, refs, citedBy, coupled, missing);
@@ -144,6 +159,9 @@ export class RelatedView extends ItemView {
         row.createSpan({ cls: "srag-rel-badge", text: `  ×${m.count}` });
         row.onclick = () => this.plugin.safeOpenExternal(`https://openalex.org/${m.openalexId}`);
       }
+    }).catch(() => {
+      if (gen !== this.gen) return;
+      s4.querySelector(".srag-rel-head")?.setText("Frequently cited by your library, but missing (OpenAlex unreachable)");
     });
   }
 

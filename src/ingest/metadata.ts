@@ -1,11 +1,13 @@
 import { requestUrl } from "obsidian";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
+import { resolveWork } from "../graph/openalex";
 
 export type SourceId =
   | { kind: "doi"; value: string }
   | { kind: "pmid"; value: string }
   | { kind: "arxiv"; value: string }
+  | { kind: "openalex"; value: string }
   | { kind: "unknown"; value: string };
 
 /** Strip trailing sentence punctuation from a matched DOI (reference-list pastes like
@@ -31,6 +33,10 @@ export function detectId(raw: string): SourceId {
     return { kind: "arxiv", value: s.replace(/v\d+$/, "") };
   }
 
+  // OpenAlex work id, bare or as the URL the Related pane opens
+  const oa = s.match(/^(?:https?:\/\/(?:www\.)?openalex\.org\/(?:works\/)?)?(W\d+)\/?$/i);
+  if (oa) return { kind: "openalex", value: oa[1].toUpperCase() };
+
   // PubMed article URL
   const pm = s.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/i);
   if (pm) return { kind: "pmid", value: pm[1] };
@@ -46,7 +52,7 @@ export function detectId(raw: string): SourceId {
   return { kind: "unknown", value: s };
 }
 
-export async function fetchMetadata(id: SourceId, pubmedApiKey = ""): Promise<CSLItem> {
+export async function fetchMetadata(id: SourceId, pubmedApiKey = "", mailto = ""): Promise<CSLItem> {
   switch (id.kind) {
     case "doi":
       return fetchCrossref(id.value);
@@ -54,6 +60,14 @@ export async function fetchMetadata(id: SourceId, pubmedApiKey = ""): Promise<CS
       return fetchPubMed(id.value, pubmedApiKey);
     case "arxiv":
       return fetchArxiv(id.value);
+    case "openalex": {
+      // OpenAlex is a resolver, not a metadata source: get the DOI/PMID and fetch from there.
+      const w = await resolveWork({ type: "article-journal", openalex_id: id.value }, mailto);
+      if (!w) throw new Error(`OpenAlex work not found: ${id.value}`);
+      const sub = detectId(w.doi || w.pmid || "");
+      if (sub.kind === "unknown") return { type: "article-journal", title: w.title, openalex_id: w.openalexId };
+      return fetchMetadata(sub, pubmedApiKey, mailto);
+    }
     default:
       throw new Error(`Unrecognized identifier: ${id.value}`);
   }

@@ -233,6 +233,7 @@
   margin: 6px 0 4px;
 }
 .rag-obsidian-related .srag-map {
+  overflow: visible; /* rim labels extend past the viewBox; the layout clamps only the circles */
   display: block;
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
