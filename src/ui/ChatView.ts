@@ -169,7 +169,7 @@ export class ChatView extends ItemView {
     try {
       const filters = this.filterRow.filters();
       const ans = await this.rag.answer(query, this.history.slice(-CONTEXT_TURNS), filters);
-      const summary = describeFilters(ans.filters ?? filters);
+      const summary = describeFilters(filters);
       thinking.remove();
       await this.renderAnswer(ans, query, summary);
       this.history.push({ role: "user", content: query });

@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.15 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (158 integration checks green)
+**Version**: 0.4.15 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (169 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -58,7 +58,7 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `ingest/ncbi.ts` | the one queue every E-utilities request waits in (3/s, 10/s with a key) |
 | `ingest/pdf.ts` | pdfjs (CDN runtime load, injectable) text extraction + `findIdentifier` |
 | `ingest/pdfImport.ts` | PDF → text → metadata (id-fetch or LLM) → dedup → note + stash text |
-| `ingest/pdfStash.ts` | the one writer of the `## Full text (extracted)` stash: `hasStashedText` / `appendStash` (idempotent, 200k cap + `…[truncated]`) / `resolvePdfLink` (`pdf:` frontmatter → linkpath) |
+| `ingest/pdfStash.ts` | the one writer of the `## Full text (extracted)` stash: `hasStashedText` / `appendStash` (idempotent, `STASH_MAX_CHARS` 200k cap + `…[truncated]`, the same cap `extractPdfText` stops at) / `resolvePdfLink` (`pdf:` frontmatter → linkpath, `#anchor`/`|alias` stripped) |
 | `ingest/pubmedSearch.ts` | esearch/esummary + one `fetchPubmedRecord` efetch (abstract + MeSH + keywords + PMC id), PMC full text, `buildTags` (MeSH-first, tops up to `MIN_TAGS`, verifies suggestions against the MeSH database) |
 | `ingest/summarize.ts` | structured-section summary (+ MeSH terms) from an LLM, language controlled by `summaryLanguage` (`en` / `ko` / `en+ko` default / free text) via `buildSysPrompt`; `maxTokens` 8192 |
 | `ingest/unpaywall.ts` | `findOpenAccess` — scans every `oa_locations` entry for a PDF; requires a contact e-mail |
@@ -74,21 +74,21 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` + `refIds` (raw cited ids, for the map's dashed nodes) |
 | `graph/layout.ts` | `layoutGraph` — deterministic force-directed layout (circle seeding, no RNG) + `topByDegree` node cap; pure math behind the Related pane's SVG map |
 | `llm/client.ts` | provider-agnostic chat (Anthropic / OpenAI / Ollama) via `requestUrl`, with 429/5xx backoff |
-| `chat/rag.ts` | retrieve (under optional `SearchFilters`) → number sources → [n] grounded answer → resolve citations; `RagAnswer` echoes the filters back for the UI's source header |
+| `chat/rag.ts` | retrieve (under optional `SearchFilters`) → number sources → [n] grounded answer → resolve citations |
 | `cite/csl.ts` | citeproc-js rendering: bundled styles + CSL-repo fetch/cache, per-note `csl:` override |
 | `cite/format.ts` | CSL-JSON → APA / Vancouver / Plain (lightweight fallback; `cite/csl.ts` is primary) |
 | `cite/bibliography.ts` | citation grammar shared by every renderer: `extractCitekeys`, `citePattern`/`keysInCite`, `replaceCitations` (skips code), `resolveCluster` (all keys or none), `anchorsToCitekeys` (chat `[n]` → `[@key]` clusters), `splitAtReferences`, `buildBibliography`, `inTextLabel` |
 | `cite/export.ts` | library → BibTeX / RIS / CSL-JSON |
 | `cite/suggest.ts` | `@`-autocomplete EditorSuggest → inserts `[@citekey]` |
 | `commands/library.ts` | dashboard, duplicates, reading queue, status, citation-count backfill, enrich, rename tag, export, citation network, suggest related |
-| `write/evidence.ts` | `paragraphsOf` (prose paragraphs above `## References`, with offsets + `cited`), `looksLikeClaim` heuristic, `unsupportedClaims`, `rankHits` (chunk hits → one row per citekey) |
+| `write/evidence.ts` | `paragraphsOf` (prose paragraphs above `## References`, with offsets + `cited`; headings/fences/frontmatter/comments/callouts/tables skipped), `looksLikeClaim` heuristic, `unsupportedClaims`, `rankHits` (chunk hits → one row per citekey), `citationInsertion`/`citationEdit` (where a new `[@key]` goes: inside the sentence, merged into a known cluster) |
 | `commands/writing.ts` | update bibliography, compile manuscript, copy citation, annotated bibliography, suggest citations for selection, find unsupported claims |
 | `commands/openaccess.ts` | Unpaywall lookup, OA PDF download (+ stashes the saved PDF's text), retraction check, PDF highlight extraction |
-| `commands/pdfs.ts` | `indexLinkedPdfs` / `indexLinkedPdfActive` — extract + stash the text of linked PDFs that have none (pool width 2: pdfjs is CPU-bound in the renderer; writes sequential) |
+| `commands/pdfs.ts` | `indexLinkedPdfs` / `indexLinkedPdfActive` — extract + stash the text of linked PDFs that have none (pool width 2: pdfjs is CPU-bound in the renderer; writes sequential, one note written as its text lands) + `findPdfFile`, the one resolver (`pdf:` link → `PDFs/<citekey>.pdf`) shared with `commands/openaccess.ts` |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them, scoped via `BackfillScope`/`inScope` (`src/data/library.ts`) to all, one note, a folder, or a tag |
 | `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
 | `ui/{LibraryView,SearchView}.ts` | sidebar panes |
-| `ui/FilterRow.ts` | the year-range / author / tag-chip filter row shared by `SearchView` and `ChatView` (`new FilterRow(host, plugin, onChange?)` → `.filters(): SearchFilters`, `.clear()`); state is pane-local and never persisted |
+| `ui/FilterRow.ts` | the year-range / author / tag-chip filter row shared by `SearchView` and `ChatView` (`new FilterRow(host, plugin)` → `.filters(): SearchFilters`, `.clear()`); state is pane-local and never persisted |
 | `ui/RelatedView.ts` | citation-graph pane: SVG map (`graph/layout.ts`, ≤40 nodes; dashed node → `AddReferenceModal` prefilled with the OpenAlex id) above the unchanged text lists |
 | `ui/ChatView.ts` | chat pane — a `FilterRow` between log and input scopes the next answer (its `describeFilters` label rides along on the persisted turn and heads the source list), history persisted to `<pluginDir>/chat.json` (last 50 messages; the model still sees the last 8), Clear chat, and "Save as note" per answer → `Chat/<date> <question>.md` |
 | `ui/progress.ts` | `startBatch`/`cancelBatch` — status-bar progress with a ✕ for the two batch commands, one batch at a time, hands out the `AbortSignal` |
@@ -104,7 +104,7 @@ npm run dev            # esbuild watch → main.js (use while testing in a vault
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (158 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (169 checks)
 ```
 
 ## Testing approach (important)

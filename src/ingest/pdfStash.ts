@@ -23,10 +23,11 @@ export function appendStash(body: string, text: string, maxChars: number = STASH
 }
 
 /** `pdf:` frontmatter → a linkpath for `metadataCache.getFirstLinkpathDest`.
- *  `[[folder/a.pdf|alias]]` → `folder/a.pdf`; anything that is not a .pdf → null. */
+ *  `[[folder/a.pdf|alias]]` → `folder/a.pdf`, `[[a.pdf#page=3]]` → `a.pdf`; anything that is
+ *  not a .pdf → null. */
 export function resolvePdfLink(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const wiki = value.trim().match(/^\[\[([\s\S]+)\]\]$/);
-  const path = (wiki ? wiki[1] : value).split("|")[0].trim();
+  const path = (wiki ? wiki[1] : value).split("|")[0].split("#")[0].trim();
   return path && /\.pdf$/i.test(path) ? path : null;
 }

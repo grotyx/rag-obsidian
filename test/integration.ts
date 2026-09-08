@@ -20,7 +20,7 @@ import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote, summaryBlock } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
 import { VectorStore, INDEX_SCHEMA, SearchFilters, SearchHit, describeFilters } from "../src/index/store";
-import { paragraphsOf, looksLikeClaim, unsupportedClaims, rankHits, citationInsertion } from "../src/write/evidence";
+import { paragraphsOf, looksLikeClaim, unsupportedClaims, rankHits, citationInsertion, citationEdit } from "../src/write/evidence";
 import { OllamaProvider } from "../src/index/providers/ollama";
 import { LLMClient } from "../src/llm/client";
 import { RagChat } from "../src/chat/rag";
@@ -1081,10 +1081,6 @@ async function main() {
       ok(open.sources.length > 0, `unfiltered chat retrieves ${open.sources.length} source(s)`);
       const scoped = await chat.answer("fusion outcomes", [], { yearFrom: 2030 });
       ok(scoped.sources.length === 0, "a yearFrom past every note leaves the answer with no sources");
-      ok(
-        describeFilters(scoped.filters ?? {}) === "2030–",
-        `the answer echoes its filters for the source header: "${describeFilters(scoped.filters ?? {})}"`
-      );
     } finally {
       cserver.close();
     }
@@ -1204,6 +1200,50 @@ async function main() {
       `citationInsertion: before the full stop, after a space → ${JSON.stringify([ins1, ins2, ins3])}`
     );
     ok(citationInsertion("", "a").text === "[@a]" && citationInsertion("wait...", "a").back === 0, "citationInsertion: empty prefix and an ellipsis are left alone");
+
+    // Non-prose blocks: a callout, a table row and a comment must never be offered as claims.
+    const only = (md: string) => paragraphsOf(md).map((p) => p.text).join(" | ");
+    ok(
+      only("> [!note] Tip\n> A quoted sentence long enough to read like ordinary prose.") === "",
+      `paragraphsOf: a callout/blockquote is not prose → "${only("> [!note] Tip\n> A quoted sentence.")}"`
+    );
+    ok(
+      only("| head | value |\n| --- | --- |\n| alpha | beta |") === "",
+      "paragraphsOf: a table is not prose"
+    );
+    ok(
+      only("%%\nA private comment that asserts something about the world.\n%%") === "",
+      "paragraphsOf: a %% comment block is skipped"
+    );
+    ok(
+      only("%% inline comment %%\nReal prose that follows the comment.") === "Real prose that follows the comment.",
+      "paragraphsOf: a one-line %% comment is skipped, the prose after it is not"
+    );
+    ok(
+      only("<!--\nA hidden editorial note.\n-->\nReal prose that follows the comment.") === "Real prose that follows the comment.",
+      "paragraphsOf: an HTML comment block is skipped"
+    );
+
+    // Cluster merge: what citationEdit says to insert, applied to the text before the cursor.
+    const known = (k: string) => k === "a" || k === "b";
+    const apply = (before: string, key: string): string => {
+      const e = citationEdit(before, key, known);
+      if (!e) return "(already cited)";
+      return before.slice(0, before.length - e.back) + e.text + before.slice(before.length - e.back);
+    };
+    ok(
+      apply("Outcomes were comparable [@a].", "b") === "Outcomes were comparable [@a; @b].",
+      `citationEdit: merges into the cluster behind terminal punctuation → "${apply("Outcomes were comparable [@a].", "b")}"`
+    );
+    ok(
+      apply("Mail me at [john@x.org]", "b") === "Mail me at [john@x.org] [@b]",
+      `citationEdit: [john@x.org] is not a citation cluster → "${apply("Mail me at [john@x.org]", "b")}"`
+    );
+    ok(apply("Outcomes were comparable [@a]", "a") === "(already cited)", "citationEdit: the key is already in the cluster");
+    ok(
+      apply("Outcomes were comparable [@zz]", "b") === "Outcomes were comparable [@zz] [@b]",
+      "citationEdit: a bracket whose keys are not in the library is not a cluster"
+    );
   }
 
   // ---- 20. Linked-PDF stash (pdfStash + chunk growth) ----
@@ -1225,6 +1265,11 @@ async function main() {
     ok(resolvePdfLink("[[a.pdf]]") === "a.pdf", "resolvePdfLink: [[a.pdf]]");
     ok(resolvePdfLink("[[folder/a.pdf|alias]]") === "folder/a.pdf", "resolvePdfLink: strips folder alias");
     ok(resolvePdfLink("a.pdf") === "a.pdf", "resolvePdfLink: a bare path works too");
+    ok(resolvePdfLink("[[a.pdf#page=3]]") === "a.pdf", "resolvePdfLink: a #page anchor is not part of the path");
+    ok(
+      resolvePdfLink("[[folder/a.pdf#page=3|alias]]") === "folder/a.pdf",
+      "resolvePdfLink: anchor and alias together"
+    );
     ok(resolvePdfLink("[[a.md]]") === null, "resolvePdfLink: a non-PDF link is not a PDF");
     ok(resolvePdfLink(undefined) === null, "resolvePdfLink: missing frontmatter → null");
 
@@ -1251,6 +1296,24 @@ async function main() {
       doc.pages === 19 && after.length > before.length,
       `stashed full text chunks into more pieces: ${before.length} → ${after.length} (${doc.pages}p)`
     );
+
+    // The "nothing extractable" check lives in extractPdfText itself, so every caller gets it.
+    setPdfjsLoader(async () => ({
+      GlobalWorkerOptions: { workerSrc: "" },
+      getDocument: () => ({
+        promise: Promise.resolve({
+          numPages: 1,
+          getPage: async () => ({ getTextContent: async () => ({ items: [] }) }),
+        }),
+      }),
+    }));
+    let scanned = "";
+    try {
+      await extractPdfText(new ArrayBuffer(8));
+    } catch (e) {
+      scanned = e instanceof Error ? e.message : String(e);
+    }
+    ok(/no extractable text/i.test(scanned), `extractPdfText: an image-only PDF throws for every caller → "${scanned}"`);
   }
 
   log("\nDONE.");

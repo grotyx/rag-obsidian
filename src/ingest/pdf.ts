@@ -2,6 +2,7 @@
  * bundle to avoid a ~1MB main.js). The loader is injectable for testing. */
 
 import { cleanDoi } from "./metadata";
+import { STASH_MAX_CHARS } from "./pdfStash";
 import { wrapCdnImportError } from "../util/cdn";
 
 export type PdfjsLike = {
@@ -48,9 +49,12 @@ export async function extractPdfText(data: ArrayBuffer): Promise<{ text: string;
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
     text += content.items.map((it: any) => ("str" in it ? it.str : "")).join(" ") + "\n\n";
-    if (text.length > 200000) break; // safety cap for huge PDFs
+    if (text.length > STASH_MAX_CHARS) break; // safety cap for huge PDFs
   }
-  return { text: text.trim(), pages };
+  const trimmed = text.trim();
+  // One check for every caller: a scanned/image PDF yields nothing worth stashing.
+  if (!trimmed) throw new Error("No extractable text (scanned/image PDF?)");
+  return { text: trimmed, pages };
 }
 
 export interface PdfHighlight {

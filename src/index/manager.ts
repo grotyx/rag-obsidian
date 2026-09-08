@@ -227,9 +227,11 @@ export class IndexManager {
     });
   }
 
-  async search(query: string, filters: SearchFilters = {}): Promise<SearchHit[]> {
+  /** `k` defaults to the user's top-K; callers that collapse hits (one row per reference)
+   *  pass a bigger one so a full-text-indexed paper can't fill the whole result set. */
+  async search(query: string, filters: SearchFilters = {}, k = this.settings.topK): Promise<SearchHit[]> {
     const [vec] = await this.getProvider().embed([query]);
-    return this.store.search(vec, query, this.settings.topK, filters);
+    return this.store.search(vec, query, k, filters);
   }
 
   private async persist(): Promise<void> {
