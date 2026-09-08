@@ -19,7 +19,8 @@ import { parseMeshList, buildSysPrompt, summarizeSource } from "../src/ingest/su
 import { exportRefs } from "../src/cite/export";
 import { generateCitekey, buildNote, summaryBlock } from "../src/data/reference";
 import { chunkReference, stripFrontmatter, yearFromIssued, chunkHash } from "../src/index/chunker";
-import { VectorStore, INDEX_SCHEMA, SearchFilters } from "../src/index/store";
+import { VectorStore, INDEX_SCHEMA, SearchFilters, SearchHit } from "../src/index/store";
+import { paragraphsOf, looksLikeClaim, unsupportedClaims, rankHits } from "../src/write/evidence";
 import { OllamaProvider } from "../src/index/providers/ollama";
 import { LLMClient } from "../src/llm/client";
 import { RagChat } from "../src/chat/rag";
@@ -1031,6 +1032,113 @@ async function main() {
         wrapped2.message.includes("not an Error object"),
       `wrapCdnImportError: handles a non-Error throw: "${wrapped2.message}"`
     );
+  }
+
+  // ---- 21. Evidence for the paragraph you are writing (pure logic) ----
+  log("\n[21] Writing evidence (paragraphs, claim heuristic, hit ranking)");
+  {
+    const manuscript = [
+      "---",
+      "title: Draft",
+      "---",
+      "",
+      "# Intro",
+      "",
+      "Some prose paragraph that cites work properly and runs well beyond eight words [@smith2020].",
+      "",
+      "This paragraph asserts something substantial about the world without any citation at all.",
+      "",
+      "```js",
+      'const cite = "[@fake]";',
+      "```",
+      "",
+      "Is this a claim that needs a citation for its assertion to hold?",
+      "",
+      "- alpha",
+      "- beta",
+      "",
+      "## References",
+      "",
+      "- Smith. A cited work whose entry also runs beyond eight words here.",
+    ].join("\n");
+
+    const paras = paragraphsOf(manuscript);
+    ok(paras.length === 4, `paragraphsOf: heading/fence/frontmatter/blank skipped → ${paras.length} paragraphs`);
+    ok(
+      paras.every((p) => manuscript.slice(p.start, p.end) === p.text),
+      "paragraphsOf: start/end offsets address the paragraph exactly (insertion point)"
+    );
+    ok(
+      !paras.some((p) => p.text.includes("title: Draft")),
+      "paragraphsOf: frontmatter is not a paragraph"
+    );
+    ok(!paras.some((p) => p.text.includes("fake")), "paragraphsOf: fenced code block is skipped");
+    ok(
+      !paras.some((p) => p.text.includes("Smith.")),
+      "paragraphsOf: nothing below ## References is returned"
+    );
+    ok(
+      paras.filter((p) => p.cited).length === 1 && paras[0].cited,
+      "paragraphsOf: only the [@smith2020] paragraph is cited (the fenced [@fake] does not count)"
+    );
+    ok(
+      paras.some((p) => p.text === "- alpha\n- beta"),
+      "paragraphsOf: a list block survives as one paragraph"
+    );
+
+    ok(
+      looksLikeClaim("Regular aspirin use lowers the incidence of colorectal adenoma in older adults."),
+      "looksLikeClaim: a long declarative sentence is a claim"
+    );
+    ok(!looksLikeClaim("Aspirin lowers risk."), "looksLikeClaim: under eight words is not a claim");
+    ok(
+      !looksLikeClaim("Regular aspirin use lowers the incidence of colorectal adenoma in adults"),
+      "looksLikeClaim: no full stop is not a claim"
+    );
+    ok(
+      !looksLikeClaim("Why does this matter? The mechanism is still unclear in every published cohort."),
+      "looksLikeClaim: a paragraph that asks a question is not a claim"
+    );
+    ok(
+      !looksLikeClaim("We describe a retrospective cohort of two hundred consecutive patients."),
+      "looksLikeClaim: the author's own plan language is not a claim"
+    );
+    ok(
+      !looksLikeClaim("This section explains how the retrieval index is built and then persisted."),
+      "looksLikeClaim: signposting is not a claim"
+    );
+    ok(
+      !looksLikeClaim("Figure 2 shows the distribution of scores across the whole evaluation corpus."),
+      "looksLikeClaim: a pointer to the author's own exhibit is not a claim"
+    );
+    ok(
+      !looksLikeClaim("In summary, the retrieval index improved precision on every benchmark run."),
+      "looksLikeClaim: a hedged wrap-up is not a claim"
+    );
+
+    const claims = unsupportedClaims(manuscript);
+    ok(
+      claims.length === 1 && claims[0].text.startsWith("This paragraph asserts"),
+      `unsupportedClaims: exactly the one uncited assertion → ${JSON.stringify(claims.map((c) => c.text.slice(0, 30)))}`
+    );
+
+    const hit = (citekey: string, id: string, score: number): SearchHit => ({
+      id,
+      citekey,
+      title: citekey.toUpperCase(),
+      section: "abstract",
+      year: 2020,
+      text: `chunk ${id}`,
+      score,
+    });
+    const hits = [hit("a", "a#1", 0.4), hit("b", "b#1", 0.9), hit("a", "a#2", 0.7), hit("c", "c#1", 0.2)];
+    const ranked = rankHits(hits);
+    ok(
+      ranked.length === 3 && ranked.map((h) => h.citekey).join(",") === "a,b,c",
+      `rankHits: one row per citekey, retrieval order kept → ${ranked.map((h) => h.citekey).join(",")}`
+    );
+    ok(ranked[0].score === 0.7, `rankHits: keeps the best-scoring chunk per reference → ${ranked[0].score}`);
+    ok(rankHits(hits, 2).length === 2, "rankHits: caps at max");
   }
 
   log("\nDONE.");

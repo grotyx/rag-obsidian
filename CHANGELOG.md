@@ -5,6 +5,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **Evidence for the paragraph you are writing.** Two editor commands. **Suggest citations for
+  selection** hybrid-searches the selected text (or the paragraph under the cursor), lists the
+  best-matching references with title · year · score and the matching chunk, and inserts
+  `[@citekey]` at the cursor — merging into the cluster the cursor sits right behind, so
+  `[@a]` becomes `[@a; @b]`. **Find unsupported claims** walks the paragraphs above
+  `## References`, flags the ones that assert something (≥ 8 words, ends in a full stop, not a
+  question, not signposting or a figure pointer) and cite nothing, and offers a one-click
+  *Suggest* per paragraph that inserts the citation at that paragraph's end.
+
 ## [0.4.15] — 2026-09-08
 
 > Requires Obsidian 1.7.2 or newer (`Workspace.revealLeaf`); earlier releases claimed 1.5.0.

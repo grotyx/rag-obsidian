@@ -1,6 +1,9 @@
-import { Notice, normalizePath } from "obsidian";
+import { Editor, EditorPosition, Notice, normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
+import { CiteSuggestModal, UnsupportedClaimsModal } from "../ui/CiteSuggestModal";
+import { Paragraph, paragraphsOf, rankHits, unsupportedClaims } from "../write/evidence";
 import {
+  keysInCite,
   extractCitekeys,
   buildBibliography,
   inTextLabel,
@@ -178,6 +181,85 @@ export async function annotatedBibliography(plugin: ScholarRagPlugin): Promise<v
 /** citeproc in-text HTML → plain text (for the compiled manuscript). */
 function plainText(html: string): string {
   return decodeEntities(html.replace(/<[^>]+>/g, ""));
+}
+
+/** Hybrid-search the selection (else the paragraph at the cursor) and insert the chosen `[@citekey]`. */
+export async function suggestCitations(plugin: ScholarRagPlugin, editor: Editor): Promise<void> {
+  const selection = editor.getSelection().trim();
+  let text = selection;
+  const at = editor.getCursor(selection ? "to" : "from");
+  if (!text) {
+    const off = editor.posToOffset(at);
+    const para = paragraphsOf(editor.getValue()).find((p) => off >= p.start && off <= p.end);
+    if (!para) {
+      new Notice("Select some text, or put the cursor in a paragraph");
+      return;
+    }
+    text = para.text;
+  }
+  await suggestFor(plugin, text, (key) => insertCitation(editor, at, key));
+}
+
+/** List the paragraphs that assert something and cite nothing; "Suggest" cites one. */
+export async function findUnsupportedClaims(plugin: ScholarRagPlugin, editor: Editor): Promise<void> {
+  const claims = unsupportedClaims(editor.getValue());
+  if (!claims.length) {
+    new Notice("Every claim paragraph has a citation");
+    return;
+  }
+  new UnsupportedClaimsModal(plugin.app, claims, (claim) => {
+    void suggestFor(plugin, claim.text, (key) => insertAtParagraph(editor, claim, key));
+  }).open();
+}
+
+/** Shared half of both commands: search → pick → insert. */
+async function suggestFor(
+  plugin: ScholarRagPlugin,
+  text: string,
+  insert: (citekey: string) => void
+): Promise<void> {
+  if (!plugin.indexManager.ready) {
+    new Notice("Rebuild search index first");
+    return;
+  }
+  const notice = new Notice("Searching for evidence…", 0);
+  let hits;
+  try {
+    hits = rankHits(await plugin.indexManager.search(text));
+  } catch (e) {
+    new Notice(`Search failed: ${e instanceof Error ? e.message : String(e)}`);
+    return;
+  } finally {
+    notice.hide();
+  }
+  if (!hits.length) {
+    new Notice("No matching references in the library");
+    return;
+  }
+  new CiteSuggestModal(plugin.app, hits, (h) => insert(h.citekey)).open();
+}
+
+/** Insert `[@key]` at `at`, merging into the cluster the cursor sits right behind (`[@a]` → `[@a; @b]`). */
+function insertCitation(editor: Editor, at: EditorPosition, key: string): void {
+  const off = editor.posToOffset(at);
+  const cluster = editor.getValue().slice(0, off).match(/\[([^[\]]*@[^[\]]*)\]$/);
+  const keys = cluster ? keysInCite(cluster[1]) : [];
+  if (keys.includes(key)) {
+    new Notice(`Already cited: [@${key}]`);
+    return;
+  }
+  if (keys.length) editor.replaceRange(`; @${key}]`, editor.offsetToPos(off - 1), at);
+  else editor.replaceRange(`[@${key}]`, at, at);
+}
+
+/** Insert at the end of `claim` — offsets are recomputed, so an earlier insert can't shift it. */
+function insertAtParagraph(editor: Editor, claim: Paragraph, key: string): void {
+  const now = paragraphsOf(editor.getValue()).find((p) => p.text === claim.text);
+  if (!now) {
+    new Notice("Paragraph has changed — citation not inserted");
+    return;
+  }
+  insertCitation(editor, editor.offsetToPos(now.end), key);
 }
 
 /** Pull the EN summary (else KR) section body out of a reference note. */

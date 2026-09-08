@@ -195,6 +195,16 @@ export default class ScholarRagPlugin extends Plugin {
       callback: () => void writingCmd.annotatedBibliography(this),
     });
     this.addCommand({
+      id: "suggest-citations",
+      name: "Suggest citations for selection",
+      editorCallback: (editor) => void writingCmd.suggestCitations(this, editor),
+    });
+    this.addCommand({
+      id: "find-unsupported-claims",
+      name: "Find unsupported claims",
+      editorCallback: (editor) => void writingCmd.findUnsupportedClaims(this, editor),
+    });
+    this.addCommand({
       id: "rename-tag",
       name: "Rename a tag across the library",
       callback: () => new TagRenameModal(this.app, this).open(),
