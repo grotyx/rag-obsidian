@@ -5,6 +5,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.4.16] — 2026-09-08
+
 ### Added
 
 - **Citations land inside the sentence.** Suggest-citations / unsupported-claims insert `[@key]` before the terminal full stop and after a space (`stays [@key].`), merging into an existing cluster when the cursor sits on one.
