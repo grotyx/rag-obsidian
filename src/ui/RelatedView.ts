@@ -256,7 +256,7 @@ export class RelatedView extends ItemView {
       const m = meta.get(n.id);
       if (!p || !m) continue;
       const g = svg.createSvg("g", {
-        cls: `srag-map-node srag-map-${m.kind}`,
+        cls: ["srag-map-node", `srag-map-${m.kind}`], // createSvg adds tokens one by one: no spaces
         attr: { transform: `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})` },
       });
       g.createSvg("title").textContent = m.label;

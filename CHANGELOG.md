@@ -19,6 +19,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Changed
 
+- **Citation map nodes render.** `createSvg` adds class tokens one at a time, so the node group's two classes are passed as an array; a space-joined string threw and left the map with edges only (caught in the vault, not by the layout tests).
+
 - **`npm run lint` is a usable gate.** The untyped-JSON `no-unsafe-*` backlog and the six documented exceptions (feature-detected `secretStorage`, the two CDN loaders) are warnings in `eslint.config.mjs`; the run fails only on findings a store review would block on.
 - **Unverifiable MeSH terms split on commas.** When NCBI cannot be reached, a comma-separated suggestion is kept as its pieces rather than as one long tag.
 
