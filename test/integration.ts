@@ -30,6 +30,7 @@ import { CitationGraph } from "../src/graph/citations";
 import { layoutGraph, topByDegree, LayoutNode, LayoutEdge } from "../src/graph/layout";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { wrapCdnImportError } from "../src/util/cdn";
+import { hasStashedText, appendStash, resolvePdfLink, STASH_MARKER } from "../src/ingest/pdfStash";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import {
   anchorsToCitekeys,
@@ -1194,6 +1195,53 @@ async function main() {
     );
     ok(ranked[0].score === 0.7, `rankHits: keeps the best-scoring chunk per reference → ${ranked[0].score}`);
     ok(rankHits(hits, 2).length === 2, "rankHits: caps at max");
+  }
+
+  // ---- 20. Linked-PDF stash (pdfStash + chunk growth) ----
+  log("\n[20] Linked-PDF stash");
+  {
+    const bare = "# Paper\n\n## Notes\n\nA sentence.";
+    ok(!hasStashedText(bare), "hasStashedText: a bare note has no stash");
+    const once = appendStash(bare, "Full text of the paper.");
+    ok(
+      hasStashedText(once) && once.includes(STASH_MARKER) && once.includes("Full text of the paper."),
+      "appendStash: writes the marker and the text"
+    );
+    ok(appendStash(once, "OTHER TEXT") === once, "appendStash: idempotent — a second call changes nothing");
+    ok(appendStash(bare, "   \n ") === bare, "appendStash: nothing to stash leaves the body alone");
+    const cut = appendStash(bare, "x".repeat(500), 100);
+    const kept = ((cut.split(STASH_MARKER)[1] ?? "").match(/x/g) || []).length;
+    ok(kept === 100 && /…\[truncated\]/.test(cut), `appendStash: trims to maxChars (${kept} kept) and says so`);
+
+    ok(resolvePdfLink("[[a.pdf]]") === "a.pdf", "resolvePdfLink: [[a.pdf]]");
+    ok(resolvePdfLink("[[folder/a.pdf|alias]]") === "folder/a.pdf", "resolvePdfLink: strips folder alias");
+    ok(resolvePdfLink("a.pdf") === "a.pdf", "resolvePdfLink: a bare path works too");
+    ok(resolvePdfLink("[[a.md]]") === null, "resolvePdfLink: a non-PDF link is not a PDF");
+    ok(resolvePdfLink(undefined) === null, "resolvePdfLink: missing frontmatter → null");
+
+    // A linked PDF's text must actually reach the index: extract it the way the command does
+    // (pdfjs behind the injectable loader), stash it, and re-chunk the note.
+    setPdfjsLoader(async () => ({
+      GlobalWorkerOptions: { workerSrc: "" },
+      getDocument: () => ({
+        promise: Promise.resolve({
+          numPages: 19,
+          getPage: async (p: number) => ({
+            getTextContent: async () => ({
+              items: [{ str: `Page ${p}. ` + "clinical outcome after endoscopic decompression. ".repeat(40) }],
+            }),
+          }),
+        }),
+      }),
+    }));
+    const doc = await extractPdfText(new ArrayBuffer(8));
+    const input = { citekey: "k", title: "T", year: 2020, tags: [] as string[], abstract: "A short abstract." };
+    const before = chunkReference({ ...input, body: bare }, 800);
+    const after = chunkReference({ ...input, body: appendStash(bare, doc.text) }, 800);
+    ok(
+      doc.pages === 19 && after.length > before.length,
+      `stashed full text chunks into more pieces: ${before.length} → ${after.length} (${doc.pages}p)`
+    );
   }
 
   log("\nDONE.");

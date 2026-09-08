@@ -2,6 +2,7 @@ import { App, TFile } from "obsidian";
 import { ScholarRagSettings, CSLItem } from "../types";
 import { Library } from "../data/library";
 import { extractPdfText, findIdentifier } from "./pdf";
+import { appendStash } from "./pdfStash";
 import { fetchMetadata } from "./metadata";
 import { LLMClient } from "../llm/client";
 
@@ -40,13 +41,12 @@ export class PdfImporter {
   }
 
   private async attach(note: TFile, pdf: TFile, text: string): Promise<void> {
-    const marker = "## Full text (extracted)";
-    if (!(await this.app.vault.read(note)).includes(marker)) {
-      await this.app.vault.append(note, `\n${marker}\n\n${text.slice(0, 20000)}\n`);
-    }
+    // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
+    // appended before it is silently dropped.
     await this.app.fileManager.processFrontMatter(note, (fm) => {
       fm.pdf = `[[${pdf.path}]]`;
     });
+    await this.app.vault.process(note, (body) => appendStash(body, text));
   }
 
   private async llmExtract(text: string): Promise<CSLItem> {
