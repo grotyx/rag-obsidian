@@ -40,30 +40,33 @@
 .rag-obsidian-search .srag-tools {
   margin-bottom: 6px;
 }
-.rag-obsidian-search .srag-filters {
+.srag-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 6px;
 }
-.rag-obsidian-search .srag-filters input {
+.srag-filters input {
   min-width: 0;
   font-size: 0.85em;
 }
-.rag-obsidian-search .srag-year {
+.srag-year {
   width: 4.5em;
 }
-.rag-obsidian-search .srag-author,
-.rag-obsidian-search .srag-tag-input {
+.srag-author,
+.srag-tag-input {
   flex: 1 1 7em;
 }
-.rag-obsidian-search .srag-chips {
+.srag-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 6px;
 }
-.rag-obsidian-search .srag-chip {
+.srag-chips:empty {
+  display: none;
+}
+.srag-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -73,11 +76,11 @@
   background: var(--background-modifier-hover);
   color: var(--text-muted);
 }
-.rag-obsidian-search .srag-chip-x {
+.srag-chip-x {
   cursor: pointer;
   opacity: 0.6;
 }
-.rag-obsidian-search .srag-chip-x:hover {
+.srag-chip-x:hover {
   opacity: 1;
 }
 .rag-obsidian-search .srag-count {

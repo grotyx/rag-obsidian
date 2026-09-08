@@ -5,6 +5,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **The search pane's filters reach the chat.** The year-range / author / tag-chip row is now a
+  shared component (`src/ui/FilterRow.ts`) and sits in the chat pane too, between the log and the
+  input: whatever is set there scopes the retrieval behind the next answer. A scoped answer labels
+  its source list with what it was narrowed to (`Sources (2022–2025 · tag: endoscopy · author: kim)`),
+  an unscoped one still just says `Sources`, and a question that filters everything away says so
+  and suggests loosening the filters. The label is kept with the persisted turn, so a replayed
+  conversation still shows the scope each answer was given under; the filter row itself is
+  pane-local and starts empty, and "Clear" resets it.
+
 ## [0.4.15] — 2026-09-08
 
 > Requires Obsidian 1.7.2 or newer (`Workspace.revealLeaf`); earlier releases claimed 1.5.0.
