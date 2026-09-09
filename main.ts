@@ -109,6 +109,11 @@ export default class ScholarRagPlugin extends Plugin {
       callback: () => void this.activateView(VIEW_TYPE_RELATED),
     });
     this.addCommand({
+      id: "build-citation-graph",
+      name: "Build citation graph",
+      callback: () => void this.buildCitationGraph(),
+    });
+    this.addCommand({
       id: "update-bibliography",
       name: "Update bibliography in current note",
       callback: () => void writingCmd.updateBibliography(this),
@@ -386,6 +391,23 @@ export default class ScholarRagPlugin extends Plugin {
   }
 
   /** Full index rebuild with a progress notice (command palette + SearchView button). */
+  /** Build the citation graph over the whole library (one OpenAlex request per paper).
+   *  Needed once; afterwards `CitationGraph.enqueue` keeps it current on its own. */
+  async buildCitationGraph(): Promise<void> {
+    const notice = new Notice("Building citation graph…", 0);
+    try {
+      const n = await this.citationGraph.build((done, total) =>
+        notice.setMessage(`OpenAlex ${done}/${total}…`)
+      );
+      new Notice(`Citation graph: ${n} papers linked`);
+    } catch (e) {
+      console.error("[RAG Obsidian] citation graph build failed", e);
+      new Notice(`Graph build failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      notice.hide();
+    }
+  }
+
   async rebuildIndex(): Promise<void> {
     const notice = new Notice("Building index…", 0);
     try {

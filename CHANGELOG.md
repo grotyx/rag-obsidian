@@ -5,6 +5,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.4.17] — 2026-09-09
+
+### Added
+
+- **"Build citation graph" is a command.** It used to exist only as a button inside the Related
+  pane, which you had to open first to find it. It is now in the palette next to "Show related
+  papers"; the button stays and runs the same job.
+
 ### Fixed
 
 - **The citation graph keeps itself current.** It was built once, by hand, from the Related pane's

@@ -79,17 +79,7 @@ export class RelatedView extends ItemView {
   }
 
   private async build(): Promise<void> {
-    const notice = new Notice("Building citation graph…", 0);
-    try {
-      const n = await this.plugin.citationGraph.build((d, t) =>
-        notice.setMessage(`OpenAlex ${d}/${t}…`)
-      );
-      notice.hide();
-      new Notice(`Citation graph: ${n} papers linked`);
-    } catch (e) {
-      notice.hide();
-      new Notice(`Graph build failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    await this.plugin.buildCitationGraph(); // same job as the "Build citation graph" command
     this.refresh();
   }
 

@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.16 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (172 integration checks green)
+**Version**: 0.4.17 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (172 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -206,7 +206,7 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 
 ## Roadmap / next
 
-See [ROADMAP.md](ROADMAP.md). Phases 1–3 and 5 are shipped (0.4.13–0.4.16); what remains is the store
+See [ROADMAP.md](ROADMAP.md). Phases 1–3 and 5 are shipped (0.4.13–0.4.17); what remains is the store
 submission (`docs/STORE_SUBMISSION.md`), an on-device iOS pass (`docs/MOBILE.md`) and Phase 4 (sqlite-vec,
 only when a library outgrows Orama).
 
