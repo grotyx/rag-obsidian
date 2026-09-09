@@ -57,7 +57,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   openaiBaseUrl: "https://openrouter.ai/api/v1",
   openaiApiKey: "",
   chunkChars: 1200,
-  topK: 8,
+  topK: 20,
 
   llmProvider: "openai",
   llmModel: "deepseek/deepseek-v4-flash-0731",

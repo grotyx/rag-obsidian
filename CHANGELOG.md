@@ -5,6 +5,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Changed
+
+- **Retrieval returns 20 chunks, not 8.** Eight passages is thin for a real question against a
+  library of any size — an answer would lean on two or three papers when a dozen had something to
+  say. New installs default to 20 (`Settings → Results (top-k)`, still 3–30); an existing vault
+  keeps whatever it already had.
+
 ## [0.4.17] — 2026-09-09
 
 ### Added
