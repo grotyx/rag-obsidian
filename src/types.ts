@@ -38,6 +38,9 @@ export interface ScholarRagSettings {
 
   // Phase 5 — writing
   renderCitations: boolean;
+
+  // Desktop MCP bridge (Claude Code / Codex); disabled and inert on mobile.
+  mcpEnabled: boolean;
 }
 
 /** Settings fields holding API keys — kept in Obsidian secretStorage (1.11.4+) when available,
@@ -74,6 +77,8 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   openalexMailto: "",
 
   renderCitations: true,
+
+  mcpEnabled: false,
 };
 
 /** Section-wise summary produced by the LLM (see ingest/summarize.ts). */

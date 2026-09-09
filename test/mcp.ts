@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import vm from "node:vm";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
 import { handleProtocol, McpTool } from "../src/mcp/protocol";
 import { bridgeSource } from "../src/mcp/bridge";
 import { contentHash, McpVault, validateMarkdownPath } from "../src/mcp/vault";
 import { McpService, MCP_TOOLS } from "../src/mcp/service";
-import { renderCompiledManuscript } from "../src/write/manuscript";
+import { compileMcpManuscript, renderCompiledManuscript } from "../src/write/manuscript";
+import { assertVaultPath, mcpSetupSnippets, McpHttpServer } from "../src/mcp/http";
+import { DEFAULT_SETTINGS } from "../src/types";
 
 async function protocolChecks(): Promise<void> {
   const tools: McpTool[] = [{
@@ -26,6 +32,8 @@ async function protocolChecks(): Promise<void> {
   );
   assert.equal(init?.result?.protocolVersion, "2025-06-18");
   assert.equal((init?.result?.serverInfo as Record<string, unknown>).name, "rag-obsidian");
+  const defaultInit = await handleProtocol({ jsonrpc: "2.0", id: 10, method: "initialize" }, tools, call);
+  assert.equal(defaultInit?.result?.protocolVersion, "2026-07-28");
 
   const listed = await handleProtocol({ jsonrpc: "2.0", id: 2, method: "tools/list" }, tools, call);
   assert.deepEqual((listed?.result?.tools as McpTool[]).map((t) => t.name), ["echo"]);
@@ -173,6 +181,24 @@ async function vaultChecks(): Promise<void> {
   const beforeTrash = await vault.readNote("Archive/a.md");
   await vault.trashNote("Archive/a.md", beforeTrash.hash);
   assert.deepEqual(fake.trashed, ["Archive/a.md"]);
+
+  const customConfig = fakeApp({ ".settings/private.md": "secret" });
+  const guarded = new McpVault(customConfig.app, () => false, ".settings");
+  await assert.rejects(() => guarded.readNote(".settings/private.md"), /private configuration/i);
+
+  const guardCalls: Array<[string, boolean]> = [];
+  const pathGuarded = new McpVault(fake.app, () => false, ".obsidian", async (path, allowMissing) => {
+    guardCalls.push([path, allowMissing]);
+    if (path === "References/ref.md") throw new Error("outside vault");
+  });
+  await pathGuarded.readNote("Drafts/new.md");
+  await assert.rejects(() => pathGuarded.readNote("References/ref.md"), /outside vault/);
+  assert.deepEqual((await pathGuarded.listNotes()).notes.map((note) => note.path), ["Drafts/new.md"]);
+  await pathGuarded.createNote("Drafts/guarded.md", "ok");
+  assert.deepEqual(guardCalls, [
+    ["Drafts/new.md", false], ["References/ref.md", false], ["Drafts/new.md", false],
+    ["References/ref.md", false], ["Drafts/guarded.md", true],
+  ]);
 }
 
 async function serviceChecks(): Promise<void> {
@@ -258,9 +284,26 @@ async function serviceChecks(): Promise<void> {
   const added = await service.callTool("add_reference", { identifier: "PMID:999" }) as any;
   assert.equal(added.status, "created");
   assert.equal(created, true);
+  const blank = await service.callTool("create_note", { path: "Blank.md", content: "" }) as any;
+  assert.equal(blank.path, "Blank.md");
 
   await assert.rejects(() => service.callTool("search_library", { query: "q", typo: 1 }), /Unknown argument/);
   await assert.rejects(() => service.callTool("not_a_tool", {}), /Unknown tool/);
+
+  const blockedVault = new McpVault(plugin.app, () => true, ".obsidian", async (path) => {
+    if (path.startsWith("References/")) throw new Error("outside vault");
+  });
+  const blocked = new McpService(plugin, blockedVault, {
+    searchPubmed: async () => [],
+    fetchMetadata: async () => ({ type: "article-journal", title: "Blocked", PMID: "999" }),
+  });
+  const safeSearch = await blocked.callTool("search_library", { query: "q" }) as any;
+  assert.deepEqual(safeSearch.results, []);
+  await assert.rejects(() => blocked.callTool("add_reference", { identifier: "PMID:999" }), /outside vault/);
+  const blockedDuplicate = new McpService(plugin, blockedVault, {
+    fetchMetadata: async () => item,
+  });
+  await assert.rejects(() => blockedDuplicate.callTool("add_reference", { identifier: "PMID:123" }), /outside vault/);
 }
 
 async function manuscriptChecks(): Promise<void> {
@@ -290,14 +333,119 @@ async function manuscriptChecks(): Promise<void> {
   });
   assert.doesNotMatch(fallback.content, /\[@known\]/);
   assert.match(fallback.content, /## References/);
+
+  const fake = fakeApp({ "Draft.md": "Finding [@known]." });
+  const vault = new McpVault(fake.app);
+  const plugin: any = {
+    app: fake.app,
+    settings: { citeStyle: "apa" },
+    library: { getItem: (key: string) => items[key] ?? null },
+    citeEngine: { renderNote: async () => ({ bibliography: ["Known citation"], inText: { known: "1" } }) },
+    styleForNote: () => "style",
+  };
+  const output = await compileMcpManuscript(plugin, vault, "Draft.md") as any;
+  assert.equal(output.path, "Draft (compiled).md");
+  assert.match(fake.files.get(output.path)?.content ?? "", /Known citation/);
+  await assert.rejects(() => compileMcpManuscript(plugin, vault, "Draft.md"), /expected_output_hash/i);
+}
+
+async function httpChecks(): Promise<void> {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rag-obsidian-mcp-test-"));
+  const vaultPath = path.join(root, "vault");
+  const pluginPath = path.join(vaultPath, ".obsidian", "plugins", "rag-obsidian");
+  fs.mkdirSync(pluginPath, { recursive: true });
+  fs.writeFileSync(path.join(vaultPath, "inside.md"), "inside");
+  fs.writeFileSync(path.join(root, "outside.md"), "outside");
+  fs.symlinkSync(path.join(root, "outside.md"), path.join(vaultPath, "linked.md"));
+  await assertVaultPath(vaultPath, "inside.md", false);
+  await assert.rejects(() => assertVaultPath(vaultPath, "linked.md", false), /outside vault/i);
+  await assertVaultPath(vaultPath, "new/future.md", true);
+  const setup = mcpSetupSnippets("/Vault With Space", "/Plugin Path/mcp-bridge.cjs");
+  assert.match(setup.claudeCode, /'\/Plugin Path\/mcp-bridge\.cjs'/);
+  assert.match(setup.codex, /args = \["\/Plugin Path\/mcp-bridge\.cjs", "--vault", "\/Vault With Space"\]/);
+
+  const server = new McpHttpServer({
+    vaultPath,
+    pluginPath,
+    version: "0.5.0",
+    tools: [{ name: "echo", description: "Echo.", inputSchema: { type: "object", properties: {} } }],
+    callTool: async (_name, args) => args,
+  });
+  const info = await server.start();
+  try {
+    assert.equal(info.running, true);
+    assert.equal(fs.statSync(info.discoveryPath).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(info.bridgePath).isFile(), true);
+
+    const unauthorized = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    });
+    assert.equal(unauthorized.status, 401);
+
+    const wrongMethod = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
+      headers: { authorization: `Bearer ${info.token}` },
+    });
+    assert.equal(wrongMethod.status, 405);
+
+    const response = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${info.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(((await response.json()) as any).result.tools[0].name, "echo");
+
+    const blockedPath = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${info.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "read_note", arguments: { path: "linked.md" } } }),
+    });
+    const blockedResult = await blockedPath.json() as any;
+    assert.equal(blockedResult.id, 12);
+    assert.equal(blockedResult.result.isError, true);
+
+    const oversized = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${info.token}`, "content-type": "application/json" },
+      body: "x".repeat(1_000_001),
+    });
+    assert.equal(oversized.status, 413);
+
+    const bridged = await new Promise<any>((resolve, reject) => {
+      const child = spawn(process.execPath, [info.bridgePath, "--vault", vaultPath], { stdio: ["pipe", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      const timer = setTimeout(() => {
+        child.kill();
+        reject(new Error(`bridge timeout: ${stderr}`));
+      }, 5_000);
+      child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+      child.stdout.on("data", (chunk) => {
+        stdout += String(chunk);
+        const newline = stdout.indexOf("\n");
+        if (newline < 0) return;
+        clearTimeout(timer);
+        child.kill();
+        resolve(JSON.parse(stdout.slice(0, newline)));
+      });
+      child.stdin.end(JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/list" }) + "\n");
+    });
+    assert.equal(bridged.result.tools[0].name, "echo");
+  } finally {
+    await server.stop();
+    assert.equal(fs.existsSync(info.discoveryPath), false);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 }
 
 async function main(): Promise<void> {
+  assert.equal(DEFAULT_SETTINGS.mcpEnabled, false);
   await protocolChecks();
   bridgeChecks();
   await vaultChecks();
   await serviceChecks();
   await manuscriptChecks();
+  await httpChecks();
   console.log("MCP checks passed");
 }
 

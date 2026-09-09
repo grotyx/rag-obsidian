@@ -1,4 +1,7 @@
 import { CSLItem, CiteStyle } from "../types";
+import { McpVault } from "../mcp/vault";
+import type ScholarRagPlugin from "../../main";
+import type { TFile } from "obsidian";
 import { formatCitation } from "../cite/format";
 import {
   decodeEntities,
@@ -73,4 +76,37 @@ export async function renderCompiledManuscript(input: CompileInput): Promise<Com
     cited: keys,
     missing,
   };
+}
+
+/** Filesystem wrapper for the MCP tool; source is immutable and output writes stay hash-guarded. */
+export async function compileMcpManuscript(
+  plugin: ScholarRagPlugin,
+  vault: McpVault,
+  path: string,
+  outputPath?: string,
+  expectedOutputHash?: string
+): Promise<CompiledManuscript & { path: string; hash: string; indexQueued: boolean }> {
+  const source = plugin.app.vault.getAbstractFileByPath(path) as TFile | null;
+  if (!source || typeof source.extension !== "string" || source.extension.toLowerCase() !== "md") {
+    throw new Error(`NOT_FOUND: Markdown note not found: ${path}`);
+  }
+  const sourceNote = await vault.readFullNote(path);
+  const target = outputPath || path.replace(/\.md$/i, "") + " (compiled).md";
+  if (target === path) throw new Error("INVALID_PATH: compiled output must differ from its source");
+  const rendered = await renderCompiledManuscript({
+    content: sourceNote.content,
+    styleId: plugin.styleForNote(source),
+    citeStyle: plugin.settings.citeStyle,
+    getItem: (key) => plugin.library.getItem(key),
+    renderStyle: (style, keys, getItem) => plugin.citeEngine.renderNote(style, keys, getItem),
+  });
+  const existing = plugin.app.vault.getAbstractFileByPath(target);
+  let mutation;
+  if (existing) {
+    if (!expectedOutputHash) throw new Error("EXPECTED_OUTPUT_HASH_REQUIRED: read the existing output before replacing it");
+    mutation = await vault.updateNote(target, rendered.content, expectedOutputHash);
+  } else {
+    mutation = await vault.createNote(target, rendered.content);
+  }
+  return { ...rendered, ...mutation };
 }

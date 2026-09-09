@@ -1,4 +1,13 @@
-import { Plugin, WorkspaceLeaf, TFile, TAbstractFile, Notice, SecretStorage } from "obsidian";
+import {
+  Plugin,
+  WorkspaceLeaf,
+  TFile,
+  TAbstractFile,
+  Notice,
+  SecretStorage,
+  Platform,
+  FileSystemAdapter,
+} from "obsidian";
 import { ScholarRagSettings, DEFAULT_SETTINGS, SECRET_FIELDS, SecretField } from "./src/types";
 import { ScholarRagSettingTab } from "./src/settings";
 import { Library } from "./src/data/library";
@@ -32,6 +41,10 @@ import { backfillSummaries } from "./src/commands/backfill";
 import { cancelBatch } from "./src/ui/progress";
 import { resummarizeActive, resummarizeOutdated } from "./src/commands/summaries";
 import { indexLinkedPdfs, indexLinkedPdfActive } from "./src/commands/pdfs";
+import { McpVault } from "./src/mcp/vault";
+import { MCP_TOOLS, McpService } from "./src/mcp/service";
+import { assertVaultPath, McpHttpServer, McpServerStatus } from "./src/mcp/http";
+import { compileMcpManuscript } from "./src/write/manuscript";
 
 export default class ScholarRagPlugin extends Plugin {
   settings!: ScholarRagSettings;
@@ -39,6 +52,7 @@ export default class ScholarRagPlugin extends Plugin {
   indexManager!: IndexManager;
   citationGraph!: CitationGraph;
   citeEngine!: CiteEngine;
+  private mcpServer: McpHttpServer | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -47,6 +61,26 @@ export default class ScholarRagPlugin extends Plugin {
     this.indexManager = new IndexManager(this.app, this.library, this.settings, pluginDir);
     this.citationGraph = new CitationGraph(this.app, this.library, this.settings, pluginDir);
     this.citeEngine = new CiteEngine(this.app, pluginDir);
+    if (Platform.isDesktopApp && this.app.vault.adapter instanceof FileSystemAdapter) {
+      const vaultPath = this.app.vault.adapter.getBasePath();
+      const mcpVault = new McpVault(
+        this.app,
+        (path) => path.startsWith(this.library.folder() + "/"),
+        this.app.vault.configDir,
+        (path, allowMissing) => assertVaultPath(vaultPath, path, allowMissing)
+      );
+      const service = new McpService(this, mcpVault, {
+        compile: (path, outputPath, expectedOutputHash) =>
+          compileMcpManuscript(this, mcpVault, path, outputPath, expectedOutputHash),
+      });
+      this.mcpServer = new McpHttpServer({
+        vaultPath,
+        pluginPath: `${vaultPath}/${pluginDir}`,
+        version: this.manifest.version,
+        tools: MCP_TOOLS,
+        callTool: (name, args) => service.callTool(name, args),
+      });
+    }
 
     this.registerView(VIEW_TYPE_LIBRARY, (leaf) => new LibraryView(leaf, this));
     this.registerView(VIEW_TYPE_SEARCH, (leaf) => new SearchView(leaf, this));
@@ -295,8 +329,9 @@ export default class ScholarRagPlugin extends Plugin {
 
     // Restore persisted indexes once the vault metadata is ready.
     this.app.workspace.onLayoutReady(() => {
-      void this.indexManager.restore();
-      void this.citationGraph.restore();
+      void Promise.allSettled([this.indexManager.restore(), this.citationGraph.restore()]).then(async () => {
+        if (this.settings.mcpEnabled) await this.startMcp();
+      });
     });
 
     // Incremental index maintenance.
@@ -324,6 +359,53 @@ export default class ScholarRagPlugin extends Plugin {
         if (file instanceof TFile) this.citationGraph.enqueue(file);
       })
     );
+  }
+
+  onunload(): void {
+    void this.mcpServer?.stop();
+  }
+
+  mcpStatus(): McpServerStatus {
+    return this.mcpServer?.status() ?? { running: false, vaultPath: "" };
+  }
+
+  mcpSetupSnippets(): { claudeCode: string; codex: string } | null {
+    return this.mcpServer?.setupSnippets() ?? null;
+  }
+
+  async setMcpEnabled(enabled: boolean): Promise<void> {
+    this.settings.mcpEnabled = enabled;
+    await this.saveSettings();
+    if (!this.mcpServer) {
+      if (enabled) new Notice("MCP access is available in Obsidian Desktop only");
+      return;
+    }
+    if (enabled) await this.startMcp();
+    else await this.mcpServer.stop();
+  }
+
+  async startMcp(): Promise<void> {
+    if (!this.mcpServer) return;
+    try {
+      await this.mcpServer.start();
+    } catch (error) {
+      console.error("[RAG Obsidian] MCP server failed", error);
+      new Notice(`MCP server failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async restartMcp(): Promise<void> {
+    if (!this.mcpServer) return;
+    try {
+      await this.mcpServer.restart();
+    } catch (error) {
+      console.error("[RAG Obsidian] MCP restart failed", error);
+      new Notice(`MCP restart failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async stopMcp(): Promise<void> {
+    await this.mcpServer?.stop();
   }
 
   /** Obsidian's OS-keychain secret store (1.11.4+), or null on older apps (minAppVersion is 1.7.2). */

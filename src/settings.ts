@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type ScholarRagPlugin from "../main";
 import { EmbeddingProviderId, LLMProviderId, CiteStyle } from "./types";
 import { BUNDLED_STYLES } from "./cite/csl";
@@ -373,6 +373,65 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         t.setValue(this.plugin.settings.renderCitations).onChange(async (v) => {
           this.plugin.settings.renderCitations = v;
           await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl).setName("External AI (MCP)").setHeading();
+    if (!Platform.isDesktopApp) {
+      containerEl.createEl("p", {
+        cls: "setting-item-description",
+        text: "MCP access requires Obsidian Desktop. The rest of the plugin remains available on mobile.",
+      });
+      return;
+    }
+
+    const status = this.plugin.mcpStatus();
+    new Setting(containerEl)
+      .setName("Enable MCP access")
+      .setDesc(
+        status.running
+          ? `Listening locally for Claude Code or Codex on port ${status.port}.`
+          : "Let Claude Code or Codex search this library and manage Markdown while Obsidian is open."
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.mcpEnabled).onChange(async (enabled) => {
+          await this.plugin.setMcpEnabled(enabled);
+          this.display();
+        })
+      );
+
+    if (!this.plugin.settings.mcpEnabled) return;
+    const snippets = this.plugin.mcpSetupSnippets();
+    if (snippets) {
+      new Setting(containerEl)
+        .setName("Connect an MCP client")
+        .setDesc("Copy the setup for this vault. The access token is discovered locally and is never copied.")
+        .addButton((button) =>
+          button.setButtonText("Copy Claude Code command").onClick(async () => {
+            await navigator.clipboard.writeText(snippets.claudeCode);
+            new Notice("Claude Code MCP command copied");
+          })
+        )
+        .addButton((button) =>
+          button.setButtonText("Copy Codex config").onClick(async () => {
+            await navigator.clipboard.writeText(snippets.codex);
+            new Notice("Codex MCP config copied");
+          })
+        );
+    }
+    new Setting(containerEl)
+      .setName("MCP connection")
+      .setDesc("Restart rotates the per-session access token. Stop leaves MCP off until the plugin reloads or you restart it here.")
+      .addButton((button) =>
+        button.setButtonText("Restart and rotate token").onClick(async () => {
+          await this.plugin.restartMcp();
+          this.display();
+        })
+      )
+      .addButton((button) =>
+        button.setButtonText("Stop server").setWarning().onClick(async () => {
+          await this.plugin.stopMcp();
+          this.display();
         })
       );
   }

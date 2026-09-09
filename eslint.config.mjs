@@ -40,6 +40,11 @@ export default defineConfig([
     rules: { "@typescript-eslint/no-implied-eval": "warn", "obsidianmd/rule-custom-message": "warn" },
   },
   {
+    // MCP is desktop-only and dynamically loaded behind Platform.isDesktopApp.
+    files: ["src/mcp/bridge.ts", "src/mcp/http.ts"],
+    rules: { "obsidianmd/no-nodejs-modules": "off" },
+  },
+  {
     languageOptions: {
       parserOptions: {
         projectService: {

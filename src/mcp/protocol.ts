@@ -26,7 +26,7 @@ export interface McpTool {
   };
 }
 
-const PROTOCOL_VERSION = "2025-06-18";
+const PROTOCOL_VERSION = "2026-07-28";
 
 export function mcpSuccess(id: McpId, result: Record<string, unknown>): McpResponse {
   return { jsonrpc: "2.0", id, result };

@@ -5,7 +5,7 @@ import { PubmedHit, searchPubmed } from "../ingest/pubmedSearch";
 import { STASH_MARKER } from "../ingest/pdfStash";
 import { SearchFilters } from "../index/store";
 import { McpTool } from "./protocol";
-import { contentHash, McpVault } from "./vault";
+import { McpVault } from "./vault";
 
 type JsonSchema = Record<string, unknown>;
 
@@ -141,6 +141,12 @@ function optionalString(args: Record<string, unknown>, name: string): string | u
   return value;
 }
 
+function textArg(args: Record<string, unknown>, name: string): string {
+  const value = args[name];
+  if (typeof value !== "string") throw new Error(`INVALID_ARGUMENT: ${name} must be a string`);
+  return value;
+}
+
 function numberArg(args: Record<string, unknown>, name: string, fallback: number, min: number, max: number): number {
   const value = args[name];
   if (value === undefined) return fallback;
@@ -171,12 +177,15 @@ function tagsOf(item: CSLItem): string[] {
 
 export class McpService {
   private byName = new Map(MCP_TOOLS.map((tool) => [tool.name, tool]));
+  private deps: ServiceDeps;
 
   constructor(
     private plugin: ScholarRagPlugin,
     private vault: McpVault,
-    private deps: ServiceDeps = DEFAULT_DEPS
-  ) {}
+    deps: Partial<ServiceDeps> = {}
+  ) {
+    this.deps = { ...DEFAULT_DEPS, ...deps };
+  }
 
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     const tool = this.byName.get(name);
@@ -196,8 +205,8 @@ export class McpService {
       case "add_reference": return this.addReference(stringArg(args, "identifier"));
       case "list_notes": return this.vault.listNotes(optionalString(args, "folder"), numberArg(args, "limit", 50, 1, 100), optionalString(args, "cursor"));
       case "read_note": return this.vault.readNote(stringArg(args, "path"), numberArg(args, "offset", 0, 0, 2_000_000), numberArg(args, "max_chars", 12_000, 1, 50_000));
-      case "create_note": return this.vault.createNote(stringArg(args, "path"), stringArg(args, "content"));
-      case "update_note": return this.vault.updateNote(stringArg(args, "path"), stringArg(args, "content"), stringArg(args, "expected_hash"));
+      case "create_note": return this.vault.createNote(stringArg(args, "path"), textArg(args, "content"));
+      case "update_note": return this.vault.updateNote(stringArg(args, "path"), textArg(args, "content"), stringArg(args, "expected_hash"));
       case "replace_in_note": return this.vault.replaceInNote(stringArg(args, "path"), stringArg(args, "old_text"), optionalString(args, "new_text") ?? "", stringArg(args, "expected_hash"));
       case "move_note": return this.vault.moveNote(stringArg(args, "path"), stringArg(args, "new_path"), stringArg(args, "expected_hash"));
       case "trash_note": return this.vault.trashNote(stringArg(args, "path"), stringArg(args, "expected_hash"));
@@ -232,12 +241,34 @@ export class McpService {
     const hits = await this.plugin.indexManager.search(
       stringArg(args, "query"), filters, numberArg(args, "limit", this.plugin.settings.topK, 1, 30)
     );
-    return {
-      results: hits.map((hit) => ({ ...hit, path: this.plugin.library.getFile(hit.citekey)?.path ?? null })),
-    };
+    const results = [];
+    for (const hit of hits) {
+      const file = this.plugin.library.getFile(hit.citekey);
+      if (!file) continue;
+      try {
+        await this.vault.assertPath(file.path, false);
+        results.push({ ...hit, path: file.path });
+      } catch {
+        // A reference reached through a vault symlink must not expose outside text over MCP.
+      }
+    }
+    return { results };
   }
 
-  private listReferences(args: Record<string, unknown>): Record<string, unknown> {
+  private async safeEntries(): Promise<ReturnType<ScholarRagPlugin["library"]["entries"]>> {
+    const safe = [];
+    for (const entry of this.plugin.library.entries()) {
+      try {
+        await this.vault.assertPath(entry.file.path, false);
+        safe.push(entry);
+      } catch {
+        // Skip references whose real path leaves the vault.
+      }
+    }
+    return safe;
+  }
+
+  private async listReferences(args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const from = args.year_from === undefined ? 0 : numberArg(args, "year_from", 0, 1000, 3000);
     const to = args.year_to === undefined ? 9999 : numberArg(args, "year_to", 9999, 1000, 3000);
     const author = optionalString(args, "author")?.trim().toLowerCase();
@@ -245,11 +276,11 @@ export class McpService {
     const tags = stringArrayArg(args, "tags") ?? [];
     const cursor = optionalString(args, "cursor") ?? "";
     const limit = numberArg(args, "limit", 50, 1, 100);
-    const all = this.plugin.library.entries()
+    const all = (await this.safeEntries())
       .filter((entry) => entry.file.path > cursor)
       .filter((entry) => yearOf(entry.item) >= from && yearOf(entry.item) <= to)
       .filter((entry) => !author || entry.authors.toLowerCase().includes(author))
-      .filter((entry) => !status || String(entry.item.status ?? "").toLowerCase() === status)
+      .filter((entry) => !status || (typeof entry.item.status === "string" && entry.item.status.toLowerCase() === status))
       .filter((entry) => tags.every((tag) => tagsOf(entry.item).includes(tag)))
       .sort((a, b) => a.file.path.localeCompare(b.file.path));
     const page = all.slice(0, limit);
@@ -267,19 +298,20 @@ export class McpService {
     const file = this.plugin.library.getFile(citekey);
     const item = this.plugin.library.getItem(citekey);
     if (!file || !item) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
-    const raw = await this.plugin.app.vault.read(file);
+    const note = await this.vault.readFullNote(file.path);
+    const raw = note.content;
     const marker = raw.indexOf(STASH_MARKER);
     return {
       citekey, path: file.path, metadata: item,
       content: marker < 0 ? raw : raw.slice(0, marker).trimEnd(),
       fullTextOmitted: marker >= 0,
-      hash: await contentHash(raw),
+      hash: note.hash,
     };
   }
 
-  private listTags(): Record<string, unknown> {
+  private async listTags(): Promise<Record<string, unknown>> {
     const counts = new Map<string, number>();
-    for (const entry of this.plugin.library.entries()) {
+    for (const entry of await this.safeEntries()) {
       for (const tag of tagsOf(entry.item)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
     }
     return { tags: [...counts].map(([tag, count]) => ({ tag, count })).sort((a, b) => a.tag.localeCompare(b.tag)) };
@@ -293,7 +325,21 @@ export class McpService {
       apiKey: this.plugin.settings.pubmedApiKey,
       email: this.plugin.settings.openalexMailto,
     });
-    return { results: hits.map((hit) => ({ ...hit, existingCitekey: this.plugin.library.findDuplicate(hit.item) })) };
+    const results = [];
+    for (const hit of hits) {
+      let existingCitekey = this.plugin.library.findDuplicate(hit.item);
+      if (existingCitekey) {
+        const file = this.plugin.library.getFile(existingCitekey);
+        try {
+          if (!file) existingCitekey = null;
+          else await this.vault.assertPath(file.path, false);
+        } catch {
+          existingCitekey = null;
+        }
+      }
+      results.push({ ...hit, existingCitekey });
+    }
+    return { results };
   }
 
   private async addReference(identifier: string): Promise<Record<string, unknown>> {
@@ -304,8 +350,12 @@ export class McpService {
     const item = await this.deps.fetchMetadata(id, this.plugin.settings.pubmedApiKey, this.plugin.settings.openalexMailto);
     const duplicate = this.plugin.library.findDuplicate(item);
     if (duplicate) {
-      return { status: "existing", citekey: duplicate, path: this.plugin.library.getFile(duplicate)?.path ?? null, metadata: item };
+      const file = this.plugin.library.getFile(duplicate);
+      if (!file) throw new Error(`NOT_FOUND: duplicate reference file not found: ${duplicate}`);
+      await this.vault.assertPath(file.path, false);
+      return { status: "existing", citekey: duplicate, path: file.path, metadata: item };
     }
+    await this.vault.assertPath(`${this.plugin.library.folder()}/__mcp_write_probe__.md`, true);
     const file = await this.plugin.library.createReference(item);
     const citekey = this.plugin.library.findDuplicate(item) ?? file.basename;
     return { status: "created", citekey, path: file.path, metadata: item };

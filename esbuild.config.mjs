@@ -22,6 +22,7 @@ const ctx = await esbuild.context({
     "@lezer/highlight",
     "@lezer/lr",
     ...builtins,
+    ...builtins.map((name) => `node:${name}`),
   ],
   format: "cjs",
   target: "es2018",

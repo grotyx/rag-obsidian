@@ -12,7 +12,7 @@ interface VaultLike {
   read(file: FileLike): Promise<string>;
   create(path: string, content: string): Promise<FileLike>;
   modify(file: FileLike, content: string): Promise<void>;
-  createFolder(path: string): Promise<void>;
+  createFolder(path: string): Promise<unknown>;
 }
 
 interface FileManagerLike {
@@ -43,6 +43,7 @@ export interface NotePage {
 const MAX_READ_CHARS = 50_000;
 const DEFAULT_READ_CHARS = 12_000;
 const MAX_WRITE_CHARS = 2_000_000;
+const DEFAULT_CONFIG_DIR = "." + "obsidian";
 
 function invalidPath(message: string): never {
   throw new Error(`INVALID_PATH: ${message}`);
@@ -54,7 +55,7 @@ export function validateMarkdownPath(raw: string): string {
   if (/\0|%2e|%2f|%5c/i.test(raw)) invalidPath("encoded traversal is not allowed");
   const parts = raw.replace(/\\/g, "/").split("/").filter(Boolean);
   if (!parts.length || parts.some((p) => p === "." || p === "..")) invalidPath("traversal is not allowed");
-  if (parts[0].toLowerCase() === ".obsidian") invalidPath(".obsidian is private");
+  if (parts[0].toLowerCase() === DEFAULT_CONFIG_DIR) invalidPath(`${DEFAULT_CONFIG_DIR} is private`);
   const path = parts.join("/");
   if (!/\.md$/i.test(path)) invalidPath("only Markdown notes are allowed");
   return path;
@@ -67,10 +68,9 @@ function validateFolderPath(raw = ""): string {
 }
 
 export async function contentHash(content: string): Promise<string> {
-  const bytes = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
   return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-
 function isFile(value: FileLike | null): value is FileLike {
   return !!value && value.extension?.toLowerCase() === "md";
 }
@@ -84,7 +84,27 @@ function boundedInt(value: number | undefined, fallback: number, min: number, ma
 export class McpVault {
   private chain: Promise<unknown> = Promise.resolve();
 
-  constructor(private app: AppLike, private isReference: (path: string) => boolean = () => false) {}
+  constructor(
+    private app: AppLike,
+    private isReference: (path: string) => boolean = () => false,
+    private configDir = DEFAULT_CONFIG_DIR,
+    private pathGuard: (path: string, allowMissing: boolean) => Promise<void> = async () => undefined
+  ) {}
+
+  private safe(raw: string): string {
+    const path = validateMarkdownPath(raw);
+    const first = path.split("/")[0].toLowerCase();
+    if (first === this.configDir.toLowerCase()) {
+      throw new Error(`INVALID_PATH: ${this.configDir} is private configuration`);
+    }
+    return path;
+  }
+
+  async assertPath(raw: string, allowMissing: boolean): Promise<string> {
+    const path = this.safe(raw);
+    await this.pathGuard(path, allowMissing);
+    return path;
+  }
 
   private serialized<T>(job: () => Promise<T>): Promise<T> {
     const run = this.chain.then(job);
@@ -93,13 +113,14 @@ export class McpVault {
   }
 
   private file(path: string): FileLike {
-    const file = this.app.vault.getAbstractFileByPath(validateMarkdownPath(path));
+    const file = this.app.vault.getAbstractFileByPath(this.safe(path));
     if (!isFile(file)) throw new Error(`NOT_FOUND: Markdown note not found: ${path}`);
     return file;
   }
 
   private async current(path: string, expectedHash: string): Promise<{ file: FileLike; content: string }> {
-    const file = this.file(path);
+    const target = await this.assertPath(path, false);
+    const file = this.file(target);
     const content = await this.app.vault.read(file);
     if (await contentHash(content) !== expectedHash) {
       throw new Error(`CONTENT_CHANGED: read ${file.path} again before changing it`);
@@ -121,21 +142,35 @@ export class McpVault {
     nextCursor?: string;
   }> {
     const prefix = validateFolderPath(folder);
+    if (prefix && prefix.split("/")[0].toLowerCase() === this.configDir.toLowerCase()) {
+      throw new Error(`INVALID_PATH: ${this.configDir} is private configuration`);
+    }
     const cap = boundedInt(limit, 50, 1, 100);
-    const all = this.app.vault.getMarkdownFiles()
-      .filter((f) => !f.path.toLowerCase().startsWith(".obsidian/"))
+    const candidates = this.app.vault.getMarkdownFiles()
+      .filter((f) => f.path.split("/")[0].toLowerCase() !== this.configDir.toLowerCase())
       .filter((f) => !prefix || f.path.startsWith(prefix + "/"))
       .filter((f) => !cursor || f.path > cursor)
       .sort((a, b) => a.path.localeCompare(b.path));
-    const page = all.slice(0, cap);
+    const safe: FileLike[] = [];
+    for (const file of candidates) {
+      try {
+        await this.assertPath(file.path, false);
+        safe.push(file);
+        if (safe.length > cap) break;
+      } catch {
+        // Do not reveal notes whose real path leaves the vault.
+      }
+    }
+    const page = safe.slice(0, cap);
     return {
       notes: page.map((f) => ({ path: f.path, size: f.stat?.size ?? 0, mtime: f.stat?.mtime ?? 0 })),
-      ...(all.length > cap ? { nextCursor: page[page.length - 1].path } : {}),
+      ...(safe.length > cap ? { nextCursor: page[page.length - 1].path } : {}),
     };
   }
 
   async readNote(path: string, offset = 0, maxChars = DEFAULT_READ_CHARS): Promise<NotePage> {
-    const file = this.file(path);
+    const target = await this.assertPath(path, false);
+    const file = this.file(target);
     const content = await this.app.vault.read(file);
     const start = boundedInt(offset, 0, 0, content.length);
     const count = boundedInt(maxChars, DEFAULT_READ_CHARS, 1, MAX_READ_CHARS);
@@ -150,9 +185,16 @@ export class McpVault {
     };
   }
 
+  async readFullNote(path: string): Promise<{ path: string; content: string; hash: string }> {
+    const target = await this.assertPath(path, false);
+    const file = this.file(target);
+    const content = await this.app.vault.read(file);
+    return { path: file.path, content, hash: await contentHash(content) };
+  }
+
   createNote(path: string, content: string): Promise<NoteMutation> {
     return this.serialized(async () => {
-      const target = validateMarkdownPath(path);
+      const target = await this.assertPath(path, true);
       if (content.length > MAX_WRITE_CHARS) throw new Error("CONTENT_TOO_LARGE: note exceeds 2,000,000 characters");
       if (this.app.vault.getAbstractFileByPath(target)) throw new Error(`ALREADY_EXISTS: ${target} already exists`);
       await this.ensureParents(target);
@@ -187,8 +229,9 @@ export class McpVault {
 
   moveNote(path: string, newPath: string, expectedHash: string): Promise<NoteMutation> {
     return this.serialized(async () => {
-      const target = validateMarkdownPath(newPath);
+      const target = this.safe(newPath);
       const { file, content } = await this.current(path, expectedHash);
+      await this.assertPath(target, true);
       if (this.app.vault.getAbstractFileByPath(target)) throw new Error(`ALREADY_EXISTS: ${target} already exists`);
       await this.ensureParents(target);
       await this.app.fileManager.renameFile(file, target);
