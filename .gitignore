@@ -17,3 +17,4 @@ styles/cache/
 
 # Claude Code worktrees / session files
 .claude/
+.worktrees/
