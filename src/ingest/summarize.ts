@@ -84,6 +84,9 @@ export async function summarizeSource(
   const user = header + sourceText.slice(0, 120000);
   const reply = await llm.chat([{ role: "user", content: user }], buildSysPrompt(language), {
     reasoningEffort: "high",
+    // The paper is in front of the model and the section headings are fixed: this is structured
+    // extraction, not deliberation, so OpenRouter's thinking pass is skipped (see llm/client.ts).
+    noReasoning: true,
     // 8192: the smallest ceiling among current Anthropic models, and 8x the old 1024 default —
     // enough for EN sections + KR + MESH plus a reasoning model's thinking budget.
     maxTokens: 8192,
@@ -115,7 +118,7 @@ export async function suggestMeshTerms(
       '("Decompression, Surgical" — the comma is part of the heading).',
     // Same reason summarizeSource asks for 8192: a reasoning model spends the budget on thinking
     // first, and a reply that never reaches the text block comes back empty.
-    { maxTokens: 4096 }
+    { maxTokens: 4096, noReasoning: true }
   );
 }
 

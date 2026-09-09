@@ -56,7 +56,9 @@ export class PdfImporter {
       'Return ONLY minified JSON with keys: title (string), authors (array of {family, given}), ' +
       "year (number), container_title (string), abstract (string). Use null when unknown.\n\nTEXT:\n" +
       head;
-    const raw = await llm.chat([{ role: "user", content: prompt }], "You output only valid minified JSON.");
+    const raw = await llm.chat([{ role: "user", content: prompt }], "You output only valid minified JSON.", {
+      noReasoning: true, // copying fields off a title page needs no thinking pass
+    });
     const json = this.parseJson(raw);
     return {
       type: "article-journal",

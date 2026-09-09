@@ -5,6 +5,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.4.19] — 2026-09-09
+
+### Changed
+
+- **Summaries, MeSH suggestions and PDF metadata extraction skip the thinking pass too.** Same
+  reasoning as the chat answer: each has its source text in front of it and a fixed output shape,
+  so on OpenRouter they now send `reasoning: {enabled: false}`. Honest measurement: unlike the
+  reranker (4,223 thinking tokens, 50s → 8s), these paths barely reasoned to begin with (~145
+  tokens), so the saving is small — a real re-summarize takes ~20s either way and still returns
+  full EN sections plus the Korean block.
+
 ## [0.4.18] — 2026-09-09
 
 ### Added

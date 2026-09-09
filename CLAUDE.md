@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.18 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (188 integration checks green)
+**Version**: 0.4.19 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (188 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -175,8 +175,8 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
   the first response.
 - **LLM (chat)**: OpenAI-compatible against OpenRouter (default: `deepseek/deepseek-v4-flash-0731`,
   chat `deepseek/deepseek-v4-pro-0813`) · Anthropic · Ollama.
-  `chatModel` (optional) overrides `llmModel` for "Chat with library" only. The chat answer and
-  the reranker pass `noReasoning`, so on OpenRouter they send `reasoning:{enabled:false}` — both
+  `chatModel` (optional) overrides `llmModel` for "Chat with library" only. The chat answer, the reranker,
+  summaries, MeSH suggestions and PDF metadata extraction all pass `noReasoning`, so on OpenRouter they send `reasoning:{enabled:false}` — both
   read already-ranked sources, and a hybrid-reasoning model otherwise spends ~4k thinking tokens
   (50s vs 8s measured on a 40-passage rerank) for no gain. `llmMaxTokens`
   (default 8192) caps the **Anthropic** body only; the OpenAI-compatible and Ollama bodies send
@@ -210,7 +210,7 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 
 ## Roadmap / next
 
-See [ROADMAP.md](ROADMAP.md). Phases 1–3 and 5 are shipped (0.4.13–0.4.18); what remains is the store
+See [ROADMAP.md](ROADMAP.md). Phases 1–3 and 5 are shipped (0.4.13–0.4.19); what remains is the store
 submission (`docs/STORE_SUBMISSION.md`), an on-device iOS pass (`docs/MOBILE.md`) and Phase 4 (sqlite-vec,
 only when a library outgrows Orama).
 
