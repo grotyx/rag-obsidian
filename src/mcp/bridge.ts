@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- emitted standalone CommonJS has no imports */
 /** Standalone CommonJS bridge emitted beside main.js; intentionally Node-stdlib only. */
 export function bridgeSource(): string {
   return `(${bridgeMain.toString()})();\n`;
@@ -99,3 +100,4 @@ function bridgeMain(): void {
     });
   });
 }
+/* eslint-enable @typescript-eslint/no-require-imports -- end standalone CommonJS source */

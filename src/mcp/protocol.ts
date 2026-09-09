@@ -77,7 +77,7 @@ export async function handleProtocol(
       const value = await callTool(name, args as Record<string, unknown>);
       return mcpSuccess(req.id, {
         content: [{ type: "text", text: JSON.stringify(value) }],
-        structuredContent: value as Record<string, unknown>,
+        structuredContent: value,
       });
     } catch (error) {
       return toolFailure(req.id, error);
