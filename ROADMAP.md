@@ -1,5 +1,12 @@
 # Roadmap — from a full read of the code at 0.4.12 (2026-09-08)
 
+## Shipped in 0.5.0
+
+- **Claude Code / Codex MCP access:** an external AI can search the live Obsidian library, query
+  PubMed, add references, safely manage Markdown notes, and compile cited manuscripts while
+  Obsidian Desktop is open. The authenticated loopback path never invokes the plugin's chat,
+  summary, or reranking LLM. See `docs/MCP.md`.
+
 What the code looks like today: 6.4k lines of TypeScript, 34 commands, 21 settings, three runtime
 dependencies (Orama, citeproc-js, and Obsidian itself). 69 live integration checks. Three code-review
 passes and two days of in-vault testing sit behind the 0.4.x line, so the *existing* features are in

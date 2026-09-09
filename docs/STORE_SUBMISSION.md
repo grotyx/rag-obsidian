@@ -77,6 +77,10 @@ decision"):
   `settings-tab/require-display` in the same ruleset *requires* `display()` while
   `minAppVersion < 1.13.0`. The two rules are in tension by construction; keeping `display()` is
   correct for the declared minimum version. See §6 for the larger fix.
+- **Node built-ins in `src/mcp/bridge.ts` and `src/mcp/http.ts`** — the optional MCP feature is
+  desktop-only, gated by `Platform.isDesktopApp`, and covered by a narrow ESLint override. Shared
+  and mobile paths remain free of Node APIs. The server binds only to `127.0.0.1`, authenticates a
+  per-session 256-bit token, and stops during plugin unload. See `docs/MCP.md`.
 
 ## 3. `obsidianmd/ui/sentence-case` — 37 remaining false positives
 
@@ -127,7 +131,7 @@ store-review blocker.
 | `manifest.json`: `authorUrl` valid if present | ✅ | `https://sangmin.me/` |
 | `manifest.json`: `fundingUrl` present or correctly omitted | ✅ | correctly omitted (none configured) |
 | `manifest.json`: `minAppVersion` accurate | ✅ | fixed, see §5 |
-| `manifest.json`: `isDesktopOnly` accurate | ⚠️ pass with a caveat | `false`, but ROADMAP.md Phase 3 item 12 (mobile QA) is still open — untested claim, not this task's scope |
+| `manifest.json`: `isDesktopOnly` accurate | ⚠️ pass with a caveat | `false` because the core plugin remains mobile-capable; MCP alone is explicitly desktop-gated. Device QA remains open. |
 | `LICENSE` file at repo root | ✅ | MIT, valid copyright line (`obsidianmd/validate-license` reports clean) |
 | `README.md` describes features/usage | ✅ | present, both `README.md` and `README.ko.md` |
 | `versions.json` present | ✅ | present, unmodified per task brief |
@@ -137,7 +141,7 @@ store-review blocker.
 | `normalizePath()` used for constructed vault paths | ✅ | used throughout `data/library.ts`, `commands/*` |
 | No `var` | ✅ | zero hits |
 | `registerEvent`/`registerDomEvent` for listeners that need cleanup | ✅ | vault/workspace listeners go through `registerEvent`; view-owned DOM listeners are torn down when the pane's `contentEl` is emptied/rebuilt (no bare `document`-level listeners left running) |
-| `Platform` checks before desktop-only APIs | ✅ | no Node built-ins imported at all (`obsidianmd/no-nodejs-modules` clean) — every network call already goes through `requestUrl` |
+| `Platform` checks before desktop-only APIs | ✅ | MCP's Node module is dynamically imported only behind `Platform.isDesktopApp`; all shared network calls still use `requestUrl` |
 | Settings headings via `setHeading()`, not `<h1>`/`<h2>` | ✅ | fixed, see §1 |
 | Settings headings don't repeat "settings" | ✅ | ("Library", "Retrieval (semantic search)", "Chat (citation-grounded answers)", "Citation graph", "Writing") |
 | Sentence case in UI text | ✅* | *37 residual linter false positives, see §3 |

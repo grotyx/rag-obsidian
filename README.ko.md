@@ -49,6 +49,9 @@
   태그 입력창은 라이브러리에 이미 있는 태그를 자동완성하며, Enter를 누르면 칩으로 추가됩니다.
   칩을 여러 개 넣으면 그 태그를 **모두** 가진 논문만 남습니다. 필터는 설정이 아니라 패널에
   저장되며, 챗 패널에서는 답변이 근거로 삼을 논문의 범위를 좁히고 출처 목록에 그 범위가 표시됩니다.
+- **MCP로 Claude Code / Codex 연결(데스크톱):** 외부 AI가 실행 중인 라이브러리를 검색하고,
+  PubMed 논문을 찾아 추가하며, Markdown 노트를 안전하게 생성·수정·이동·휴지통 처리하고,
+  인용 원고를 컴파일할 수 있습니다. MCP 경로는 플러그인의 챗·요약·rerank LLM을 호출하지 않습니다.
 
 ---
 
@@ -116,6 +119,17 @@ vault를 열고 활성화만 — Node·빌드 불필요.
 
 > 인용 워크플로는 **임베딩이 필요 없습니다.** 의미 검색·챗은 선택이며, 한 번
 > **Rebuild search index**가 필요합니다.
+
+### Claude Code 또는 Codex 연결
+
+Obsidian Desktop에서 **설정 → Academic Paper Citation Manager → External AI (MCP)**를 열어
+접근을 켠 뒤, 생성된 Claude Code 명령 또는 Codex 설정을 복사합니다. 도구를 사용하는 동안 이
+vault를 열어 두어야 합니다. 도구 목록, 안전한 수정 흐름, 예시 명령, 보안 모델과 문제 해결은
+[MCP 전체 안내서](docs/MCP.ko.md)를 참고하세요.
+
+MCP에서 판단과 글쓰기는 Claude Code/Codex가 담당합니다. 플러그인의 **Chat with library**,
+논문 요약, LLM reranker는 호출하지 않으며 라이브러리 검색·인덱스 재구축만 설정된 임베딩
+provider를 사용할 수 있습니다.
 
 ---
 
@@ -221,7 +235,7 @@ csl: springer-basic-brackets
 npm run dev        # esbuild watch → main.js
 npm run deploy     # 빌드 + vault로 복사 (.env의 VAULT_PLUGIN_DIR)
 npm run build      # tsc + esbuild production
-npm test           # 라이브 통합 테스트 (69개 체크)
+npm test           # 라이브 통합 테스트 + MCP 계약/보안 검사
 ```
 
 헬퍼 스크립트 (터미널, Obsidian 불필요) — 경로는 `.env`에서:
@@ -230,7 +244,8 @@ npm test           # 라이브 통합 테스트 (69개 체크)
 node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled md → 서식 .docx
 ```
 
-모듈 맵은 [`CLAUDE.md`](./CLAUDE.md), 설계 노트는 [`PLAN.md`](./PLAN.md) 참고.
+외부 AI 설정은 [`docs/MCP.ko.md`](./docs/MCP.ko.md), 모듈 맵은 [`CLAUDE.md`](./CLAUDE.md),
+설계 노트는 [`PLAN.md`](./PLAN.md) 참고.
 
 ---
 
@@ -241,6 +256,7 @@ node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled 
 - 파일명은 **읽기 쉬움**(`2022-SpineJ-ParkSM-Biportal.md`); frontmatter의 짧은
   `citekey:`가 `[@cite]` 핸들.
 - `.docx` 변환은 **Pandoc** 필요; PDF 형광펜 추출은 주석이 있는 PDF 필요.
+- MCP는 **Obsidian Desktop이 열린 상태**여야 하며, 나머지 플러그인 기능은 모바일에서도 유지됩니다.
 - Obsidian Properties 패널이 중첩 CSL frontmatter에 경고할 수 있음 — 데이터는 유효함.
 - 설정의 **Contact e-mail**을 채워 두세요. OpenAlex·Unpaywall·PubMed가 같이 쓰는 값이고,
   오픈액세스 PDF 조회는 이 값이 없으면 동작하지 않습니다.

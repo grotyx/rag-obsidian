@@ -53,6 +53,9 @@ no account, no backend — just your vault.
   your library) and press Enter to add a chip; add several and a paper must carry them all.
   The filters belong to the pane rather than to settings; in the chat pane they scope which
   papers an answer may draw on, and the answer's source list says what it was narrowed to.
+- **Claude Code / Codex via MCP (desktop):** let an external AI search the live library,
+  find and add PubMed papers, safely create/edit/move/trash Markdown notes, and compile a cited
+  manuscript. The MCP path never calls this plugin's chat, summary, or reranking LLM.
 
 ---
 
@@ -122,6 +125,17 @@ open the synced vault and enable the plugin — no Node, no build.
 
 > The citation workflow needs **no embeddings**. Semantic search & chat are optional and
 > require a one-off **Rebuild search index**.
+
+### Connect Claude Code or Codex
+
+On Obsidian Desktop, open **Settings → Academic Paper Citation Manager → External AI (MCP)**,
+enable access, then copy the generated Claude Code command or Codex configuration. Keep this
+vault open while using the tools. See the [complete MCP guide](docs/MCP.md) for the tool list,
+safe editing workflow, example prompts, security model, and troubleshooting.
+
+MCP delegates reasoning and prose to Claude Code or Codex. It does not call **Chat with library**,
+paper summarization, or the LLM reranker; only library search/index rebuild may use the configured
+embedding provider.
 
 ---
 
@@ -232,7 +246,7 @@ csl: springer-basic-brackets
 npm run dev        # esbuild watch → main.js
 npm run deploy     # build + copy into the vault (VAULT_PLUGIN_DIR in .env)
 npm run build      # tsc + esbuild production
-npm test           # live integration suite (188 checks)
+npm test           # live integration suite + MCP contract/security checks
 ```
 
 Helper script (terminal, no Obsidian needed) — path from `.env`:
@@ -241,7 +255,8 @@ Helper script (terminal, no Obsidian needed) — path from `.env`:
 node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled md → styled .docx
 ```
 
-See [`CLAUDE.md`](./CLAUDE.md) for the module map and [`PLAN.md`](./PLAN.md) for design notes.
+See [`docs/MCP.md`](./docs/MCP.md) for external-AI setup, [`CLAUDE.md`](./CLAUDE.md) for the
+module map, and [`PLAN.md`](./PLAN.md) for design notes.
 
 ---
 
@@ -252,6 +267,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the module map and [`PLAN.md`](./PLAN.md) for
 - Filenames are **readable** (`2022-SpineJ-ParkSM-Biportal.md`); the short `citekey:` in
   frontmatter is the `[@cite]` handle.
 - `.docx` export needs **Pandoc**; PDF highlight extraction needs a PDF with annotations.
+- MCP requires **Obsidian Desktop to remain open**; the rest of the plugin is still mobile-capable.
 - Obsidian's Properties panel may warn on nested CSL frontmatter — the data is valid.
 - Set **Contact e-mail** in settings: OpenAlex, Unpaywall and PubMed all use it, and
   open-access PDF lookup does not work without one.

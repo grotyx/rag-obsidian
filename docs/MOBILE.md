@@ -5,6 +5,10 @@ This is a **code-level** audit: every desktop-leaning API call was traced, and m
 paths were either confirmed safe, given a mobile-safe fallback, or given a clear failure notice
 instead of an uncaught exception. It is not a substitute for the manual QA pass below.
 
+The optional Claude Code/Codex **MCP integration is desktop-only by design**. Its settings and
+Node-based loopback server are gated by `Platform.isDesktopApp`; this does not change the manifest
+because citation, library, search, and chat features remain available on mobile.
+
 ## Feature matrix
 
 | Feature | Verdict | Notes |
@@ -15,6 +19,7 @@ instead of an uncaught exception. It is not a substitute for the manual QA pass 
 | Library browse / dashboard / duplicates / reading queue / status | Works | vault + frontmatter only |
 | Semantic search (OpenAI-compatible / OpenRouter embeddings) | Works | `requestUrl` |
 | Semantic search (Ollama embeddings) | Desktop-only in practice | Ollama has no iOS/Android app; only works if `Ollama URL` points at a LAN address reachable from the device, not `localhost` |
+| Claude Code / Codex MCP | Desktop-only | Requires a local Node stdio process and authenticated `127.0.0.1` server; settings explain this and do not start it on mobile |
 | Semantic search (Transformers.js, experimental) | Untested | CDN + in-browser WASM inference; now fails with a clear Notice instead of a raw loader error if the CDN import is blocked (`src/index/providers/transformers.ts`) |
 | Chat with library | Works | `src/llm/client.ts` is `requestUrl`-only for all three providers |
 | Chat history persistence / "Save as note" | Works | `vault.adapter.write` / vault note creation |
@@ -41,10 +46,14 @@ instead of an uncaught exception. It is not a substitute for the manual QA pass 
 - `src/settings.ts` / `main.ts`: added a one-line note in the settings tab (`hasSecretStorage()`)
   telling the user whether API keys are in the OS keychain or in plaintext `data.json`.
 
-No other code path found an unguarded desktop-only API (no `require`, `fs`, `path`, `electron`,
+No shared/mobile code path found an unguarded desktop-only API (no `require`, `fs`, `path`, `electron`,
 `Buffer`, `process.*`, `child_process`, `XMLHttpRequest`, `WebSocket`, or download-link tricks).
 All network calls already went through `requestUrl`; all binary writes already went through the
 vault adapter.
+
+`src/mcp/bridge.ts` and `src/mcp/http.ts` intentionally use Node built-ins. `main.ts` imports the
+HTTP module dynamically only after `Platform.isDesktopApp`, and the setting toggle is unavailable
+on mobile. The production bundle keeps these built-ins external for Electron.
 
 ## What still needs a real device
 

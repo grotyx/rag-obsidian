@@ -6,7 +6,7 @@
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
 **Version**: 0.4.19 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (188 integration checks green)
-**Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
+**Docs**: [README](README.md) (user) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
 
@@ -25,7 +25,7 @@ is shared — see PLAN.md §8 for what was ported conceptually.
 
 | Decision | Choice |
 |---|---|
-| Architecture | Pure Obsidian plugin (TypeScript), local-first, no companion server |
+| Architecture | Pure Obsidian plugin (TypeScript), local-first; optional desktop MCP uses an ephemeral authenticated loopback server, never a remote/standalone backend |
 | Bib source of truth | One markdown note per reference, CSL-JSON field names in YAML frontmatter |
 | Domain | General academic (domain-agnostic core) |
 | Goal | Personal tool first, open-source later |
@@ -44,6 +44,9 @@ Import PDF ────────────┤→ References/<citekey>.md �
                                   ▼
         retrieve top-K → LLMClient → answer with [n] anchors → citeproc/format → sources
         OpenAlex referenced_works → CitationGraph (related / coupled / "missing")
+
+Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP server
+                    → library/index/vault/cite engine (no plugin LLM calls)
 ```
 
 ## Module map (`src/`)
@@ -88,6 +91,12 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `commands/pdfs.ts` | `indexLinkedPdfs` / `indexLinkedPdfActive` — extract + stash the text of linked PDFs that have none (pool width 2: pdfjs is CPU-bound in the renderer; writes sequential, one note written as its text lands) + `findPdfFile`, the one resolver (`pdf:` link → `PDFs/<citekey>.pdf`) shared with `commands/openaccess.ts` |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them, scoped via `BackfillScope`/`inScope` (`src/data/library.ts`) to all, one note, a folder, or a tag |
 | `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
+| `mcp/protocol.ts` | minimal JSON-RPC/MCP initialize, tools/list and tools/call contract |
+| `mcp/bridge.ts` | source generator for the standalone Node stdio bridge written beside `main.js` |
+| `mcp/http.ts` | desktop-only authenticated loopback lifecycle, discovery file, setup snippets, realpath containment |
+| `mcp/vault.ts` | Markdown-only vault CRUD, pagination, hash-based concurrency checks, serialized writes |
+| `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch; deliberately bypasses chat/summary/rerank LLM paths |
+| `write/manuscript.ts` | pure citation compilation shared by the Obsidian command and MCP output-copy tool |
 | `ui/{LibraryView,SearchView}.ts` | sidebar panes |
 | `ui/FilterRow.ts` | the year-range / author / tag-chip filter row shared by `SearchView` and `ChatView` (`new FilterRow(host, plugin)` → `.filters(): SearchFilters`, `.clear()`); state is pane-local and never persisted |
 | `ui/RelatedView.ts` | citation-graph pane: SVG map (`graph/layout.ts`, ≤40 nodes; dashed node → `AddReferenceModal` prefilled with the OpenAlex id) above the unchanged text lists |
@@ -105,7 +114,8 @@ npm run dev            # esbuild watch → main.js (use while testing in a vault
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (188 checks)
+npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
+npm test               # MCP checks + live integration suite (188 checks)
 ```
 
 ## Testing approach (important)
@@ -115,6 +125,11 @@ with `obsidian` aliased to `test/obsidian-shim.ts` (a thin Node stand-in: `reque
 `stringifyYaml`/`parseYaml`→js-yaml). It exercises the genuine pipeline against **live** APIs
 (Crossref, PubMed, OpenAlex), Orama, a mock LLM HTTP server, and a pdfjs stub. ~90% of the
 plugin is validated this way. Run with `npm test`. Extend by adding numbered sections.
+
+`test/mcp.ts` also launches the generated bridge as a real child process against the actual
+loopback server. It covers JSON-RPC correlation, authentication, discovery-file permissions and
+cleanup, request limits, traversal/symlink containment, edit hashes, serialized writes, tool
+contracts, PubMed add semantics, and source-preserving manuscript compilation.
 
 **Verified live**: metadata fetch, note build, chunking, Orama hybrid + persist/restore, embedding
 provider contract (Ollama 896-dim), LLM client request/parse (mock), citation formatting,
@@ -159,8 +174,9 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 - API keys live in Obsidian `secretStorage` (synced from in-memory settings on save; `data.json`
   stores them blanked). On apps without `secretStorage` they fall back to `data.json` as before.
 - **Mobile guard rule**: no `require`/`fs`/`path`/`electron`/`Buffer`/`process.*`/raw `fetch`
-  anywhere (see Testing above — `requestUrl` and the vault adapter cover every network/file
-  need on mobile too). A desktop-only API with no small mobile-safe equivalent (e.g. `window.open`,
+  in shared/mobile paths (see Testing above — `requestUrl` and the vault adapter cover every
+  network/file need on mobile). The sole exception is `src/mcp/{bridge,http}.ts`, dynamically
+  reached only behind `Platform.isDesktopApp`; MCP is hidden on mobile. A desktop-only API with no small mobile-safe equivalent (e.g. `window.open`,
   `navigator.clipboard`) gets a fallback to a `Notice` showing the raw value, not a `Platform.isMobile`
   block that hides the feature — see `main.ts`'s `safeOpenExternal` and `src/commands/writing.ts`'s
   `copyCitation`. The CDN-loaded pdfjs/Transformers.js stay as-is (locked decision), but their
