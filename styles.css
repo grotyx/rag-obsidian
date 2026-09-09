@@ -336,3 +336,9 @@
   color: var(--text-success);
   font-weight: 600;
 }
+
+/* Inline "Build index" button in the chat's not-ready notice. */
+.rag-obsidian-chat .srag-system button {
+  display: block;
+  margin-top: 6px;
+}

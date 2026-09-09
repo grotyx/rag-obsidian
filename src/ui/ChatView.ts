@@ -62,7 +62,7 @@ export class ChatView extends ItemView {
 
     await this.loadHistory();
     if (!this.plugin.indexManager.ready) {
-      this.bubble("system", "Index not built yet. Open the search pane and click “Rebuild index”, then come back.");
+      this.notReadyBubble();
     } else if (!this.history.length) {
       this.bubble("system", "Ask a question — answers are grounded in your reference notes with [n] citations.");
     }
@@ -185,9 +185,30 @@ export class ChatView extends ItemView {
       await this.saveHistory();
     } catch (e) {
       thinking.remove();
+      if (!this.plugin.indexManager.ready) {
+        this.notReadyBubble();
+        return;
+      }
       const msg = e instanceof Error ? e.message : String(e);
       this.bubble("system", `⚠ ${msg}`);
     }
+  }
+
+  /** Chat needs the embedding index; building it is one click from here rather than a
+   *  trip to the search pane, which is where users were previously sent. */
+  private notReadyBubble(): void {
+    const el = this.bubble("system", "Search index not built yet — chat answers come from it.");
+    const btn = el.createEl("button", { text: "Build index", cls: "mod-cta" });
+    btn.onclick = async () => {
+      btn.disabled = true;
+      await this.plugin.rebuildIndex();
+      if (this.plugin.indexManager.ready) {
+        el.remove();
+        this.bubble("system", "Index ready — ask a question.");
+      } else {
+        btn.disabled = false;
+      }
+    };
   }
 
   private async renderAnswer(ans: RagAnswer, question: string, filterSummary = ""): Promise<void> {
