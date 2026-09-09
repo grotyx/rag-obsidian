@@ -28,6 +28,7 @@ import { formatCitation } from "../src/cite/format";
 import { CiteEngine } from "../src/cite/csl";
 import { TFile } from "obsidian";
 import { CitationGraph } from "../src/graph/citations";
+import { capPerReference, parseRerankOrder, buildRerankUser } from "../src/index/rerank";
 import { layoutGraph, topByDegree, LayoutNode, LayoutEdge } from "../src/graph/layout";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { wrapCdnImportError } from "../src/util/cdn";
@@ -283,6 +284,12 @@ async function main() {
     await new LLMClient(twoModel).chat([{ role: "user", content: "x" }], "sys");
     ok(lastBody().model === "default-model", `other calls used llmModel: ${lastBody().model}`);
 
+    // The reranker is an optimisation, so it must never change what the answer is grounded in
+    // beyond order — and it must not send OpenRouter's `reasoning` field to a plain OpenAI host.
+    const rerankOn = { ...twoModel, llmRerank: true };
+    await new RagChat(idx, lib, rerankOn).answer("what is deep learning?");
+    ok(lastBody().model === "chat-model", "rerank on: the answer still comes from chatModel");
+    ok(lastBody().reasoning === undefined, "no `reasoning` field for a non-OpenRouter endpoint");
     // resolve sources to formatted citations (the grounding payload the UI renders)
     const sources = order.map((ck, i) => ({
       n: i + 1,
@@ -1342,6 +1349,44 @@ async function main() {
   }
 
   log("\nDONE.");
+
+  // ---- 22. Retrieval diversity cap + LLM rerank parsing ----
+  log("\n[22] Retrieval cap & rerank");
+  {
+    const hit = (citekey: string, id: number, score: number) =>
+      ({ id: `${citekey}#${id}`, citekey, title: citekey, section: "abstract", year: 2024, text: `t${id}`, score }) as any;
+    // One paper with a stashed full text produces many chunks; it used to take every slot.
+    const greedy = [
+      hit("a", 0, 9), hit("a", 1, 8), hit("a", 2, 7), hit("a", 3, 6), hit("a", 4, 5),
+      hit("b", 0, 4), hit("c", 0, 3), hit("d", 0, 2),
+    ];
+    const capped = capPerReference(greedy, 5, 3);
+    ok(capped.length === 5, `cap returns k hits: ${capped.length}`);
+    ok(capped.filter((h) => h.citekey === "a").length === 3, "cap keeps at most 3 chunks per reference");
+    ok(new Set(capped.map((h) => h.citekey)).size === 3, "cap spreads 5 slots over 3 papers (uncapped: 1)");
+    ok(capped[0].id === "a#0", "cap preserves score order among what it keeps");
+
+    // A question only two papers can answer must still return k passages.
+    const narrow = [hit("a", 0, 9), hit("a", 1, 8), hit("a", 2, 7), hit("a", 3, 6), hit("b", 0, 5)];
+    const topped = capPerReference(narrow, 5, 3);
+    ok(topped.length === 5, "cap tops back up from the spill when diversity runs out");
+    ok(topped[4].citekey === "a" && topped[4].id === "a#3", "topped-up hit is the best of the spill");
+
+    ok(capPerReference([], 5, 3).length === 0, "cap on an empty result set");
+
+    // Rerank replies are model output: tolerate prose, repeats, and out-of-range numbers.
+    ok(parseRerankOrder("[3,1,2]", 3).join() === "2,0,1", "rerank order: clean JSON array");
+    ok(parseRerankOrder("Sure! Here you go: [2, 1]", 3).join() === "1,0,2", "rerank order: prose around the array, missing index appended");
+    ok(parseRerankOrder("[2,2,9,1]", 3).join() === "1,0,2", "rerank order: repeats and out-of-range dropped");
+    ok(parseRerankOrder("no numbers at all", 3).join() === "0,1,2", "rerank order: unusable reply keeps retrieval order");
+    ok(parseRerankOrder("[3,2,1]", 3).length === 3, "rerank order returns every index exactly once");
+
+    const longHit = hit("x", 0, 1);
+    longHit.text = "y".repeat(900);
+    const prompt = buildRerankUser("does it work?", [longHit]);
+    ok(prompt.includes("[1] (x, 2024)"), "rerank prompt numbers each passage with its title/year");
+    ok(prompt.includes("…") && prompt.length < 700, `rerank prompt truncates long passages: ${prompt.length} chars`);
+  }
 }
 
 main().catch((e) => {

@@ -3,6 +3,8 @@ import { ScholarRagSettings } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
 import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA } from "./store";
+import { capPerReference } from "./rerank";
+
 import {
   chunkReference,
   stripFrontmatter,
@@ -11,6 +13,10 @@ import {
   chunkHash,
   Chunk,
 } from "./chunker";
+
+/** Chunks pulled from the index before the per-reference cap thins them. */
+const OVERFETCH = 3;
+
 
 /** Orchestrates the embedding index: build, incremental update, persistence, search. */
 export class IndexManager {
@@ -231,7 +237,10 @@ export class IndexManager {
    *  pass a bigger one so a full-text-indexed paper can't fill the whole result set. */
   async search(query: string, filters: SearchFilters = {}, k = this.settings.topK): Promise<SearchHit[]> {
     const [vec] = await this.getProvider().embed([query]);
-    return this.store.search(vec, query, k, filters);
+    // Over-fetch, then cap per reference: a paper whose stashed PDF text splits into dozens of
+    // chunks would otherwise fill the whole result set on its own.
+    const hits = await this.store.search(vec, query, k * OVERFETCH, filters);
+    return capPerReference(hits, k);
   }
 
   private async persist(): Promise<void> {

@@ -1,5 +1,6 @@
 import { IndexManager } from "../index/manager";
 import { SearchFilters } from "../index/store";
+import { rerankHits, RERANK_POOL } from "../index/rerank";
 import { Library } from "../data/library";
 import { LLMClient, ChatMessage } from "../llm/client";
 import { formatCitation } from "../cite/format";
@@ -44,7 +45,11 @@ export class RagChat {
       throw new Error("Search index not built — open the search pane and click “Rebuild index”.");
     }
 
-    const hits = await this.index.search(query, filters);
+    // With the reranker on, retrieve a wider pool and let the model pick the passages that
+    // actually answer the question; without it, retrieval order stands.
+    const k = this.settings.topK;
+    const pool = await this.index.search(query, filters, this.settings.llmRerank ? k * RERANK_POOL : k);
+    const hits = this.settings.llmRerank ? (await rerankHits(query, pool, this.settings)).slice(0, k) : pool;
     if (hits.length === 0) {
       const hint = Object.keys(filters).length ? " Try loosening the filters." : "";
       return {

@@ -139,6 +139,10 @@ Paste the key and you are done; everything else is optional.
   cheaper default.
 - **Embeddings** (search + chat): OpenAI / compatible (default) · Ollama (local) ·
   Transformers.js.
+- **Retrieval**: *Results (top-k)* is how many passages an answer is built from (default 20; at
+  most three per reference, so one long paper can't take every slot). *Rerank chat results with
+  the LLM* is off by default — with it on, chat retrieves twice as many passages and has the
+  model order them by relevance first, at one extra request per question.
 
 > OpenRouter model ids carry a vendor prefix (`openai/…`, `deepseek/…`). Pointing the base URL
 > at `https://api.openai.com/v1` instead works too — drop the prefix from the model ids.
@@ -228,7 +232,7 @@ csl: springer-basic-brackets
 npm run dev        # esbuild watch → main.js
 npm run deploy     # build + copy into the vault (VAULT_PLUGIN_DIR in .env)
 npm run build      # tsc + esbuild production
-npm test           # live integration suite (172 checks)
+npm test           # live integration suite (188 checks)
 ```
 
 Helper script (terminal, no Obsidian needed) — path from `.env`:

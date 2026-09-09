@@ -33,6 +33,10 @@ export interface ChatMessage {
 export interface ChatOpts {
   /** OpenAI-style reasoning effort; on Gemini 3.x this maps to the thinking level. */
   reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  /** Ask the endpoint not to think before answering. Sent only to OpenRouter (`reasoning:
+   *  {enabled:false}`), whose hybrid-reasoning models otherwise spend a minute of thinking
+   *  tokens on a mechanical task; a plain OpenAI endpoint would 400 on the unknown field. */
+  noReasoning?: boolean;
   /** Output cap for this call (Anthropic only — the OpenAI-compatible and Ollama bodies send
    *  no cap and take the endpoint default); defaults to `settings.llmMaxTokens`. */
   maxTokens?: number;
@@ -91,6 +95,9 @@ export class LLMClient {
     // Ids may carry a router prefix (OpenRouter: `openai/gpt-5.1`), so match after any "/".
     if (opts.reasoningEffort && /(^|\/)(o\d|gpt-5)/i.test(this.settings.llmModel)) {
       body.reasoning_effort = opts.reasoningEffort;
+    }
+    if (opts.noReasoning && /openrouter\.ai/i.test(this.settings.openaiBaseUrl)) {
+      body.reasoning = { enabled: false };
     }
     const res = await requestWithRetry({
       url: `${this.settings.openaiBaseUrl.replace(/\/+$/, "")}/chat/completions`,

@@ -134,6 +134,9 @@ vault를 열고 활성화만 — Node·빌드 불필요.
   **Chat with library** 답변에만 기본 모델 대신 적용됩니다. 논문 요약과 PDF 메타데이터 추출은
   기본 모델을 그대로 쓰므로, 답변 품질이 중요한 채팅에만 더 좋은 모델을 지정할 수 있습니다.
 - **임베딩**(검색 + 챗): Ollama(로컬) · OpenAI / 호환 · Transformers.js.
+- **검색**: *Results (top-k)*는 답변 하나가 참고하는 구절 수(기본 20, 문헌당 최대 3구절이라
+  긴 논문 하나가 전체를 차지하지 못함). *Rerank chat results with the LLM*은 기본 꺼짐 —
+  켜면 두 배로 뽑은 뒤 모델이 관련도 순으로 재정렬하고, 질문당 요청이 1회 늘어난다.
 
 **OpenRouter 사용 시?** 채팅과 임베딩 모두 **OpenAI** provider를 고르면 됩니다. 키 하나, base URL 하나:
 

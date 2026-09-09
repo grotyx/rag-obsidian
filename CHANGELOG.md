@@ -5,6 +5,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **A per-reference cap on retrieval.** One paper whose PDF full text is stashed in the note splits
+  into dozens of chunks and used to take every slot: on a real question, 20 retrieved passages came
+  from only 10 papers, half of them from two. Retrieval now over-fetches and keeps at most three
+  chunks per reference, topping the list back up from what it skipped when few papers match — so a
+  question only three papers can answer still gets its full top-k. Same question, after: 20 passages
+  across 13 papers.
+
+- **Optional LLM reranking of chat results** (`Settings → Rerank chat results with the LLM`, off by
+  default). With it on, chat retrieves twice as many passages and has the model order them by how
+  well they answer the question before the answer is written — one extra request per question. A
+  reranker that fails, times out, or replies with something unparseable falls back to the retrieval
+  order, so an answer is never blocked on it.
+
 ### Changed
 
 - **Retrieval returns 20 chunks, not 8.** Eight passages is thin for a real question against a

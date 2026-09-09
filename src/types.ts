@@ -16,6 +16,8 @@ export interface ScholarRagSettings {
   openaiApiKey: string;
   chunkChars: number;
   topK: number;
+  /** Ask the LLM to re-rank retrieved passages before the chat answers (one extra request). */
+  llmRerank: boolean;
 
   // Phase 2 — chat
   llmProvider: LLMProviderId;
@@ -58,6 +60,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   openaiApiKey: "",
   chunkChars: 1200,
   topK: 20,
+  llmRerank: false,
 
   llmProvider: "openai",
   llmModel: "deepseek/deepseek-v4-flash-0731",

@@ -135,6 +135,19 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     }
 
     new Setting(containerEl)
+      .setName("Rerank chat results with the LLM")
+      .setDesc(
+        "Retrieves twice as many passages and has the model order them by relevance before the " +
+          "answer is written. One extra request per question; affects chat only."
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.llmRerank).onChange(async (v) => {
+          this.plugin.settings.llmRerank = v;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
       .setName("Results (top-k)")
       .setDesc("How many chunks a search returns.")
       .addSlider((s) =>

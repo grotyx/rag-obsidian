@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.4.17 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (172 integration checks green)
+**Version**: 0.4.17 · **Status**: Phase 0–5 + PubMed/LLM-summary/MeSH + CSL citations + import/export + library utilities + review/security pass (188 integration checks green)
 **Docs**: [README](README.md) (user) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -69,11 +69,12 @@ Import PDF ────────────┤→ References/<citekey>.md �
 | `index/providers/{ollama,openai,transformers}.ts` | embedding backends |
 | `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers (`yearFromIssued`, `authorNames`), `chunkHash` (reindex change detector) |
 | `index/store.ts` | Orama hybrid index wrapper + JSON persist/restore + `SearchFilters` (year range, tag AND, author) over the `tags`/`author` `enum[]` facets + `describeFilters` (one-line label, `""` = unfiltered); `INDEX_SCHEMA` is the rebuild marker |
-| `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding) |
+| `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding); `search` over-fetches ×3 and thins via `capPerReference` |
+| `index/rerank.ts` | retrieval quality, no Obsidian imports: `capPerReference` (≤3 chunks per reference, tops back up from the spill so k is still returned), `rerankHits`/`buildRerankUser`/`parseRerankOrder` (optional LLM reranker behind `llmRerank`; any failure falls back to retrieval order) |
 | `graph/openalex.ts` | OpenAlex client (`resolveWork`, `fetchTitles`) |
 | `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` + `refIds` (raw cited ids, for the map's dashed nodes) + incremental upkeep: `enqueue` (debounced, one OpenAlex lookup per newly added note, no-op until the graph has been built once), `prune` (drops nodes whose note is gone), `onChange` (views redraw when either fires) |
 | `graph/layout.ts` | `layoutGraph` — deterministic force-directed layout (circle seeding, no RNG) + `topByDegree` node cap; pure math behind the Related pane's SVG map |
-| `llm/client.ts` | provider-agnostic chat (Anthropic / OpenAI / Ollama) via `requestUrl`, with 429/5xx backoff |
+| `llm/client.ts` | provider-agnostic chat (Anthropic / OpenAI / Ollama) via `requestUrl`, with 429/5xx backoff; `noReasoning` sends OpenRouter's `reasoning:{enabled:false}` (that host only — a plain OpenAI endpoint 400s on the unknown field) |
 | `chat/rag.ts` | retrieve (under optional `SearchFilters`) → number sources → [n] grounded answer → resolve citations |
 | `cite/csl.ts` | citeproc-js rendering: bundled styles + CSL-repo fetch/cache, per-note `csl:` override |
 | `cite/format.ts` | CSL-JSON → APA / Vancouver / Plain (lightweight fallback; `cite/csl.ts` is primary) |
@@ -104,7 +105,7 @@ npm run dev            # esbuild watch → main.js (use while testing in a vault
 npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
-npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (172 checks)
+npm test               # bundles test/integration.ts (obsidian shim) → live integration suite (188 checks)
 ```
 
 ## Testing approach (important)
