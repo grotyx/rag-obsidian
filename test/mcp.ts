@@ -4,6 +4,7 @@ import { handleProtocol, McpTool } from "../src/mcp/protocol";
 import { bridgeSource } from "../src/mcp/bridge";
 import { contentHash, McpVault, validateMarkdownPath } from "../src/mcp/vault";
 import { McpService, MCP_TOOLS } from "../src/mcp/service";
+import { renderCompiledManuscript } from "../src/write/manuscript";
 
 async function protocolChecks(): Promise<void> {
   const tools: McpTool[] = [{
@@ -262,11 +263,41 @@ async function serviceChecks(): Promise<void> {
   await assert.rejects(() => service.callTool("not_a_tool", {}), /Unknown tool/);
 }
 
+async function manuscriptChecks(): Promise<void> {
+  const items: Record<string, any> = {
+    known: { type: "article-journal", title: "Known", author: [{ family: "Kim" }], issued: { "date-parts": [[2024]] } },
+  };
+  const source = "Finding [@known] and missing [@unknown]. Code `[@known]`.\n\n## References\n\nold\n";
+  const rendered = await renderCompiledManuscript({
+    content: source,
+    styleId: "test-style",
+    citeStyle: "apa",
+    getItem: (key) => items[key] ?? null,
+    renderStyle: async () => ({ bibliography: ["1. Known citation"], inText: { known: "<i>1</i>" } }),
+  });
+  assert.match(rendered.content, /Finding 1 and missing \[@unknown\]/);
+  assert.match(rendered.content, /Code `\[@known\]`/);
+  assert.match(rendered.content, /## References\n\n1\. Known citation/);
+  assert.deepEqual(rendered.cited, ["known", "unknown"]);
+  assert.deepEqual(rendered.missing, ["unknown"]);
+
+  const fallback = await renderCompiledManuscript({
+    content: "Finding [@known].",
+    styleId: "broken",
+    citeStyle: "apa",
+    getItem: (key) => items[key] ?? null,
+    renderStyle: async () => { throw new Error("style failed"); },
+  });
+  assert.doesNotMatch(fallback.content, /\[@known\]/);
+  assert.match(fallback.content, /## References/);
+}
+
 async function main(): Promise<void> {
   await protocolChecks();
   bridgeChecks();
   await vaultChecks();
   await serviceChecks();
+  await manuscriptChecks();
   console.log("MCP checks passed");
 }
 

@@ -5,13 +5,10 @@ import { Paragraph, paragraphsOf, rankHits, unsupportedClaims, citationEdit } fr
 import {
   extractCitekeys,
   buildBibliography,
-  inTextLabel,
-  replaceCitations,
-  resolveCluster,
   splitAtReferences,
-  decodeEntities,
 } from "../cite/bibliography";
 import { formatCitation } from "../cite/format";
+import { renderCompiledManuscript } from "../write/manuscript";
 
 /** Scan the active note for [@citekey] and insert/refresh a "## References" section. */
 export async function updateBibliography(plugin: ScholarRagPlugin): Promise<void> {
@@ -60,43 +57,21 @@ export async function compileManuscript(plugin: ScholarRagPlugin): Promise<void>
     new Notice("No active note");
     return;
   }
-  const content = await plugin.app.vault.read(file);
-  const keys = extractCitekeys(content);
-  if (!keys.length) {
-    new Notice("No [@citekey] citations in this note");
+  let rendered;
+  try {
+    rendered = await renderCompiledManuscript({
+      content: await plugin.app.vault.read(file),
+      styleId: plugin.styleForNote(file),
+      citeStyle: plugin.settings.citeStyle,
+      getItem: (key) => plugin.library.getItem(key),
+      renderStyle: (style, keys, getItem) => plugin.citeEngine.renderNote(style, keys, getItem),
+    });
+  } catch (error) {
+    new Notice(error instanceof Error ? error.message.replace(/^NO_CITATIONS:\s*/, "") : String(error));
     return;
   }
-  const styleId = plugin.styleForNote(file);
-  let body = content;
-  let refsBlock = "";
-  // Code spans / fenced blocks keep their literal [@citekey] — a manuscript documenting the
-  // syntax must compile unchanged, and extractCitekeys ignores those brackets too.
-  const replaceKey = (text: string, render: (k: string) => string | null): string =>
-    replaceCitations(text, (keys) => resolveCluster(keys, render)?.join("; ") ?? null);
-  if (styleId) {
-    try {
-      const { bibliography, inText } = await plugin.citeEngine.renderNote(
-        styleId,
-        keys,
-        (k) => plugin.library.getItem(k)
-      );
-      body = replaceKey(content, (k) => (inText[k] ? plainText(inText[k]) : null));
-      refsBlock = bibliography.join("\n\n");
-    } catch (e) {
-      new Notice(`Style "${styleId}" failed; using lightweight. ${e instanceof Error ? e.message : ""}`);
-    }
-  }
-  if (!refsBlock) {
-    body = replaceKey(content, (k) => {
-      const it = plugin.library.getItem(k);
-      return it ? inTextLabel(it) : null;
-    });
-    refsBlock = buildBibliography(keys, plugin.library, plugin.settings.citeStyle);
-  }
-  const { base, tail } = splitAtReferences(body);
-  const out = `${base ? base + "\n\n" : ""}## References\n\n${refsBlock}\n${tail}`;
   const outPath = normalizePath(file.path.replace(/\.md$/i, "") + " (compiled).md");
-  await plugin.writeAndOpen(outPath, out);
+  await plugin.writeAndOpen(outPath, rendered.content);
   new Notice(`Compiled → ${outPath}`);
 }
 
@@ -175,11 +150,6 @@ export async function annotatedBibliography(plugin: ScholarRagPlugin): Promise<v
   }
   const title = wholeLib ? "Annotated bibliography (library)" : `Annotated bibliography — ${active?.basename}`;
   await plugin.writeAndOpen(`${title}.md`, `# ${title}\n\n${blocks.join("\n")}`);
-}
-
-/** citeproc in-text HTML → plain text (for the compiled manuscript). */
-function plainText(html: string): string {
-  return decodeEntities(html.replace(/<[^>]+>/g, ""));
 }
 
 /** Hybrid-search the selection (else the paragraph at the cursor) and insert the chosen `[@citekey]`. */
