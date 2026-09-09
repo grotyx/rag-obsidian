@@ -10,7 +10,8 @@
     "deploy": "npm run build && node scripts/deploy.cjs",
     "typecheck": "tsc -noEmit -skipLibCheck",
     "lint": "eslint main.ts src",
-    "test": "esbuild test/integration.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --outfile=_test.cjs && node _test.cjs"
+    "test:mcp": "esbuild test/mcp.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --outfile=_test-mcp.cjs && node _test-mcp.cjs",
+    "test": "npm run test:mcp && esbuild test/integration.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --outfile=_test.cjs && node _test.cjs"
   },
   "keywords": [
     "obsidian",
