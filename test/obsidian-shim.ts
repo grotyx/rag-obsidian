@@ -51,6 +51,25 @@ export class TFile {
   name = "";
   basename = "";
   extension = "md";
+  constructor(path = "") {
+    this.path = path;
+    this.name = path.split("/").pop() ?? "";
+    this.basename = this.name.replace(/\.md$/, "");
+  }
 }
 
 export class App {}
+
+/** Obsidian's debounce(cb, timeout, resetTimer): fires on the trailing edge; a further call
+ *  restarts the timer, which is the only mode the plugin uses. */
+export function debounce<T extends unknown[]>(
+  fn: (...args: T) => unknown,
+  wait = 0,
+  _resetTimer = false
+): (...args: T) => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return (...args: T) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}

@@ -298,6 +298,7 @@ export default class ScholarRagPlugin extends Plugin {
     this.registerEvent(
       this.app.metadataCache.on("changed", (file) => {
         if (file instanceof TFile) this.indexManager.enqueue(file);
+        if (file instanceof TFile) this.citationGraph.enqueue(file); // new reference joins a built graph
         if (file.path.startsWith(this.library.folder() + "/")) this.citeCache.clear(); // reference data changed
         else this.citeCache.delete(file.path); // citation numbering in this note may have shifted
       })
@@ -305,6 +306,7 @@ export default class ScholarRagPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on("delete", (file: TAbstractFile) => {
         void this.indexManager.removeFile(file.path);
+        void this.citationGraph.prune();
         this.citeCache.delete(file.path);
       })
     );
@@ -312,7 +314,9 @@ export default class ScholarRagPlugin extends Plugin {
       this.app.vault.on("rename", (file: TAbstractFile, oldPath: string) => {
         void this.indexManager.removeFile(oldPath);
         this.citeCache.delete(oldPath); // labels were cached under the old path
+        void this.citationGraph.prune();
         if (file instanceof TFile) this.indexManager.enqueue(file);
+        if (file instanceof TFile) this.citationGraph.enqueue(file);
       })
     );
   }

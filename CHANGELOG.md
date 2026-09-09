@@ -5,6 +5,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Fixed
+
+- **The citation graph keeps itself current.** It was built once, by hand, from the Related pane's
+  button — every reference added afterwards was invisible to it until you remembered to press that
+  button again, which is what made the pane look broken on a growing library. A note added to a
+  built graph now joins it on its own (one OpenAlex request for the new paper; the papers already
+  citing it need no re-fetch), and a deleted or renamed-away note is pruned. Views subscribed via
+  `CitationGraph.onChange` redraw when that happens, so the Related pane fills in behind you
+  instead of showing "this note isn't in the citation graph yet". A graph that was never built
+  stays empty and silent — no background traffic for a feature you haven't used.
+
+- **The chat can build the search index itself.** With no index, the chat pane told you to go to
+  the search pane and click "Rebuild index" — a dead end at the moment you asked your first
+  question. The notice now carries the button.
+
 ## [0.4.16] — 2026-09-08
 
 ### Added

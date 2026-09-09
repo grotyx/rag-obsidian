@@ -34,7 +34,8 @@ no account, no backend — just your vault.
   papers by subject.
 - **Citation graph** (OpenAlex): references / cited-by in your library, and *"frequently
   cited but missing"* recommendations — drawn as a **map** in the Related pane (solid nodes are
-  notes you have, dashed ones are papers you don't; click a dashed node to add it).
+  notes you have, dashed ones are papers you don't; click a dashed node to add it). Build it once
+  from the pane's button; references added later join it on their own.
 - Reading status, **dashboard**, duplicate finder, citation counts, retraction check.
 
 **✍️ Cite & write**
@@ -227,7 +228,7 @@ csl: springer-basic-brackets
 npm run dev        # esbuild watch → main.js
 npm run deploy     # build + copy into the vault (VAULT_PLUGIN_DIR in .env)
 npm run build      # tsc + esbuild production
-npm test           # live integration suite (169 checks)
+npm test           # live integration suite (172 checks)
 ```
 
 Helper script (terminal, no Obsidian needed) — path from `.env`:

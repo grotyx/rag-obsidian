@@ -1,6 +1,6 @@
-import { App, TFile, normalizePath } from "obsidian";
+import { App, TFile, normalizePath, debounce } from "obsidian";
 import { Library } from "../data/library";
-import { ScholarRagSettings } from "../types";
+import { CSLItem, ScholarRagSettings } from "../types";
 import { resolveWork, fetchTitles } from "./openalex";
 
 interface GraphData {
@@ -27,6 +27,14 @@ export class CitationGraph {
   /** `missingFrequent` costs an OpenAlex round trip and the Related pane asks on every note
    *  switch; the answer only changes when the graph does. A rejected lookup is not kept. */
   private missingCache = new Map<number, Promise<MissingPaper[]>>();
+  /** Notes added since the last build, waiting for their one OpenAlex lookup. */
+  private addQueue = new Set<string>();
+  private flush: () => void;
+  /** Every mutation (build / incremental add / prune) is chained so two can't interleave
+   *  their read-modify-persist of `this.data`. */
+  private chain: Promise<unknown> = Promise.resolve();
+  /** Views that redraw when the graph gains or loses nodes behind their back. */
+  private listeners = new Set<() => void>();
 
   constructor(
     private app: App,
@@ -35,6 +43,23 @@ export class CitationGraph {
     pluginDir: string
   ) {
     this.path = normalizePath(`${pluginDir}/index/citations.json`);
+    this.flush = debounce(() => void this.flushAdds(), 3000, true);
+  }
+
+  /** Subscribe to graph changes; returns the unsubscribe. */
+  onChange(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  private emitChange(): void {
+    for (const fn of this.listeners) fn();
+  }
+
+  private serialized<T>(job: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(job);
+    this.chain = run.catch(() => undefined);
+    return run;
   }
 
   get size(): number {
@@ -64,7 +89,12 @@ export class CitationGraph {
   }
 
   /** Build the graph over the whole library (1 OpenAlex request per paper). */
-  async build(onProgress?: (done: number, total: number) => void): Promise<number> {
+  build(onProgress?: (done: number, total: number) => void): Promise<number> {
+    return this.serialized(() => this.buildNow(onProgress));
+  }
+
+  private async buildNow(onProgress?: (done: number, total: number) => void): Promise<number> {
+    this.addQueue.clear(); // a full pass covers everything queued
     const entries = this.library.entries(); // one vault pass (list()+getItem() per note was O(n²))
     const data: GraphData = { byCitekey: {}, idToCitekey: {} };
     let done = 0;
@@ -86,7 +116,70 @@ export class CitationGraph {
     this.data = data;
     this.missingCache.clear();
     await this.persist();
+    this.emitChange();
     return this.size;
+  }
+
+  /** Queue a newly added/edited reference note for a single OpenAlex lookup, so the graph
+   *  stays current without a full rebuild. Incoming edges need no work: the notes that cite
+   *  it already carry its id in their `refs`. */
+  enqueue(file: TFile): void {
+    if (!this.size) return; // never built — don't start network traffic the user didn't ask for
+    const prefix = normalizePath(this.settings.referencesFolder) + "/";
+    if (!file.path.startsWith(prefix)) return;
+    this.addQueue.add(file.path);
+    this.flush();
+  }
+
+  private flushAdds(): Promise<void> {
+    return this.serialized(async () => {
+      const paths = [...this.addQueue];
+      this.addQueue.clear();
+      let changed = false;
+      for (const path of paths) {
+        const file = this.app.vault.getAbstractFileByPath(path);
+        if (!(file instanceof TFile)) continue;
+        const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        const citekey = fm?.citekey ? String(fm.citekey) : "";
+        if (!citekey || this.data.byCitekey[citekey]) continue;
+        try {
+          const w = await resolveWork(fm as unknown as CSLItem, this.settings.openalexMailto);
+          if (!w?.openalexId) continue;
+          this.data.byCitekey[citekey] = { openalexId: w.openalexId, refs: w.referencedWorks };
+          this.data.idToCitekey[w.openalexId] = citekey;
+          await this.backfillId(file, w.openalexId);
+          changed = true;
+        } catch {
+          /* offline / rate-limited — the next add or a full build picks this note up */
+        }
+      }
+      if (changed) {
+        this.missingCache.clear();
+        await this.persist();
+        this.emitChange();
+      }
+    });
+  }
+
+  /** Drop nodes whose note no longer exists (delete, or a rename that changed the citekey).
+   *  One vault pass, no network. Ids other notes cite simply count as "missing" again. */
+  prune(): Promise<void> {
+    if (!this.size) return Promise.resolve();
+    return this.serialized(async () => {
+      const live = new Set(this.library.entries().map((e) => e.citekey));
+      let changed = false;
+      for (const [ck, node] of Object.entries(this.data.byCitekey)) {
+        if (live.has(ck)) continue;
+        delete this.data.idToCitekey[node.openalexId];
+        delete this.data.byCitekey[ck];
+        changed = true;
+      }
+      if (changed) {
+        this.missingCache.clear();
+        await this.persist();
+        this.emitChange();
+      }
+    });
   }
 
   private async backfillId(file: TFile, openalexId: string): Promise<void> {

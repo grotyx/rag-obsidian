@@ -44,6 +44,8 @@ export class RelatedView extends ItemView {
 
     this.bodyEl = c.createDiv({ cls: "srag-related-body" });
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.refresh()));
+    // The graph also grows on its own when a reference note is added — redraw then too.
+    this.register(this.plugin.citationGraph.onChange(() => this.refresh()));
     this.refresh();
   }
 

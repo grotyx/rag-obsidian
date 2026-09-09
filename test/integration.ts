@@ -26,6 +26,7 @@ import { LLMClient } from "../src/llm/client";
 import { RagChat } from "../src/chat/rag";
 import { formatCitation } from "../src/cite/format";
 import { CiteEngine } from "../src/cite/csl";
+import { TFile } from "obsidian";
 import { CitationGraph } from "../src/graph/citations";
 import { layoutGraph, topByDegree, LayoutNode, LayoutEdge } from "../src/graph/layout";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
@@ -304,6 +305,7 @@ async function main() {
     const seedMap = new Map<string, CSLItem>(
       seeds.map((s) => [s.citekey, { type: "article-journal", title: s.title, DOI: s.DOI }])
     );
+    const addedFile = new TFile("References/krizhevsky2017imagenet.md");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stubApp: any = {
       vault: { adapter: { exists: async () => false, read: async () => "{}", write: async () => {}, mkdir: async () => {} } },
@@ -335,6 +337,29 @@ async function main() {
     log(`     lecun1998 → cited by in library: [${citedBy.join(", ") || "—"}]`);
     log(`     lecun2015deep → coupled (≥1 shared): ${coupled.map((c) => `${c.citekey}:${c.shared}`).join(", ") || "—"}`);
     ok(Array.isArray(refsLib) && Array.isArray(citedBy) && Array.isArray(coupled), "graph queries return arrays");
+
+    // Incremental maintenance: a note added after the build joins the graph without a rebuild,
+    // and a deleted one is pruned — this is what keeps the Related pane from going stale.
+    const added: CSLItem = { type: "article-journal", title: "ImageNet classification with deep convolutional neural networks", DOI: "10.1145/3065386" };
+    seeds.push({ citekey: "krizhevsky2017imagenet", title: String(added.title), DOI: String(added.DOI) });
+    seedMap.set("krizhevsky2017imagenet", added);
+    stubApp.vault.getAbstractFileByPath = (path: string) => (path === "References/krizhevsky2017imagenet.md" ? addedFile : null);
+    stubApp.metadataCache = {
+      getFileCache: () => ({ frontmatter: { citekey: "krizhevsky2017imagenet", ...added } }),
+    };
+    const sizeBefore = graph.size;
+    graph.enqueue(addedFile);
+    // 3s debounce, then one OpenAlex round trip — poll rather than guess a sleep.
+    for (let i = 0; i < 30 && graph.size === sizeBefore; i++) await new Promise((r) => setTimeout(r, 500));
+    ok(graph.size === sizeBefore + 1, `enqueue adds one node without a rebuild: ${sizeBefore} → ${graph.size}`);
+
+    let notified = 0;
+    const off = graph.onChange(() => notified++);
+    seeds.splice(seeds.findIndex((s) => s.citekey === "krizhevsky2017imagenet"), 1); // note "deleted"
+    await graph.prune();
+    off();
+    ok(graph.size === sizeBefore, `prune drops the node whose note is gone: back to ${graph.size}`);
+    ok(notified === 1, "prune notifies subscribed views once");
 
     const missing = await graph.missingFrequent(2);
     log(`     missing frequently-cited (≥2): ${missing.length}`);
