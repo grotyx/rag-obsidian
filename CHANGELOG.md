@@ -5,6 +5,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.4.18] — 2026-09-09
+
 ### Added
 
 - **A per-reference cap on retrieval.** One paper whose PDF full text is stashed in the note splits
