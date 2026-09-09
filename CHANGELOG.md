@@ -14,6 +14,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
   question only three papers can answer still gets its full top-k. Same question, after: 20 passages
   across 13 papers.
 
+- **Chat answers no longer wait on the model thinking first.** On OpenRouter, "Chat with library"
+  and the reranker both send `reasoning: {enabled: false}`: the sources are already retrieved and
+  ranked, so the answer is a reading-and-citing job that thinking tokens were only slowing down.
+  Sent to OpenRouter only — a plain OpenAI endpoint rejects the unknown field.
+
 - **Optional LLM reranking of chat results** (`Settings → Rerank chat results with the LLM`, off by
   default). With it on, chat retrieves twice as many passages and has the model order them by how
   well they answer the question before the answer is written — one extra request per question. A

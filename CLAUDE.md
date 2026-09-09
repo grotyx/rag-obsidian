@@ -175,7 +175,10 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
   the first response.
 - **LLM (chat)**: OpenAI-compatible against OpenRouter (default: `deepseek/deepseek-v4-flash-0731`,
   chat `deepseek/deepseek-v4-pro-0813`) · Anthropic · Ollama.
-  `chatModel` (optional) overrides `llmModel` for "Chat with library" only. `llmMaxTokens`
+  `chatModel` (optional) overrides `llmModel` for "Chat with library" only. The chat answer and
+  the reranker pass `noReasoning`, so on OpenRouter they send `reasoning:{enabled:false}` — both
+  read already-ranked sources, and a hybrid-reasoning model otherwise spends ~4k thinking tokens
+  (50s vs 8s measured on a 40-passage rerank) for no gain. `llmMaxTokens`
   (default 8192) caps the **Anthropic** body only; the OpenAI-compatible and Ollama bodies send
   no cap. Reasoning models bill thinking against that budget — a low cap returns empty content.
 

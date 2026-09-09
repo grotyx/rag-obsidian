@@ -105,7 +105,11 @@ export class RagChat {
       ...this.settings,
       llmModel: this.settings.chatModel || this.settings.llmModel,
     });
-    const raw = await llm.chat([...cleanHistory, { role: "user", content: user }], system);
+    // The sources are already retrieved and ranked; the model's job here is to read and cite
+    // them, which hybrid-reasoning models spend a minute of thinking tokens on for no gain.
+    const raw = await llm.chat([...cleanHistory, { role: "user", content: user }], system, {
+      noReasoning: true,
+    });
 
     // Drop dangling anchors (n outside 1..sources) so the UI never maps them.
     const text = raw.replace(/\[(\d+)\]/g, (m, d) => {
