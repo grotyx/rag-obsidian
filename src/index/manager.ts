@@ -53,6 +53,10 @@ export class IndexManager {
   get modelId(): string {
     return this.getProvider().id;
   }
+  /** Model recorded by the live index, without creating/loading an embedding provider. */
+  get indexedModelId(): string {
+    return this.store.modelId;
+  }
 
   /** One provider per `provider:model` — Transformers.js keeps its ONNX pipeline on the instance,
    *  so rebuild only when the settings that define the id actually change. */

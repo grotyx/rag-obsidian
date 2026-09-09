@@ -3,6 +3,7 @@ import vm from "node:vm";
 import { handleProtocol, McpTool } from "../src/mcp/protocol";
 import { bridgeSource } from "../src/mcp/bridge";
 import { contentHash, McpVault, validateMarkdownPath } from "../src/mcp/vault";
+import { McpService, MCP_TOOLS } from "../src/mcp/service";
 
 async function protocolChecks(): Promise<void> {
   const tools: McpTool[] = [{
@@ -173,10 +174,99 @@ async function vaultChecks(): Promise<void> {
   assert.deepEqual(fake.trashed, ["Archive/a.md"]);
 }
 
+async function serviceChecks(): Promise<void> {
+  assert.deepEqual(MCP_TOOLS.map((t) => t.name), [
+    "library_status", "search_library", "rebuild_search_index", "list_references",
+    "get_reference", "list_tags", "search_pubmed", "add_reference", "list_notes",
+    "read_note", "create_note", "update_note", "replace_in_note", "move_note",
+    "trash_note", "compile_manuscript",
+  ]);
+  assert.equal(MCP_TOOLS.find((t) => t.name === "search_library")?.annotations?.readOnlyHint, true);
+  assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
+
+  const fake = fakeApp({
+    "References/ref.md": "---\ncitekey: smith2024\ntitle: Trial\n---\n\n## Summary\n\nUseful.\n\n## Full text (extracted)\n\nvery long",
+  });
+  const item = {
+    type: "article-journal", title: "Trial", citekey: "smith2024", status: "read",
+    tags: ["Spine", "Outcome"], PMID: "123", issued: { "date-parts": [[2024]] },
+  };
+  let searchArgs: unknown[] = [];
+  let rebuilt = 0;
+  let created = false;
+  const file = fake.files.get("References/ref.md")?.file;
+  const plugin: any = {
+    manifest: { version: "0.5.0" },
+    app: {
+      ...fake.app,
+      vault: { ...fake.app.vault, getName: () => "Research" },
+    },
+    settings: {
+      referencesFolder: "References", topK: 20, pubmedApiKey: "", openalexMailto: "",
+    },
+    indexManager: {
+      ready: true,
+      count: 10,
+      indexedModelId: "test:embed",
+      search: async (...args: unknown[]) => {
+        searchArgs = args;
+        return [{ id: "smith2024#0", citekey: "smith2024", title: "Trial", section: "abstract", year: 2024, text: "evidence", score: 0.9 }];
+      },
+      rebuild: async () => { rebuilt++; return 11; },
+    },
+    library: {
+      folder: () => "References",
+      entries: () => [{ citekey: "smith2024", item, file, year: "2024", authors: "Smith", title: "Trial" }],
+      getFile: (citekey: string) => citekey === "smith2024" ? file : null,
+      getItem: (citekey: string) => citekey === "smith2024" ? item : null,
+      findDuplicate: (candidate: Record<string, unknown>) => candidate.PMID === "123" ? "smith2024" : null,
+      createReference: async () => { created = true; return { path: "References/new.md" }; },
+    },
+  };
+  const vault = new McpVault(plugin.app, (path) => path.startsWith("References/"));
+  const service = new McpService(plugin, vault, {
+    searchPubmed: async () => [{ pmid: "123", pmc: "", item }],
+    fetchMetadata: async () => ({ type: "article-journal", title: "New", PMID: "999" }),
+  });
+
+  assert.deepEqual(await service.callTool("library_status", {}), {
+    pluginVersion: "0.5.0", vaultName: "Research", referenceFolder: "References",
+    indexReady: true, chunkCount: 10, embeddingModel: "test:embed",
+  });
+  const search = await service.callTool("search_library", {
+    query: "question", limit: 4, year_from: 2020, tags: ["Spine"],
+  }) as any;
+  assert.equal(search.results[0].citekey, "smith2024");
+  assert.equal(search.results[0].path, "References/ref.md");
+  assert.deepEqual(searchArgs, ["question", { yearFrom: 2020, tags: ["Spine"] }, 4]);
+  assert.deepEqual(await service.callTool("rebuild_search_index", {}), { chunkCount: 11 });
+  assert.equal(rebuilt, 1);
+
+  const refs = await service.callTool("list_references", { tags: ["Spine"] }) as any;
+  assert.equal(refs.references[0].citekey, "smith2024");
+  const ref = await service.callTool("get_reference", { citekey: "smith2024" }) as any;
+  assert.equal(ref.fullTextOmitted, true);
+  assert.doesNotMatch(ref.content, /very long/);
+  const tags = await service.callTool("list_tags", {}) as any;
+  assert.deepEqual(tags.tags, [{ tag: "Outcome", count: 1 }, { tag: "Spine", count: 1 }]);
+
+  const pubmed = await service.callTool("search_pubmed", { query: "trial" }) as any;
+  assert.equal(pubmed.results[0].existingCitekey, "smith2024");
+  await assert.rejects(() => service.callTool("add_reference", { identifier: "123" }), /explicit PMID/i);
+  await assert.rejects(() => service.callTool("add_reference", { identifier: "a title" }), /explicit identifier/i);
+  const added = await service.callTool("add_reference", { identifier: "PMID:999" }) as any;
+  assert.equal(added.status, "created");
+  assert.equal(created, true);
+
+  await assert.rejects(() => service.callTool("search_library", { query: "q", typo: 1 }), /Unknown argument/);
+  await assert.rejects(() => service.callTool("not_a_tool", {}), /Unknown tool/);
+}
+
 async function main(): Promise<void> {
   await protocolChecks();
   bridgeChecks();
   await vaultChecks();
+  await serviceChecks();
   console.log("MCP checks passed");
 }
 
