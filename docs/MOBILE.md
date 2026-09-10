@@ -51,9 +51,9 @@ No shared/mobile code path found an unguarded desktop-only API (no `require`, `f
 All network calls already went through `requestUrl`; all binary writes already went through the
 vault adapter.
 
-`src/mcp/bridge.ts` and `src/mcp/http.ts` intentionally use Node built-ins. `main.ts` imports the
-HTTP module dynamically only after `Platform.isDesktopApp`, and the setting toggle is unavailable
-on mobile. The production bundle keeps these built-ins external for Electron.
+`src/mcp/bridge.ts` and `src/mcp/http.ts` intentionally use Node built-ins. Their imports are
+type-only or dynamic, and `main.ts` constructs the server only after `Platform.isDesktopApp`; the
+setting toggle is unavailable on mobile. The production bundle keeps Node built-ins external.
 
 ## What still needs a real device
 

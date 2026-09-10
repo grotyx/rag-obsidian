@@ -33,7 +33,13 @@ async function protocolChecks(): Promise<void> {
   assert.equal(init?.result?.protocolVersion, "2025-06-18");
   assert.equal((init?.result?.serverInfo as Record<string, unknown>).name, "rag-obsidian");
   const defaultInit = await handleProtocol({ jsonrpc: "2.0", id: 10, method: "initialize" }, tools, call);
-  assert.equal(defaultInit?.result?.protocolVersion, "2026-07-28");
+  assert.equal(defaultInit?.result?.protocolVersion, "2025-11-25");
+  const modernInit = await handleProtocol(
+    { jsonrpc: "2.0", id: 11, method: "initialize", params: { protocolVersion: "2026-07-28" } }, tools, call
+  );
+  assert.equal(modernInit?.result?.protocolVersion, "2025-11-25");
+  const discover = await handleProtocol({ jsonrpc: "2.0", id: 12, method: "server/discover" }, tools, call);
+  assert.equal(discover?.error?.code, -32601);
 
   const listed = await handleProtocol({ jsonrpc: "2.0", id: 2, method: "tools/list" }, tools, call);
   assert.deepEqual((listed?.result?.tools as McpTool[]).map((t) => t.name), ["echo"]);
@@ -169,7 +175,12 @@ async function vaultChecks(): Promise<void> {
   await vault.updateNote("Notes/a.md", "same same", current.hash);
   const repeated = await vault.readNote("Notes/a.md");
   await assert.rejects(() => vault.replaceInNote("Notes/a.md", "same", "x", repeated.hash), /exactly once/i);
-  await vault.replaceInNote("Notes/a.md", "same same", "done", repeated.hash);
+  await vault.updateNote("Notes/a.md", "aaa", repeated.hash);
+  const overlapping = await vault.readNote("Notes/a.md");
+  await assert.rejects(() => vault.replaceInNote("Notes/a.md", "aa", "x", overlapping.hash), /exactly once/i);
+  await vault.updateNote("Notes/a.md", "same same", overlapping.hash);
+  const exact = await vault.readNote("Notes/a.md");
+  await vault.replaceInNote("Notes/a.md", "same same", "done", exact.hash);
   assert.equal(fake.files.get("Notes/a.md")?.content, "done");
 
   const beforeMove = await vault.readNote("Notes/a.md");
@@ -252,13 +263,14 @@ async function serviceChecks(): Promise<void> {
   };
   const vault = new McpVault(plugin.app, (path) => path.startsWith("References/"));
   const service = new McpService(plugin, vault, {
+    vaultPath: "/vault/Research",
     searchPubmed: async () => [{ pmid: "123", pmc: "", item }],
     fetchMetadata: async () => ({ type: "article-journal", title: "New", PMID: "999" }),
   });
 
   assert.deepEqual(await service.callTool("library_status", {}), {
     pluginVersion: "0.5.0", vaultName: "Research", referenceFolder: "References",
-    indexReady: true, chunkCount: 10, embeddingModel: "test:embed",
+    vaultPath: "/vault/Research", indexReady: true, chunkCount: 10, embeddingModel: "test:embed",
   });
   const search = await service.callTool("search_library", {
     query: "question", limit: 4, year_from: 2020, tags: ["Spine"],
@@ -274,6 +286,11 @@ async function serviceChecks(): Promise<void> {
   const ref = await service.callTool("get_reference", { citekey: "smith2024" }) as any;
   assert.equal(ref.fullTextOmitted, true);
   assert.doesNotMatch(ref.content, /very long/);
+  const storedReference = fake.files.get("References/ref.md");
+  if (storedReference) storedReference.content = "x".repeat(60_000);
+  const truncatedRef = await service.callTool("get_reference", { citekey: "smith2024" }) as any;
+  assert.equal(truncatedRef.content.length, 50_000);
+  assert.equal(truncatedRef.contentTruncated, true);
   const tags = await service.callTool("list_tags", {}) as any;
   assert.deepEqual(tags.tags, [{ tag: "Outcome", count: 1 }, { tag: "Spine", count: 1 }]);
 
@@ -304,6 +321,33 @@ async function serviceChecks(): Promise<void> {
     fetchMetadata: async () => item,
   });
   await assert.rejects(() => blockedDuplicate.callTool("add_reference", { identifier: "PMID:123" }), /outside vault/);
+
+  let concurrentCreates = 0;
+  let concurrentExists = false;
+  const concurrentFile = { ...file, path: "References/concurrent.md", basename: "concurrent" };
+  const concurrentPlugin: any = {
+    ...plugin,
+    library: {
+      ...plugin.library,
+      findDuplicate: (candidate: Record<string, unknown>) => candidate.PMID === "777" && concurrentExists ? "concurrent" : null,
+      getFile: (citekey: string) => citekey === "concurrent" ? concurrentFile : null,
+      createReference: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        concurrentCreates++;
+        concurrentExists = true;
+        return concurrentFile;
+      },
+    },
+  };
+  const concurrentService = new McpService(concurrentPlugin, vault, {
+    fetchMetadata: async () => ({ type: "article-journal", title: "Concurrent", PMID: "777" }),
+  });
+  const concurrent = await Promise.all([
+    concurrentService.callTool("add_reference", { identifier: "PMID:777" }),
+    concurrentService.callTool("add_reference", { identifier: "PMID:777" }),
+  ]) as any[];
+  assert.equal(concurrentCreates, 1);
+  assert.deepEqual(concurrent.map((result) => result.status).sort(), ["created", "existing"]);
 }
 
 async function manuscriptChecks(): Promise<void> {
@@ -357,6 +401,9 @@ async function httpChecks(): Promise<void> {
   fs.writeFileSync(path.join(vaultPath, "inside.md"), "inside");
   fs.writeFileSync(path.join(root, "outside.md"), "outside");
   fs.symlinkSync(path.join(root, "outside.md"), path.join(vaultPath, "linked.md"));
+  const bridgeTarget = path.join(root, "bridge-target.cjs");
+  fs.writeFileSync(bridgeTarget, "do not overwrite");
+  fs.symlinkSync(bridgeTarget, path.join(pluginPath, "mcp-bridge.cjs"));
   await assertVaultPath(vaultPath, "inside.md", false);
   await assert.rejects(() => assertVaultPath(vaultPath, "linked.md", false), /outside vault/i);
   await assertVaultPath(vaultPath, "new/future.md", true);
@@ -376,6 +423,8 @@ async function httpChecks(): Promise<void> {
     assert.equal(info.running, true);
     assert.equal(fs.statSync(info.discoveryPath).mode & 0o777, 0o600);
     assert.equal(fs.statSync(info.bridgePath).isFile(), true);
+    assert.equal(fs.lstatSync(info.bridgePath).isSymbolicLink(), false);
+    assert.equal(fs.readFileSync(bridgeTarget, "utf8"), "do not overwrite");
 
     const unauthorized = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
       method: "POST", headers: { "content-type": "application/json" }, body: "{}",

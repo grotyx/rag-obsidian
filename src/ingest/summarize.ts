@@ -133,6 +133,10 @@ export function parseMeshList(reply: string): string[] {
   const marked = reply.match(/===MESH===([\s\S]*?)(?:===MESH===|$)/i);
   return (marked ? marked[1] : reply)
     .split(/[\n;]+/)
+    .flatMap((line) => {
+      const prose = line.match(/^\s*(?:here (?:are|is)|the following).*?mesh.*?:\s*(.+)$/i);
+      return prose ? prose[1].split(",") : [line];
+    })
     .map((line) =>
       line
         // list markers only: "- ", "* ", "1. ", "2) " — never a leading digit of a real heading
@@ -145,4 +149,3 @@ export function parseMeshList(reply: string): string[] {
     // MeSH database — not a length heuristic — decides what is a heading (see canonicalizeMeshTerms).
     .filter((t) => t.length > 2 && t.length <= 300);
 }
-

@@ -124,6 +124,7 @@ interface ServiceDeps {
   searchPubmed: typeof searchPubmed;
   fetchMetadata: (id: SourceId, pubmedApiKey?: string, mailto?: string) => Promise<CSLItem>;
   compile?: (path: string, outputPath?: string, expectedOutputHash?: string) => Promise<unknown>;
+  vaultPath?: string;
 }
 
 const DEFAULT_DEPS: ServiceDeps = { searchPubmed, fetchMetadata };
@@ -222,6 +223,7 @@ export class McpService {
     return {
       pluginVersion: this.plugin.manifest.version,
       vaultName: this.plugin.app.vault.getName(),
+      vaultPath: this.deps.vaultPath ?? null,
       referenceFolder: this.plugin.library.folder(),
       indexReady: this.plugin.indexManager.ready,
       chunkCount: this.plugin.indexManager.count,
@@ -303,7 +305,8 @@ export class McpService {
     const marker = raw.indexOf(STASH_MARKER);
     return {
       citekey, path: file.path, metadata: item,
-      content: marker < 0 ? raw : raw.slice(0, marker).trimEnd(),
+      content: (marker < 0 ? raw : raw.slice(0, marker).trimEnd()).slice(0, 50_000),
+      contentTruncated: (marker < 0 ? raw.length : marker) > 50_000,
       fullTextOmitted: marker >= 0,
       hash: note.hash,
     };
@@ -348,16 +351,18 @@ export class McpService {
     const id = detectId(raw);
     if (id.kind === "unknown") throw new Error("INVALID_IDENTIFIER: use an explicit identifier; search_pubmed can resolve a title");
     const item = await this.deps.fetchMetadata(id, this.plugin.settings.pubmedApiKey, this.plugin.settings.openalexMailto);
-    const duplicate = this.plugin.library.findDuplicate(item);
-    if (duplicate) {
-      const file = this.plugin.library.getFile(duplicate);
-      if (!file) throw new Error(`NOT_FOUND: duplicate reference file not found: ${duplicate}`);
-      await this.vault.assertPath(file.path, false);
-      return { status: "existing", citekey: duplicate, path: file.path, metadata: item };
-    }
-    await this.vault.assertPath(`${this.plugin.library.folder()}/__mcp_write_probe__.md`, true);
-    const file = await this.plugin.library.createReference(item);
-    const citekey = this.plugin.library.findDuplicate(item) ?? file.basename;
-    return { status: "created", citekey, path: file.path, metadata: item };
+    return this.vault.mutate(async () => {
+      const duplicate = this.plugin.library.findDuplicate(item);
+      if (duplicate) {
+        const file = this.plugin.library.getFile(duplicate);
+        if (!file) throw new Error(`NOT_FOUND: duplicate reference file not found: ${duplicate}`);
+        await this.vault.assertPath(file.path, false);
+        return { status: "existing", citekey: duplicate, path: file.path, metadata: item };
+      }
+      await this.vault.assertPath(`${this.plugin.library.folder()}/__mcp_write_probe__.md`, true);
+      const file = await this.plugin.library.createReference(item);
+      const citekey = this.plugin.library.findDuplicate(item) ?? file.basename;
+      return { status: "created", citekey, path: file.path, metadata: item };
+    });
   }
 }

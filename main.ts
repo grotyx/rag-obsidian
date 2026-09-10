@@ -70,6 +70,7 @@ export default class ScholarRagPlugin extends Plugin {
         (path, allowMissing) => assertVaultPath(vaultPath, path, allowMissing)
       );
       const service = new McpService(this, mcpVault, {
+        vaultPath,
         compile: (path, outputPath, expectedOutputHash) =>
           compileMcpManuscript(this, mcpVault, path, outputPath, expectedOutputHash),
       });

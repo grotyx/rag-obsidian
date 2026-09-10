@@ -26,7 +26,10 @@ export interface McpTool {
   };
 }
 
-const PROTOCOL_VERSION = "2026-07-28";
+// Highest initialize-handshake revision. Modern clients probe server/discover, receive -32601,
+// then fall back to this legacy era rather than being falsely told we implement the 2026 wire.
+const PROTOCOL_VERSION = "2025-11-25";
+const LEGACY_PROTOCOL_VERSIONS = new Set(["2024-11-05", "2025-03-26", "2025-06-18", PROTOCOL_VERSION]);
 
 export function mcpSuccess(id: McpId, result: Record<string, unknown>): McpResponse {
   return { jsonrpc: "2.0", id, result };
@@ -58,7 +61,9 @@ export async function handleProtocol(
   if (req.method === "initialize") {
     const requested = req.params?.protocolVersion;
     return mcpSuccess(req.id, {
-      protocolVersion: typeof requested === "string" ? requested : PROTOCOL_VERSION,
+      protocolVersion: typeof requested === "string" && LEGACY_PROTOCOL_VERSIONS.has(requested)
+        ? requested
+        : PROTOCOL_VERSION,
       capabilities: { tools: {} },
       serverInfo: { name: "rag-obsidian", version },
       instructions:

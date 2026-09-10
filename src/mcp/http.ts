@@ -169,19 +169,40 @@ export class McpHttpServer {
     const discoveryPath = pathApi.join(os.tmpdir(), `rag-obsidian-mcp-${key}.json`);
     const bridgePath = pathApi.join(this.options.pluginPath, "mcp-bridge.cjs");
     const discovery = JSON.stringify({ port, token, pluginVersion: this.options.version, vaultPath, pid: process.pid });
+    const replace = async (temp: string, target: string): Promise<void> => {
+      try {
+        await fs.rename(temp, target);
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code !== "EEXIST" && code !== "EPERM") throw error;
+        const existing = await fs.lstat(target);
+        if (!existing.isFile() && !existing.isSymbolicLink()) throw error;
+        await fs.unlink(target);
+        await fs.rename(temp, target);
+      }
+    };
+    let bridgeTemp = "";
+    let discoveryTemp = "";
     try {
       await fs.mkdir(this.options.pluginPath, { recursive: true });
-      await fs.writeFile(bridgePath, bridgeSource(), { mode: 0o600 });
+      bridgeTemp = pathApi.join(this.options.pluginPath, `.mcp-bridge.${process.pid}.${crypto.randomBytes(8).toString("hex")}.tmp`);
+      await fs.writeFile(bridgeTemp, bridgeSource(), { mode: 0o600, flag: "wx" });
+      await replace(bridgeTemp, bridgePath);
+      bridgeTemp = "";
       await fs.chmod(bridgePath, 0o600);
-      const temp = `${discoveryPath}.${process.pid}.tmp`;
-      await fs.writeFile(temp, discovery, { mode: 0o600 });
-      await fs.chmod(temp, 0o600);
-      await fs.rename(temp, discoveryPath);
+      discoveryTemp = `${discoveryPath}.${process.pid}.${crypto.randomBytes(8).toString("hex")}.tmp`;
+      await fs.writeFile(discoveryTemp, discovery, { mode: 0o600, flag: "wx" });
+      await fs.chmod(discoveryTemp, 0o600);
+      await replace(discoveryTemp, discoveryPath);
+      discoveryTemp = "";
       this.server = server;
       this.info = { running: true, port, token, vaultPath, bridgePath, discoveryPath };
       return this.info;
     } catch (error) {
       server.close();
+      await Promise.all([bridgeTemp, discoveryTemp].filter(Boolean).map(async (temp) => {
+        try { await fs.unlink(temp); } catch { /* best-effort cleanup */ }
+      }));
       throw error;
     }
   }

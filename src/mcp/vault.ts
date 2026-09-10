@@ -106,7 +106,7 @@ export class McpVault {
     return path;
   }
 
-  private serialized<T>(job: () => Promise<T>): Promise<T> {
+  mutate<T>(job: () => Promise<T>): Promise<T> {
     const run = this.chain.then(job);
     this.chain = run.catch(() => undefined);
     return run;
@@ -193,7 +193,7 @@ export class McpVault {
   }
 
   createNote(path: string, content: string): Promise<NoteMutation> {
-    return this.serialized(async () => {
+    return this.mutate(async () => {
       const target = await this.assertPath(path, true);
       if (content.length > MAX_WRITE_CHARS) throw new Error("CONTENT_TOO_LARGE: note exceeds 2,000,000 characters");
       if (this.app.vault.getAbstractFileByPath(target)) throw new Error(`ALREADY_EXISTS: ${target} already exists`);
@@ -204,7 +204,7 @@ export class McpVault {
   }
 
   updateNote(path: string, content: string, expectedHash: string): Promise<NoteMutation> {
-    return this.serialized(async () => {
+    return this.mutate(async () => {
       if (content.length > MAX_WRITE_CHARS) throw new Error("CONTENT_TOO_LARGE: note exceeds 2,000,000 characters");
       const { file } = await this.current(path, expectedHash);
       await this.app.vault.modify(file, content);
@@ -213,11 +213,11 @@ export class McpVault {
   }
 
   replaceInNote(path: string, oldText: string, newText: string, expectedHash: string): Promise<NoteMutation> {
-    return this.serialized(async () => {
+    return this.mutate(async () => {
       if (!oldText) throw new Error("INVALID_ARGUMENT: old_text is required");
       const { file, content } = await this.current(path, expectedHash);
       const first = content.indexOf(oldText);
-      if (first < 0 || content.indexOf(oldText, first + oldText.length) >= 0) {
+      if (first < 0 || content.indexOf(oldText, first + 1) >= 0) {
         throw new Error("REPLACE_COUNT: old_text must occur exactly once");
       }
       const next = content.slice(0, first) + newText + content.slice(first + oldText.length);
@@ -228,7 +228,7 @@ export class McpVault {
   }
 
   moveNote(path: string, newPath: string, expectedHash: string): Promise<NoteMutation> {
-    return this.serialized(async () => {
+    return this.mutate(async () => {
       const target = this.safe(newPath);
       const { file, content } = await this.current(path, expectedHash);
       await this.assertPath(target, true);
@@ -244,7 +244,7 @@ export class McpVault {
   }
 
   trashNote(path: string, expectedHash: string): Promise<{ path: string; trashed: true }> {
-    return this.serialized(async () => {
+    return this.mutate(async () => {
       const { file } = await this.current(path, expectedHash);
       await this.app.fileManager.trashFile(file);
       return { path: file.path, trashed: true };
