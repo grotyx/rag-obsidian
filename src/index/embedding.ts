@@ -1,7 +1,6 @@
 import { ScholarRagSettings } from "../types";
 import { OllamaProvider } from "./providers/ollama";
 import { OpenAIProvider } from "./providers/openai";
-import { TransformersProvider } from "./providers/transformers";
 
 /**
  * An embedding provider turns text into vectors. All providers expose the same
@@ -19,8 +18,6 @@ export function createProvider(settings: ScholarRagSettings): EmbeddingProvider 
   switch (settings.embeddingProvider) {
     case "openai":
       return new OpenAIProvider(settings);
-    case "transformers":
-      return new TransformersProvider(settings);
     case "ollama":
     default:
       return new OllamaProvider(settings);

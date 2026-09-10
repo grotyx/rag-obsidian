@@ -1,5 +1,5 @@
 // Plugin settings
-export type EmbeddingProviderId = "ollama" | "openai" | "transformers";
+export type EmbeddingProviderId = "ollama" | "openai";
 export type LLMProviderId = "anthropic" | "openai" | "ollama";
 export type CiteStyle = "apa" | "vancouver" | "plain";
 
@@ -39,7 +39,7 @@ export interface ScholarRagSettings {
   // Phase 5 — writing
   renderCitations: boolean;
 
-  // Desktop MCP bridge (Claude Code / Codex); disabled and inert on mobile.
+  // Local MCP bridge for Claude Code / Codex.
   mcpEnabled: boolean;
 }
 

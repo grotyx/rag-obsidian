@@ -521,7 +521,7 @@ def main():
     pattern_J(s, [{"year": "P0", "label": "서지관리\nDOI→노트"}, {"year": "P1", "label": "의미 검색\nOrama"},
                   {"year": "P2", "label": "근거 채팅"}, {"year": "P3", "label": "PDF\n임포트"},
                   {"year": "P4", "label": "인용\n그래프"}, {"year": "P5", "label": "작성 지원\n참고문헌"}],
-              "향후: 온톨로지 검색확장 · 모바일 QA · 대용량 색인 엔진")
+              "향후: 온톨로지 검색확장 · 대용량 색인 엔진")
 
     s = content("GET STARTED", "Obsidian만 있으면 오늘부터 시작")  # 13
     try_it(s, "Obsidian만 있으면 오늘부터 — 내 서재가 답하기 시작한다")

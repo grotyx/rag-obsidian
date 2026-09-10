@@ -15,7 +15,7 @@ much it changes the daily experience for a clinician-researcher running PubMed s
 OpenRouter.
 
 > **Status (2026-09-08):** Phases 1–3 and 5 shipped — Phase 1 in 0.4.13, Phase 2 in 0.4.14, Phase 3 in 0.4.15, Phase 5 in 0.4.16
-> (visual citation map, review pass with `npm run lint`, mobile guards + `docs/MOBILE.md`). Two items
+> (visual citation map, review pass with `npm run lint`, desktop declaration + `docs/MOBILE.md`). Two items
 > stay with the user: the community-store submission itself (`docs/STORE_SUBMISSION.md` has the text)
 > and the on-device iOS run (`docs/MOBILE.md` has the script). Phase 4 waits for a library that needs it.
 
@@ -62,14 +62,11 @@ OpenRouter.
     citation edges as an SVG force layout inside the pane (no dependency — ~150 lines), with "missing"
     papers as dashed nodes you can click to add. This is the feature no other Obsidian plugin has, and
     right now you cannot *see* it.
-11. **Community-store submission.** Every known blocker is cleared: no "Obsidian" in the name,
-    `innerHTML` 0, `var` 0, `console.log` 2, LICENSE, `versions.json`, tagged releases with the three
-    assets. Remaining: run the official validator, then the PR to `obsidianmd/obsidian-releases`.
-    Do this after Phase 1 so the reviewed version is the one with cancel/progress.
-12. **Mobile QA.** `isDesktopOnly: false` is a claim, not a test. pdfjs and Transformers.js load from
-    CDN at runtime, `secretStorage` is desktop-only on older builds, and the OA download writes binary.
-    One pass on iOS with the citation workflow (no embeddings) is the minimum before the store
-    listing says mobile works.
+11. **Community-directory release.** Shipped in 0.6.0: compliant plugin id, desktop declaration,
+    current web-submission guide, network/privacy disclosures, migration docs, and an exact
+    unprefixed release contract. The maintainer's signed-in submission is the remaining external step.
+12. **Mobile support.** Paused in 0.6.0. The shipped bundle includes Node-based MCP, so the manifest
+    correctly declares the whole plugin desktop-only; see `docs/MOBILE.md`.
 
 ## Phase 4 — scale (only when a library gets there)
 
@@ -121,7 +118,7 @@ OpenRouter.
 |---|---|---|
 | 1 | cancel/progress, persist PMCID+MeSH, re-summarize one, delete scripts, split main.ts | 2 days |
 | 2 | chat persistence + save-as-note, summary language, search filters, fill-gaps scope | 2–3 days |
-| 3 | visual graph, store submission, mobile QA | 3–4 days |
+| 3 | visual graph, Community submission preparation, desktop declaration | 3–4 days |
 | 4 | sqlite-vec | when needed |
 | 5 | chat filters, index linked PDFs, citation suggestions + unsupported claims | 3–4 days |
 | Cut | ontology | half a day |

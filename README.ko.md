@@ -1,8 +1,8 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.5.2-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.6.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
+[![Obsidian](https://img.shields.io/badge/Obsidian-1.7.2%2B-7c3aed)](https://obsidian.md)
 
 [English](README.md) · **한국어**
 
@@ -58,8 +58,9 @@
 
 ## 📦 설치
 
-> 아직 커뮤니티 플러그인 스토어에 없어서 Obsidian 플러그인 검색에는 나오지 않습니다.
-> 편한 방법을 고르세요 — **방법 A는 터미널이 필요 없습니다.**
+> Community directory 심사 전에는 BRAT 또는 수동 릴리스를 사용하세요. 0.6.0에서 플러그인
+> id가 바뀌므로 기존 0.5.x 사용자는 [마이그레이션 안내](docs/MIGRATION-0.6.ko.md)를 한 번
+> 따라야 합니다.
 
 ### 방법 A — BRAT (권장: 설치와 자동 업데이트)
 
@@ -77,7 +78,7 @@
 `manifest.json`, `styles.css` 세 파일을 받아 아래 폴더에 넣습니다(없으면 만드세요).
 
 ```text
-<보관함>/.obsidian/plugins/rag-obsidian/
+<보관함>/.obsidian/plugins/academic-paper-citation-manager/
 ```
 
 Obsidian을 새로고침한 뒤 **설정 → 커뮤니티 플러그인**에서 활성화합니다. 업데이트하려면
@@ -93,7 +94,7 @@ cd rag-obsidian
 npm install
 
 cp .env.example .env        # Windows: copy .env.example .env
-# .env 편집 → VAULT_PLUGIN_DIR 를 <내 vault>/.obsidian/plugins/rag-obsidian 로
+# .env 편집 → VAULT_PLUGIN_DIR 를 <내 vault>/.obsidian/plugins/academic-paper-citation-manager 로
 
 npm run deploy              # 빌드 + 플러그인을 vault로 복사
 ```
@@ -103,7 +104,7 @@ npm run deploy              # 빌드 + 플러그인을 vault로 복사
 ### 방법 D — 클라우드 동기화 vault (둘째 PC는 빌드 불필요)
 
 vault가 OneDrive / iCloud / Dropbox / Obsidian Sync에 있으면 빌드된 플러그인이 vault
-**안에**(`<vault>/.obsidian/plugins/rag-obsidian/`) 같이 따라옵니다. 다른 PC에선 동기화된
+**안에**(`<vault>/.obsidian/plugins/academic-paper-citation-manager/`) 같이 따라옵니다. 다른 PC에선 동기화된
 vault를 열고 활성화만 — Node·빌드 불필요.
 
 ---
@@ -141,7 +142,7 @@ provider를 사용할 수 있습니다.
 
 ## ⚙️ Provider
 
-모두 Obsidian `requestUrl` 경유 (데스크톱·모바일):
+모두 Obsidian Desktop의 `requestUrl` 경유:
 
 **설치 직후 채팅과 임베딩 모두 OpenAI 호환 프로바이더가 OpenRouter를 향하도록 맞춰져 있습니다.**
 키 하나로 채팅·논문 요약·임베딩이 전부 돌아가고, 로컬에 설치할 것도 없습니다. 키만 넣으면 끝이고
@@ -153,7 +154,7 @@ provider를 사용할 수 있습니다.
 - **LLM**(챗 + 요약): OpenAI / 호환(기본) · Anthropic · Ollama(로컬). *Chat model*은 선택 항목으로,
   **Chat with library** 답변에만 기본 모델 대신 적용됩니다. 논문 요약과 PDF 메타데이터 추출은
   기본 모델을 그대로 쓰므로, 답변 품질이 중요한 채팅에만 더 좋은 모델을 지정할 수 있습니다.
-- **임베딩**(검색 + 챗): Ollama(로컬) · OpenAI / 호환 · Transformers.js.
+- **임베딩**(검색 + 챗): Ollama(로컬) · OpenAI / 호환.
 - **검색**: *Results (top-k)*는 답변 하나가 참고하는 구절 수(기본 20, 문헌당 최대 3구절이라
   긴 논문 하나가 전체를 차지하지 못함). *Rerank chat results with the LLM*은 기본 꺼짐 —
   켜면 두 배로 뽑은 뒤 모델이 관련도 순으로 재정렬하고, 질문당 요청이 1회 늘어난다.
@@ -250,26 +251,41 @@ npm test           # 라이브 통합 테스트 + MCP 계약/보안 검사
 node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled md → 서식 .docx
 ```
 
-외부 AI 설정은 [`docs/MCP.ko.md`](./docs/MCP.ko.md), 모듈 맵은 [`CLAUDE.md`](./CLAUDE.md),
-설계 노트는 [`PLAN.md`](./PLAN.md) 참고.
+외부 AI 설정은 [`docs/MCP.ko.md`](./docs/MCP.ko.md), 0.5.x 이전은
+[`docs/MIGRATION-0.6.ko.md`](./docs/MIGRATION-0.6.ko.md), 모듈 맵은
+[`CLAUDE.md`](./CLAUDE.md) 참고.
 
 ---
 
 ## ⚠️ 참고 & 한계
 
-- **플러그인 id는 `rag-obsidian` 유지** (폴더 / `data.json` 키). 표시 이름만
-  "Academic Paper Citation Manager".
+- Community 호환 플러그인 id는 `academic-paper-citation-manager`입니다. MCP 연결 이름
+  `rag-obsidian`은 별도 식별자라 그대로 유지합니다.
 - 파일명은 **읽기 쉬움**(`2022-SpineJ-ParkSM-Biportal.md`); frontmatter의 짧은
   `citekey:`가 `[@cite]` 핸들.
 - `.docx` 변환은 **Pandoc** 필요; PDF 형광펜 추출은 주석이 있는 PDF 필요.
-- MCP는 **Obsidian Desktop이 열린 상태**여야 하며, 나머지 플러그인 기능은 모바일에서도 유지됩니다.
+- 이 릴리스는 MCP의 Node API 사용 때문에 **데스크톱 전용**입니다. MCP 사용 중에는 대상
+  vault를 Obsidian Desktop에서 열어 두어야 합니다.
 - Obsidian Properties 패널이 중첩 CSL frontmatter에 경고할 수 있음 — 데이터는 유효함.
 - 설정의 **Contact e-mail**을 채워 두세요. OpenAlex·Unpaywall·PubMed가 같이 쓰는 값이고,
   오픈액세스 PDF 조회는 이 값이 없으면 동작하지 않습니다.
-- `styles/`의 번들 CSL 스타일은 CC BY-SA 3.0 (`styles/README.md` 참고); 플러그인 코드는 MIT.
-- **모바일**: `isDesktopOnly: false`이며 인용 워크플로(추가/검색/챗/인용)는 코드 감사를
-  거쳤지만 아직 실기기 검증은 없습니다 — 기능 표와 iOS QA 스크립트는
-  [docs/MOBILE.md](docs/MOBILE.md) 참고.
+- source build/deploy의 `styles/` CSL 파일은 CC BY-SA 3.0입니다(`styles/README.md`). Community
+  설치에는 세 release 파일에 없는 CSL style/locale을 내려받아 cache합니다. plugin 코드는 MIT.
+- 0.6.0은 모바일 설치를 지원하지 않습니다. 자세한 이유는 [docs/MOBILE.md](docs/MOBILE.md).
+
+## 🔒 네트워크와 개인정보
+
+- 문헌 조회·검색 시 필요에 따라 식별자나 검색어를 Crossref, NCBI PubMed/PMC, OpenAlex,
+  Unpaywall, arXiv에 보냅니다. CSL 스타일/locale은 공식 CSL GitHub 저장소에서 받을 수
+  있습니다. PDF.js는 plugin에 bundle되며 CDN의 실행 코드를 불러오지 않습니다.
+- AI 기능은 선택한 원문과 prompt를 사용자가 설정한 OpenAI 호환 endpoint(OpenRouter,
+  Gemini 포함), Anthropic 또는 Ollama로 보냅니다. API key는 가능한 경우 Obsidian
+  SecretStorage에 저장되고, 구버전 Obsidian에서는 plugin `data.json`으로 fallback합니다.
+  telemetry, 광고, 계정 서비스, 별도 hosted backend는 없습니다.
+- MCP는 인증된 `127.0.0.1`에서만 열립니다. 생성된 bridge는 plugin 폴더에, 짧게 유지되는
+  discovery 파일은 vault 밖의 운영체제 임시 폴더에 저장됩니다. 둘 다 노트 내용이나 provider
+  API key를 담지 않습니다. MCP를 켠 동안에만 외부 AI가 vault Markdown을 읽고 변경할 수
+  있습니다. [MCP 보안 규칙](docs/MCP.ko.md#수정과-삭제의-안전-규칙)을 확인하세요.
 
 ## 👤 저자
 
@@ -281,4 +297,5 @@ Seoul National University College of Medicine)
 
 ## 📄 라이선스
 
-MIT (플러그인 코드). 번들 CSL 스타일/locale은 CC BY-SA 3.0 유지.
+MIT (플러그인 코드). PDF.js의 전체 Apache-2.0 라이선스와 수정 고지는 `main.js`에 유지되며, CSL 스타일/locale은
+CC BY-SA 3.0을 유지합니다.

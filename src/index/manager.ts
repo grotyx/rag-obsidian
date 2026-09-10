@@ -58,8 +58,7 @@ export class IndexManager {
     return this.store.modelId;
   }
 
-  /** One provider per `provider:model` — Transformers.js keeps its ONNX pipeline on the instance,
-   *  so rebuild only when the settings that define the id actually change. */
+  /** One provider per `provider:model`; rebuild only when settings defining the id change. */
   private getProvider(): EmbeddingProvider {
     const key = `${this.settings.embeddingProvider}:${this.settings.embeddingModel}`;
     if (!this.provider || this.providerKey !== key) {

@@ -29,15 +29,10 @@ export default defineConfig([
     },
   },
   {
-    // Documented exceptions (CLAUDE.md): feature-detected secretStorage falls back to data.json
-    // below 1.11.4 and on mobile; the CDN loaders must use the Function trick so esbuild does
-    // not rewrite import(). Kept as warnings so they stay visible without failing the run.
+    // Feature-detected secretStorage falls back to data.json below 1.11.4. Keep the API-version
+    // finding visible without rejecting supported older Obsidian releases.
     files: ["main.ts"],
     rules: { "obsidianmd/no-unsupported-api": "warn" },
-  },
-  {
-    files: ["src/ingest/pdf.ts", "src/index/providers/transformers.ts"],
-    rules: { "@typescript-eslint/no-implied-eval": "warn", "obsidianmd/rule-custom-message": "warn" },
   },
   {
     // MCP is desktop-only and dynamically loaded behind Platform.isDesktopApp.

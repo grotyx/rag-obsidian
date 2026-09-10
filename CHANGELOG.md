@@ -1,9 +1,34 @@
 # Changelog
 
-All notable changes to Academic Paper Citation Manager (plugin id `rag-obsidian`).
+All notable changes to Academic Paper Citation Manager (plugin id
+`academic-paper-citation-manager`; `rag-obsidian` through 0.5.2).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
 ## [Unreleased]
+
+## [0.6.0] — 2026-09-11
+
+### Changed
+
+- Changed the manifest id from `rag-obsidian` to `academic-paper-citation-manager` for Obsidian
+  Community directory compatibility. Existing 0.5.x installations require the documented
+  one-time plugin-folder migration; the GitHub repository and MCP connection name stay unchanged.
+- Declared the plugin desktop-only because the shipped bundle contains the optional Node-based
+  live MCP server.
+- Updated every version file, deployment path, installation guide, MCP guide, and Community
+  submission checklist for the exact unprefixed `0.6.0` release contract.
+- Bundled pinned PDF.js code with its dynamic-evaluation paths disabled, and made the production
+  build reject runtime code evaluation or executable CDN imports. Removed the experimental
+  CDN-loaded Transformers.js provider; existing selections migrate to the default OpenAI-compatible
+  embedding provider.
+
+### Migration and privacy
+
+- Legacy SecretStorage API-key values are copied to the new plugin-id keys on first load without
+  deleting the old copies, preserving both migration and rollback.
+- Added English and Korean migration guides and explicit disclosures for network services, LLM
+  providers, runtime CDNs, API-key storage, local MCP access, and its temporary outside-vault
+  discovery file.
 
 ## [0.5.2] — 2026-09-10
 

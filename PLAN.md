@@ -37,7 +37,8 @@ This is exactly the slice the existing `rag_research` engine already proves work
 2. **Local-first, provider-optional.** Default works offline with bundled local embeddings. Power users plug in Ollama or cloud APIs. No vendor lock.
 3. **Citation-grounded, always.** Every AI answer cites passages → resolves to formatted in-text citations + a source list. Never "from your vault" hand-waving.
 4. **Cheap graph, not expensive graph.** Use the *free, structured* citation graph (OpenAlex referenced_works/citing_works) instead of expensive LLM entity extraction. GraphRAG-lite.
-5. **Mobile is a constraint, not an afterthought.** No `child_process`, no native SQLite, no localhost server. Everything degrades gracefully on mobile.
+5. **Desktop is explicit.** The 0.6 bundle contains the optional local MCP server and is declared
+   desktop-only; shared library code still uses Obsidian APIs rather than shelling out.
 
 ---
 
@@ -94,7 +95,7 @@ Vault/
 ├── Attachments/PDFs/            # original PDFs
 ├── Notes/                       # your permanent/project notes (wikilink to refs)
 ├── Manuscripts/                 # drafts you write, with [@citekey] cites
-└── .obsidian/plugins/rag-obsidian/
+└── .obsidian/plugins/academic-paper-citation-manager/
     └── index/                   # gitignored: embeddings, citation graph, caches
         ├── vectors.orama        # hybrid BM25+vector index
         ├── citations.json       # OpenAlex edge graph
@@ -110,14 +111,13 @@ Vault/
 |---|---|---|
 | Language/build | TypeScript + esbuild (official template) | Standard Obsidian plugin path. |
 | Vector + keyword store | **Orama** (`@orama/orama`) | Pure JS, zero-dep, **built-in hybrid BM25+vector** = Tier-0 retrieval out of the box, works on mobile, ~80KB. Abstraction layer lets desktop swap to `sqlite-vec` later for scale. |
-| Embeddings (default) | **Transformers.js** + `multilingual-e5-small` (or bge-small-en) | Offline, zero-setup, mobile-OK, multilingual (Korean+English notes). 384-dim. |
-| Embeddings (optional) | Ollama (`nomic-embed-text`, `bge-m3`) · OpenAI/Voyage API | Power/quality tiers behind one `EmbeddingProvider` interface. |
+| Embeddings | OpenAI-compatible API (default) · Ollama (`nomic-embed-text`, `bge-m3`) | Remote or local tiers behind one `EmbeddingProvider` interface. |
 | LLM (chat/synthesis/extract) | Provider-agnostic via `requestUrl`: Anthropic (Claude Haiku/Sonnet), OpenAI, Ollama | `requestUrl` bypasses CORS desktop+mobile. Default Claude (continuity with current work). |
 | Metadata fetch | Crossref (DOI), PubMed E-utilities (PMID), arXiv, OpenAlex, Google Books (ISBN) | All free, all via `requestUrl`. |
 | Citation graph | **OpenAlex API** (`referenced_works`, `cited_by`) | Structured, free, no LLM, more reliable than LLM entity extraction for papers. |
 | Citation formatting | **citeproc-js** (`@citation-js/core` + CSL styles) | Any of 10k+ CSL styles for free — beats hand-porting 7 styles, matches domain-agnostic goal. Frontmatter is already CSL-JSON. |
 | PDF text | Obsidian's bundled **pdf.js** (`page.getTextContent()`) | No extra bundle. Section/page provenance for grounding. |
-| Reranker (optional) | cross-encoder `ms-marco-MiniLM-L-6-v2` via Transformers.js, or LLM rerank | Add only when recall feels weak. |
+| Reranker (optional) | Configured LLM | One extra request; off by default. |
 | Key storage | Obsidian v1.11+ `secretStorage` API | Keys out of synced `data.json`. |
 
 **Secret-storage note:** plaintext keys in `data.json` were the documented failure of every audited plugin — use `app.secretStorage`.
@@ -171,7 +171,7 @@ src/
 │   └── chunker.ts           # contextual-prefix chunking
 ├── index/
 │   ├── embedding.ts         # EmbeddingProvider interface
-│   ├── providers/           # transformers.ts, ollama.ts, openai.ts
+│   ├── providers/           # ollama.ts, openai.ts
 │   ├── store.ts             # Orama hybrid index + persistence + incremental reindex
 ├── graph/
 │   ├── citations.ts         # OpenAlex graph build + persist
@@ -209,7 +209,7 @@ src/
 - **Deliverable:** a usable Zotero-free reference manager. No RAG yet, already valuable.
 
 ### Phase 1 — Semantic search (index)
-- `EmbeddingProvider` interface + Transformers.js default.
+- `EmbeddingProvider` interface + OpenAI-compatible default and local Ollama option.
 - Chunk abstracts + notes (+ optional PDF text) with contextual prefix.
 - Orama hybrid index, persist to plugin dir, incremental reindex on vault change.
 - Semantic-search command + facet filters.
@@ -268,7 +268,6 @@ src/
 | Risk | Mitigation |
 |---|---|
 | Orama in-memory strain at ~100k chunks on mobile | Index abstracts+notes by default; PDF full-text opt-in/desktop. Chunked persistence. Swap to sqlite-vec on desktop behind store abstraction. |
-| Transformers.js slow on CPU/mobile | Small model; background indexing (web worker on desktop); allow Ollama/API embeddings. |
 | `requestUrl` no streaming | Non-streamed chat for v1 (acceptable); revisit. |
 | Embedding model swap = full reindex | Store model id with index; warn + reindex on change. |
 | pdf.js extraction quality varies | Allow manual abstract; metadata extraction is best-effort + editable. |

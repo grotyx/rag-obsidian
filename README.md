@@ -1,8 +1,8 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.5.2-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.6.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
+[![Obsidian](https://img.shields.io/badge/Obsidian-1.7.2%2B-7c3aed)](https://obsidian.md)
 
 **English** · [한국어](README.ko.md)
 
@@ -62,8 +62,9 @@ no account, no backend — just your vault.
 
 ## 📦 Installation
 
-> Not in the community-plugin store yet, so it will not show up in Obsidian's plugin search.
-> Pick whichever route suits you — **A needs no terminal**.
+> Community-directory submission is pending. Until it is approved, use BRAT or a manual release.
+> Version 0.6.0 changes the plugin id; existing 0.5.x users must follow the
+> [migration guide](docs/MIGRATION-0.6.md) once.
 
 ### Option A — BRAT (recommended: installs and auto-updates)
 
@@ -83,7 +84,7 @@ From the [latest release](https://github.com/grotyx/rag-obsidian/releases/latest
 `main.js`, `manifest.json` and `styles.css` into
 
 ```text
-<your vault>/.obsidian/plugins/rag-obsidian/
+<your vault>/.obsidian/plugins/academic-paper-citation-manager/
 ```
 
 (create the folder if it does not exist), then reload Obsidian and enable the plugin under
@@ -99,7 +100,7 @@ cd rag-obsidian
 npm install
 
 cp .env.example .env        # Windows: copy .env.example .env
-# edit .env → set VAULT_PLUGIN_DIR to <your vault>/.obsidian/plugins/rag-obsidian
+# edit .env → set VAULT_PLUGIN_DIR to <your vault>/.obsidian/plugins/academic-paper-citation-manager
 
 npm run deploy              # builds + copies the plugin into your vault
 ```
@@ -109,7 +110,7 @@ Then in Obsidian: **Settings → Community plugins → enable the plugin** → r
 ### Option D — Cloud-synced vault (no build on the 2nd machine)
 
 If your vault is in OneDrive / iCloud / Dropbox / Obsidian Sync, the built plugin travels
-**inside** the vault (`<vault>/.obsidian/plugins/rag-obsidian/`). On another machine just
+**inside** the vault (`<vault>/.obsidian/plugins/academic-paper-citation-manager/`). On another machine just
 open the synced vault and enable the plugin — no Node, no build.
 
 ---
@@ -146,7 +147,7 @@ an abstract is the fallback, and a current note hash prevents overwriting concur
 
 ## ⚙️ Providers
 
-Pluggable, all through Obsidian's `requestUrl` (works on desktop and mobile):
+Pluggable, all through Obsidian's `requestUrl` on Obsidian Desktop:
 
 **Out of the box both are set to the OpenAI-compatible provider pointed at OpenRouter**, so a
 single key covers chat, paper summaries and embeddings and nothing has to be installed locally.
@@ -156,8 +157,7 @@ Paste the key and you are done; everything else is optional.
   *Chat model* is optional and overrides the default model for **Chat with library** only —
   worth a stronger model there, since summaries and PDF metadata extraction stay on the
   cheaper default.
-- **Embeddings** (search + chat): OpenAI / compatible (default) · Ollama (local) ·
-  Transformers.js.
+- **Embeddings** (search + chat): OpenAI / compatible (default) · Ollama (local).
 - **Retrieval**: *Results (top-k)* is how many passages an answer is built from (default 20; at
   most three per reference, so one long paper can't take every slot). *Rerank chat results with
   the LLM* is off by default — with it on, chat retrieves twice as many passages and has the
@@ -260,29 +260,46 @@ Helper script (terminal, no Obsidian needed) — path from `.env`:
 node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled md → styled .docx
 ```
 
-See [`docs/MCP.md`](./docs/MCP.md) for external-AI setup, [`CLAUDE.md`](./CLAUDE.md) for the
-module map, and [`PLAN.md`](./PLAN.md) for design notes.
+See [`docs/MCP.md`](./docs/MCP.md) for external-AI setup,
+[`docs/MIGRATION-0.6.md`](./docs/MIGRATION-0.6.md) for the 0.5.x migration, and
+[`CLAUDE.md`](./CLAUDE.md) for the module map.
 
 ---
 
 ## ⚠️ Notes & limitations
 
-- **Plugin id stays `rag-obsidian`** (folder / `data.json` key) even though the display name
-  is "Academic Paper Citation Manager".
+- The Community-compatible plugin id is `academic-paper-citation-manager`. The MCP connection
+  name remains `rag-obsidian`; these identifiers are independent.
 - Filenames are **readable** (`2022-SpineJ-ParkSM-Biportal.md`); the short `citekey:` in
   frontmatter is the `[@cite]` handle.
 - `.docx` export needs **Pandoc**; PDF highlight extraction needs a PDF with annotations.
-- MCP requires **Obsidian Desktop to remain open**; the rest of the plugin is still mobile-capable.
+- This release is **desktop-only** because the optional live MCP bridge uses Node APIs. Keep
+  Obsidian Desktop and the target vault open while using MCP.
 - Obsidian's Properties panel may warn on nested CSL frontmatter — the data is valid.
 - Set **Contact e-mail** in settings: OpenAlex, Unpaywall and PubMed all use it, and
   open-access PDF lookup does not work without one.
 - API keys live in the OS keychain (Obsidian ≥ 1.11.4) and are blanked in `data.json`; on a
   synced vault, enter the key once per device.
-- Bundled CSL styles under `styles/` are CC BY-SA 3.0 (see `styles/README.md`); plugin code
-  is MIT.
-- **Mobile**: `isDesktopOnly: false`, and the citation workflow (add/search/chat/cite) is
-  code-audited for mobile, but no device has run it yet — see [docs/MOBILE.md](docs/MOBILE.md)
-  for the feature matrix and an iOS QA script.
+- Source builds/deployments include CSL styles under `styles/` (CC BY-SA 3.0; see
+  `styles/README.md`). Community installs fetch and cache a selected CSL style/locale if it is
+  not present in the three release files. Plugin code is MIT.
+- Mobile installation is not supported in 0.6.0; see [docs/MOBILE.md](docs/MOBILE.md).
+
+## 🔒 Network and privacy
+
+- Reference lookup/search sends identifiers or queries to Crossref, NCBI PubMed/PMC, OpenAlex,
+  Unpaywall, and arXiv as needed. CSL styles/locales may be downloaded from the official CSL
+  GitHub repository. PDF.js is bundled with the plugin; no executable code is loaded from a CDN.
+  Network requests are subject to the contacted services' privacy policies.
+- AI features send the selected source text and prompt to the provider you configure: an
+  OpenAI-compatible endpoint (including OpenRouter or Gemini), Anthropic, or Ollama. API keys are
+  stored in Obsidian SecretStorage when available; older Obsidian versions fall back to plugin
+  `data.json`. The plugin has no telemetry, advertising, account service, or hosted backend.
+- MCP listens only on authenticated `127.0.0.1`. It writes a generated bridge beside the plugin
+  and a short-lived discovery file in the operating-system temporary directory (outside the
+  vault); both contain connection data, never note contents or provider API keys. MCP tools can
+  read and change vault Markdown only when you enable MCP access. See [the MCP security
+  model](docs/MCP.md#editing-and-deletion-safeguards).
 
 ## 👤 Author
 
@@ -293,4 +310,5 @@ Seoul National University College of Medicine
 
 ## 📄 License
 
-MIT (plugin code). Bundled CSL styles/locales retain their CC BY-SA 3.0 license.
+MIT (plugin code). Bundled PDF.js retains its full Apache-2.0 license and modification notice in `main.js`; CSL
+styles/locales retain their CC BY-SA 3.0 license.

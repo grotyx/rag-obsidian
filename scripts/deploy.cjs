@@ -6,7 +6,7 @@
  *   node scripts/deploy.cjs
  *
  * Destination comes from .env `VAULT_PLUGIN_DIR`. If unset, it is derived from
- * `VAULT_REFERENCES_DIR` (…/<vault>/References → …/<vault>/.obsidian/plugins/rag-obsidian).
+ * `VAULT_REFERENCES_DIR` (…/<vault>/References → …/<vault>/.obsidian/plugins/academic-paper-citation-manager).
  */
 const fs = require("fs");
 const path = require("path");
@@ -28,7 +28,7 @@ function destDir() {
   const refs = process.env.VAULT_REFERENCES_DIR;
   if (refs) {
     const vault = refs.replace(/[/\\]References\/?$/, "");
-    return path.join(vault, ".obsidian", "plugins", "rag-obsidian");
+    return path.join(vault, ".obsidian", "plugins", "academic-paper-citation-manager");
   }
   console.error("ERROR: set VAULT_PLUGIN_DIR (or VAULT_REFERENCES_DIR) in .env");
   process.exit(1);

@@ -31,7 +31,6 @@ import { CitationGraph } from "../src/graph/citations";
 import { capPerReference, parseRerankOrder, buildRerankUser } from "../src/index/rerank";
 import { layoutGraph, topByDegree, LayoutNode, LayoutEdge } from "../src/graph/layout";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
-import { wrapCdnImportError } from "../src/util/cdn";
 import { hasStashedText, appendStash, resolvePdfLink, STASH_MARKER } from "../src/ingest/pdfStash";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import {
@@ -47,6 +46,7 @@ import {
   replaceSummaryBlock,
 } from "../src/cite/bibliography";
 import { ScholarRagSettings, DEFAULT_SETTINGS, CSLItem } from "../src/types";
+import ScholarRagPlugin from "../main";
 
 const MODEL = process.env.EMBED_MODEL || "qwen2.5:0.5b"; // any local Ollama model works for /api/embed
 const VAULT = path.resolve("_testvault-auto"); // wiped on every run — keep `_testvault` for manual click-testing
@@ -1076,28 +1076,6 @@ async function main() {
     );
   }
 
-  // ---- 18. Mobile guards ----
-  log("\n[18] Mobile guards");
-  {
-    // pdf.ts and transformers.ts both wrap a blocked/failed CDN dynamic import() (a real risk
-    // on mobile webviews) through this one helper — test the helper directly rather than the
-    // production loader, since tests inject their own loader and never hit `defaultLoader`.
-    const raw = new Error("Failed to fetch dynamically imported module");
-    const wrapped = wrapCdnImportError("PDF reading", raw);
-    ok(
-      /^PDF reading is unavailable/.test(wrapped.message) &&
-        /CDN/.test(wrapped.message) &&
-        wrapped.message.includes(raw.message),
-      `wrapCdnImportError: clear notice-ready message, original preserved: "${wrapped.message}"`
-    );
-    const wrapped2 = wrapCdnImportError("Transformers.js embeddings", "not an Error object");
-    ok(
-      wrapped2.message.startsWith("Transformers.js embeddings is unavailable") &&
-        wrapped2.message.includes("not an Error object"),
-      `wrapCdnImportError: handles a non-Error throw: "${wrapped2.message}"`
-    );
-  }
-
   // ---- 19. filters reach the chat ----
   log("\n[19] Filters in the chat pane");
   {
@@ -1417,6 +1395,62 @@ async function main() {
     const prompt = buildRerankUser("does it work?", [longHit]);
     ok(prompt.includes("[1] (x, 2024)"), "rerank prompt numbers each passage with its title/year");
     ok(prompt.includes("…") && prompt.length < 700, `rerank prompt truncates long passages: ${prompt.length} chars`);
+  }
+
+  // ---- 23. Plugin id migration ----
+  log("\n[23] Plugin id migration");
+  {
+    const secrets = new Map<string, string>([["rag-obsidian-openaiapikey", "legacy-key"]]);
+    let saved = 0;
+    const plugin = Object.assign(Object.create(ScholarRagPlugin.prototype), {
+      app: {
+        secretStorage: {
+          getSecret: (id: string) => secrets.get(id) ?? "",
+          setSecret: (id: string, value: string) => secrets.set(id, value),
+        },
+      },
+      manifest: { id: "academic-paper-citation-manager" },
+      loadData: async () => ({}),
+      saveSettings: async () => { saved += 1; },
+    }) as ScholarRagPlugin;
+
+    await plugin.loadSettings();
+    ok(plugin.settings.openaiApiKey === "legacy-key", "the renamed plugin reads the legacy keychain id");
+    ok(
+      secrets.get("academic-paper-citation-manager-openaiapikey") === "legacy-key",
+      "the legacy key is copied to the current keychain id"
+    );
+    ok(saved === 1, "key migration persists settings once");
+
+    let plaintextSaved = 0;
+    const plaintext = Object.assign(Object.create(ScholarRagPlugin.prototype), {
+      app: {
+        secretStorage: {
+          getSecret: (id: string) => id.endsWith("-openaiapikey") ? "same-key" : "",
+          setSecret: () => undefined,
+        },
+      },
+      manifest: { id: "academic-paper-citation-manager" },
+      loadData: async () => ({ openaiApiKey: "same-key" }),
+      saveSettings: async () => { plaintextSaved += 1; },
+    }) as ScholarRagPlugin;
+    await plaintext.loadSettings();
+    ok(plaintextSaved === 1, "a plaintext data.json key is blanked even when keychain already matches");
+
+    let providerSaved = 0;
+    const legacyProvider = Object.assign(Object.create(ScholarRagPlugin.prototype), {
+      app: {},
+      manifest: { id: "academic-paper-citation-manager" },
+      loadData: async () => ({ embeddingProvider: "transformers", embeddingModel: "Xenova/old" }),
+      saveSettings: async () => { providerSaved += 1; },
+    }) as ScholarRagPlugin;
+    await legacyProvider.loadSettings();
+    ok(
+      legacyProvider.settings.embeddingProvider === "openai" &&
+        legacyProvider.settings.embeddingModel === DEFAULT_SETTINGS.embeddingModel,
+      "the removed remote-code provider migrates to the safe default"
+    );
+    ok(providerSaved === 1, "the provider migration is persisted without SecretStorage");
   }
 }
 

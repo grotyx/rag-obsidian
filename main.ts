@@ -46,6 +46,8 @@ import { MCP_TOOLS, McpService } from "./src/mcp/service";
 import { assertVaultPath, McpHttpServer, McpServerStatus } from "./src/mcp/http";
 import { compileMcpManuscript } from "./src/write/manuscript";
 
+const LEGACY_PLUGIN_ID = "rag-obsidian";
+
 export default class ScholarRagPlugin extends Plugin {
   settings!: ScholarRagSettings;
   library!: Library;
@@ -426,23 +428,36 @@ export default class ScholarRagPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    let migrated = false;
+    if ((this.settings.embeddingProvider as string) === "transformers") {
+      this.settings.embeddingProvider = DEFAULT_SETTINGS.embeddingProvider;
+      this.settings.embeddingModel = DEFAULT_SETTINGS.embeddingModel;
+      migrated = true;
+    }
     // 1024 was the default through 0.4.1 and is below the current slider floor. Reasoning models
     // spend that entire budget on thinking and return an empty answer, so lift the stored value
     // for anyone who never moved the slider (a deliberate setting is any other number).
     if (this.settings.llmMaxTokens === 1024) this.settings.llmMaxTokens = DEFAULT_SETTINGS.llmMaxTokens;
     const store = this.secretStore();
-    if (!store) return;
-    let migrated = false;
+    if (!store) {
+      if (migrated) await this.saveSettings();
+      return;
+    }
     for (const field of SECRET_FIELDS) {
-      const stored = store.getSecret(this.secretId(field));
+      const fromData = Boolean(this.settings[field]);
+      const currentId = this.secretId(field);
+      const current = store.getSecret(currentId);
+      const stored = current || store.getSecret(`${LEGACY_PLUGIN_ID}-${field.toLowerCase()}`);
       if (stored && !this.settings[field]) {
         // Empty string means "never set / blanked" — don't let it shadow a key in data.json.
         this.settings[field] = stored;
-      } else if (this.settings[field]) {
+      }
+      if (this.settings[field] && (fromData || current !== this.settings[field])) {
         // Plaintext key in data.json: first run (migrate) — or, after migration, one pasted or
-        // synced in from another device, which is newer than the keychain copy. Adopt it.
+        // synced in from another device, which is newer than the keychain copy. The legacy id
+        // also lands here after the 0.6 plugin-id change; keep the old copy for safe rollback.
         try {
-          store.setSecret(this.secretId(field), this.settings[field]);
+          store.setSecret(currentId, this.settings[field]);
           migrated = true;
         } catch (e) {
           console.warn(`${this.manifest.id}: secretStorage write failed for ${field}; key stays in data.json`, e);

@@ -2,7 +2,7 @@
 
 **English** · [한국어](MCP.ko.md)
 
-Version 0.5.0 introduced access to the vault currently open in Obsidian; 0.5.2 adds the external
+Version 0.5.0 introduced access to the vault currently open in Obsidian; 0.5.2 added the external
 reference-summary workflow. Claude Code or Codex finds evidence and writes prose; the plugin
 exposes its library, index, citation engine, and safe Markdown operations as MCP tools.
 
@@ -27,7 +27,8 @@ running Obsidian plugin
 - Only `search_library` and `rebuild_search_index` may call the configured embedding provider.
 - There is no account, remote MCP endpoint, persistent daemon, or standalone backend. The plugin
   listens only on a random `127.0.0.1` port and stops with Obsidian.
-- MCP is desktop-only. The rest of the plugin remains available on mobile.
+- Version 0.6.0 declares the complete plugin desktop-only because this bundle contains the
+  Node-based MCP server.
 
 ## Connect a client
 
@@ -38,6 +39,8 @@ running Obsidian plugin
 5. Restart or refresh the external client's MCP connections.
 
 Prefer the copy buttons: they quote the exact bridge and vault paths correctly.
+After migrating from 0.5.x, copy the setup again because the plugin directory—and therefore the
+bridge path—changed. The MCP server name `rag-obsidian` does not need to change.
 
 ### Claude Code
 
@@ -182,7 +185,7 @@ protect against malicious software already able to inspect your user processes a
 | `INVALID_PATH` | Use a vault-relative `.md` path outside config/external symlinks |
 | `ALREADY_EXISTS` | Choose another path, or read existing compiled output and pass its expected hash |
 | PubMed rate/error messages | Check the PubMed API key and contact e-mail in plugin settings |
-| MCP controls absent on mobile | Expected: MCP runs only on Obsidian Desktop |
+| Plugin unavailable on mobile | Expected: version 0.6.0 is desktop-only |
 
 To disconnect permanently, remove the `rag-obsidian` entry from the external client and disable
 **MCP access** in Obsidian.

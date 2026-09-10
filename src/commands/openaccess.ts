@@ -105,9 +105,9 @@ export async function downloadOaPdf(plugin: ScholarRagPlugin): Promise<void> {
   else await plugin.app.vault.createBinary(path, res.arrayBuffer);
   await plugin.app.fileManager.processFrontMatter(r.file, (fm) => (fm.pdf = `[[${safe}.pdf]]`));
   new Notice(`Saved PDFs/${safe}.pdf`);
-  // Stash the text right away so the paper is searchable without a second command. pdfjs comes
-  // from a CDN and may be unavailable (mobile webview, network blocked) — the download stands
-  // either way, and "Index linked PDFs" can pick the note up later.
+  // Stash the text right away so the paper is searchable without a second command. Extraction
+  // can still fail on malformed/scanned PDFs; the download stands either way, and "Index linked
+  // PDFs" can pick the note up later.
   try {
     const { text } = await extractPdfText(res.arrayBuffer);
     await plugin.app.vault.process(r.file, (body) => appendStash(body, text));

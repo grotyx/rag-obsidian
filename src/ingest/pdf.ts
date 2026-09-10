@@ -1,38 +1,27 @@
-/* PDF text extraction. pdfjs is loaded from a CDN at runtime (kept out of the
- * bundle to avoid a ~1MB main.js). The loader is injectable for testing. */
+/* PDF text extraction. The pinned pdfjs main/worker modules are bundled so the plugin never
+ * executes downloaded JavaScript. The loader remains injectable for tests. */
+/*! pdfjs-dist 4.6.82, Copyright 2024 Mozilla Foundation, Apache-2.0
+ * https://www.apache.org/licenses/LICENSE-2.0 */
+
+// @ts-expect-error pdfjs-dist does not expose declarations for its browser bundle subpaths.
+import * as bundledPdfjs from "pdfjs-dist/build/pdf.mjs";
+import "pdfjs-dist/build/pdf.worker.mjs";
 
 import { cleanDoi } from "./metadata";
 import { STASH_MAX_CHARS } from "./pdfStash";
-import { wrapCdnImportError } from "../util/cdn";
 
 export type PdfjsLike = {
   GlobalWorkerOptions: { workerSrc: string };
   getDocument: (opts: any) => { promise: Promise<any> };
 };
 
-const PDFJS_VERSION = "4.6.82";
 let _pdfjs: PdfjsLike | null = null;
-let _loader: () => Promise<PdfjsLike> = defaultLoader;
+let _loader: () => Promise<PdfjsLike> = async () => bundledPdfjs;
 
 /** Override the pdfjs loader (used by tests to inject the local Node build). */
 export function setPdfjsLoader(fn: () => Promise<PdfjsLike>): void {
   _loader = fn;
   _pdfjs = null;
-}
-
-async function defaultLoader(): Promise<PdfjsLike> {
-  let mod: PdfjsLike;
-  try {
-    // Hidden from esbuild so it stays a runtime dynamic import (CDN, not bundled).
-    const dynamicImport = new Function("u", "return import(u)") as (u: string) => Promise<PdfjsLike>;
-    mod = await dynamicImport(`https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.min.mjs`);
-  } catch (e) {
-    // A dynamic import() to a CDN can be blocked by the app's webview (seen on some mobile
-    // builds) — surface a clear reason instead of a raw "Failed to fetch" from the module loader.
-    throw wrapCdnImportError("PDF reading", e);
-  }
-  mod.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.mjs`;
-  return mod;
 }
 
 async function getPdfjs(): Promise<PdfjsLike> {

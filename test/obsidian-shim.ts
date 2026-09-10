@@ -60,6 +60,24 @@ export class TFile {
 
 export class App {}
 
+export class Plugin {}
+export class WorkspaceLeaf {}
+export class TAbstractFile {}
+export class TFolder extends TAbstractFile {}
+export class FileSystemAdapter {}
+export class PluginSettingTab {}
+export class Setting {}
+export class Modal {}
+export class SuggestModal<T> {}
+export class FuzzySuggestModal<T> {}
+export class ItemView {}
+export class EditorSuggest<T> {}
+export class ButtonComponent {}
+export class TextComponent {}
+export class Notice {}
+export const Platform = { isDesktopApp: true, isMobile: false };
+export const MarkdownRenderer = {};
+
 /** Obsidian's debounce(cb, timeout, resetTimer): fires on the trailing edge; a further call
  *  restarts the timer, which is the only mode the plugin uses. */
 export function debounce<T extends unknown[]>(

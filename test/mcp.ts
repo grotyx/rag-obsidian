@@ -35,6 +35,7 @@ async function protocolChecks(): Promise<void> {
   assert.match(String(init?.result?.instructions), /get_reference_source.*save_reference_summary/);
   const defaultInit = await handleProtocol({ jsonrpc: "2.0", id: 10, method: "initialize" }, tools, call);
   assert.equal(defaultInit?.result?.protocolVersion, "2025-11-25");
+  assert.equal((defaultInit?.result?.serverInfo as Record<string, unknown>).version, "0.6.0");
   const modernInit = await handleProtocol(
     { jsonrpc: "2.0", id: 11, method: "initialize", params: { protocolVersion: "2026-07-28" } }, tools, call
   );
@@ -85,6 +86,15 @@ function bridgeChecks(): void {
   assert.match(source, /--vault/);
   assert.match(source, /127\.0\.0\.1/);
   assert.doesNotThrow(() => new vm.Script(source, { filename: "mcp-bridge.cjs" }));
+}
+
+function distributionSecurityChecks(): void {
+  const source = [
+    "src/ingest/pdf.ts",
+    "src/index/providers/transformers.ts",
+  ].filter(fs.existsSync).map((file) => fs.readFileSync(file, "utf8")).join("\n");
+  assert.doesNotMatch(source, /new Function\s*\(/, "plugin code must not evaluate downloaded modules");
+  assert.doesNotMatch(source, /https:\/\/(?:cdn\.jsdelivr\.net|esm\.sh)/, "runtime dependencies must be bundled");
 }
 
 interface FakeFile {
@@ -555,6 +565,7 @@ async function main(): Promise<void> {
   assert.equal(DEFAULT_SETTINGS.mcpEnabled, false);
   await protocolChecks();
   bridgeChecks();
+  distributionSecurityChecks();
   await vaultChecks();
   await serviceChecks();
   await manuscriptChecks();

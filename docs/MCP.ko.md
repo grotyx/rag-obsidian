@@ -28,7 +28,8 @@ mcp-bridge.cjs (Node 표준 라이브러리만 사용)
 - `search_library`와 `rebuild_search_index`만 설정된 임베딩 공급자를 사용할 수 있습니다.
 - 별도 daemon, 계정, 원격 MCP 서버는 없습니다. 로컬 서버는 `127.0.0.1`의 임의 포트에서만
   열리고 플러그인 종료 시 함께 닫힙니다.
-- MCP 기능은 데스크톱 전용입니다. 나머지 플러그인 기능과 모바일 지원은 그대로 유지됩니다.
+- 0.6.0은 Node 기반 MCP 서버를 같은 bundle에 포함하므로 전체 plugin을 데스크톱 전용으로
+  선언합니다.
 
 ## 연결하기
 
@@ -40,6 +41,8 @@ mcp-bridge.cjs (Node 표준 라이브러리만 사용)
 
 설정 화면의 복사 버튼을 쓰는 것이 가장 안전합니다. 경로에 공백이나 따옴표가 있어도 현재
 vault에 맞게 escape된 값을 만듭니다. 수동 설정 형식은 다음과 같습니다.
+0.5.x에서 이전했다면 plugin 폴더와 bridge 경로가 바뀌었으므로 설정을 다시 복사하세요.
+MCP server 이름 `rag-obsidian`은 바꿀 필요가 없습니다.
 
 ### Claude Code
 
@@ -188,7 +191,7 @@ vault 내용, API key, MCP token을 로그로 출력하지 않습니다. 같은 
 | `INVALID_PATH` | vault 상대 `.md` 경로인지, 설정 폴더/외부 심볼릭 링크가 아닌지 확인 |
 | `ALREADY_EXISTS` | 새 경로를 사용하거나 기존 출력은 읽어서 `expected_output_hash` 전달 |
 | PubMed 제한/오류 | 플러그인 설정의 PubMed API key와 contact e-mail 확인 |
-| 모바일에서 MCP가 보이지 않음 | 의도된 동작입니다. MCP 서버는 Obsidian Desktop에서만 실행됩니다. |
+| 모바일에서 plugin을 설치할 수 없음 | 의도된 동작입니다. 0.6.0은 데스크톱 전용입니다. |
 
 연결을 완전히 제거하려면 Claude Code/Codex에서 `rag-obsidian` MCP 항목을 삭제하고 Obsidian의
 **Enable MCP access**를 끄면 됩니다.

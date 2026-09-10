@@ -52,7 +52,7 @@ export async function handleProtocol(
   req: McpRequest,
   tools: McpTool[],
   callTool: (name: string, args: Record<string, unknown>) => Promise<unknown>,
-  version = "0.5.2"
+  version = "0.6.0"
 ): Promise<McpResponse | null> {
   if (!req || req.jsonrpc !== "2.0" || typeof req.method !== "string") {
     return mcpError(req?.id ?? null, -32600, "Invalid JSON-RPC request");

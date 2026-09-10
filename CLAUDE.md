@@ -1,11 +1,9 @@
 # Academic Paper Citation Manager — Project Rules (orchestrator)
 
-> Display name: **Academic Paper Citation Manager** · plugin id stays `rag-obsidian`
-> (no "Obsidian" in the name — the community-plugin guidelines forbid it; the id may keep it,
-> as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
-> (folder / `data.json` / `community-plugins.json` key unchanged).
+> Display name: **Academic Paper Citation Manager** · plugin id:
+> `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.5.2 · **Status**: Phase 0–5 + live-vault Claude Code/Codex MCP + external summary workflow (integration and MCP checks green)
+**Version**: 0.6.0 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -15,7 +13,7 @@
 A **standalone, local-first, AI-native bibliography manager for Obsidian** — a Zotero/EndNote
 replacement where **markdown (CSL-JSON frontmatter) is the database**, with semantic search,
 citation-grounded chat, a citation graph, and PDF import layered on top. Pure TypeScript
-Obsidian plugin, no backend, no Zotero dependency, mobile-capable.
+Obsidian Desktop plugin, no backend, no Zotero dependency.
 
 Born from a separate `rag_research` project (a Neo4j+Python medical GraphRAG system):
 the *concepts* were ported to TS, generalized beyond medicine, and put inside Obsidian. No code
@@ -59,7 +57,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `data/library.ts` | CRUD over `References/`, `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` (add-time) + `matchKeys`/`duplicateGroups` (report, groups on any shared identifier) + `BackfillScope`/`inScope` (pure filter for fill-gaps scoping) |
 | `ingest/metadata.ts` | `detectId` + Crossref / PubMed / arXiv fetchers → CSLItem |
 | `ingest/ncbi.ts` | the one queue every E-utilities request waits in (3/s, 10/s with a key) |
-| `ingest/pdf.ts` | pdfjs (CDN runtime load, injectable) text extraction + `findIdentifier` |
+| `ingest/pdf.ts` | bundled pinned pdfjs (dynamic evaluation disabled; injectable loader) text extraction + `findIdentifier` |
 | `ingest/pdfImport.ts` | PDF → text → metadata (id-fetch or LLM) → dedup → note + stash text |
 | `ingest/pdfStash.ts` | the one writer of the `## Full text (extracted)` stash: `hasStashedText` / `appendStash` (idempotent, `STASH_MAX_CHARS` 200k cap + `…[truncated]`, the same cap `extractPdfText` stops at) / `resolvePdfLink` (`pdf:` frontmatter → linkpath, `#anchor`/`|alias` stripped) |
 | `ingest/pubmedSearch.ts` | esearch/esummary + one `fetchPubmedRecord` efetch (abstract + MeSH + keywords + PMC id), PMC full text, `buildTags` (MeSH-first, tops up to `MIN_TAGS`, verifies suggestions against the MeSH database) |
@@ -69,7 +67,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `ingest/import.ts` | BibTeX / RIS / `.nbib` / CSL-JSON parsing → CSLItem[] |
 | `index/embedding.ts` | `EmbeddingProvider` interface + factory |
 | `util/pool.ts` | `mapPool` bounded concurrency + `POOL_WIDTH` (15, sized for the LLM wait) — the network/LLM half of a batch; vault writes stay sequential. Takes an optional `AbortSignal`: cancelling lets in-flight items finish, starts no new ones, and still resolves (unstarted slots come back empty) |
-| `index/providers/{ollama,openai,transformers}.ts` | embedding backends |
+| `index/providers/{ollama,openai}.ts` | embedding backends |
 | `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers (`yearFromIssued`, `authorNames`), `chunkHash` (reindex change detector) |
 | `index/store.ts` | Orama hybrid index wrapper + JSON persist/restore + `SearchFilters` (year range, tag AND, author) over the `tags`/`author` `enum[]` facets + `describeFilters` (one-line label, `""` = unfiltered); `INDEX_SCHEMA` is the rebuild marker |
 | `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding); `search` over-fetches ×3 and thins via `capPerReference` |
@@ -137,13 +135,13 @@ provider contract (Ollama 896-dim), LLM client request/parse (mock), citation fo
 OpenAlex citation graph (real edges + "missing"), pdf text extraction (real 19-page PDF),
 bibliography.
 
-**Needs in-vault (runtime-CDN, can't node-test)**: pdfjs loaded from CDN in the plugin (the
-*algorithm* is verified against the local build), Transformers.js embeddings from CDN.
+**Needs in-vault**: the bundled pdfjs path (the extraction algorithm is covered with an injected
+test loader, while Electron integration still needs Obsidian).
 
 **In-app testing without clicking**: launch with `open -a Obsidian --args --remote-debugging-port=9222`,
 then drive the renderer over CDP (`http://127.0.0.1:9222/json/list` → `Runtime.evaluate`) — e.g.
-`app.commands.executeCommandById("rag-obsidian:update-bibliography")`,
-`app.plugins.plugins["rag-obsidian"].library.entries()`. This reaches the CDN-loaded paths and the
+`app.commands.executeCommandById("academic-paper-citation-manager:update-bibliography")`,
+`app.plugins.plugins["academic-paper-citation-manager"].library.entries()`. This reaches the
 real Obsidian API; the vault's plugin folder must hold copies of `main.js`/`manifest.json`/`styles.css`
 (a symlink to the repo makes Obsidian hang on "loading plugins"). A minimized window stops
 rendering (`document.visibilityState === "hidden"`, so reading-view checks return nothing) —
@@ -167,29 +165,21 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 - TypeScript, strict null checks, esbuild single-file bundle (`main.js`, gitignored — ship via release).
 - **Pure-logic modules must not import `obsidian`** beyond `requestUrl`/`stringifyYaml`/`parseYaml`/
   `normalizePath` (so they stay testable via the shim). UI/manager modules may use the full API.
-- All network calls go through Obsidian `requestUrl` (CORS-safe desktop+mobile), never raw `fetch`.
-- Heavy/optional deps (pdfjs, transformers.js) are **loaded from CDN at runtime** via a
-  `new Function("u","return import(u)")` trick so they stay out of the bundle.
+- All plugin network calls go through Obsidian `requestUrl`, never raw `fetch`.
+- The pinned pdfjs main/worker modules are bundled. Never add runtime-downloaded executable code.
 - Frontmatter uses **CSL-JSON field names verbatim** (`container-title`, `issued.date-parts`, …).
 - Embedding index is tagged with `provider:model`; on mismatch it won't restore → user rebuilds.
 - API keys live in Obsidian `secretStorage` (synced from in-memory settings on save; `data.json`
   stores them blanked). On apps without `secretStorage` they fall back to `data.json` as before.
-- **Mobile guard rule**: no `require`/`fs`/`path`/`electron`/`Buffer`/`process.*`/raw `fetch`
-  in shared/mobile paths (see Testing above — `requestUrl` and the vault adapter cover every
-  network/file need on mobile). The sole exception is `src/mcp/{bridge,http}.ts`, dynamically
-  reached only behind `Platform.isDesktopApp`; MCP is hidden on mobile. A desktop-only API with no small mobile-safe equivalent (e.g. `window.open`,
-  `navigator.clipboard`) gets a fallback to a `Notice` showing the raw value, not a `Platform.isMobile`
-  block that hides the feature — see `main.ts`'s `safeOpenExternal` and `src/commands/writing.ts`'s
-  `copyCitation`. The CDN-loaded pdfjs/Transformers.js stay as-is (locked decision), but their
-  loaders rethrow a clear "…is unavailable: …" error on a blocked/failed dynamic import instead of
-  a raw fetch error. See `docs/MOBILE.md`.
+- **Desktop rule**: `manifest.json` is desktop-only because `src/mcp/{bridge,http}.ts` uses Node
+  built-ins behind `Platform.isDesktopApp`. Keep the guard even though mobile installation is no
+  longer claimed.
 
 ## Providers & defaults
 
 - **Embeddings**: OpenAI-compatible `openai/text-embedding-3-small` against OpenRouter (default —
   one key also covers chat) · Ollama `nomic-embed-text` (local, needs `ollama pull` + a server
-  started with embeddings) · Transformers.js (experimental, CDN). Dimension auto-discovered from
-  the first response.
+  started with embeddings). Dimension is discovered from the first response.
 - **LLM (chat)**: OpenAI-compatible against OpenRouter (default: `deepseek/deepseek-v4-flash-0731`,
   chat `deepseek/deepseek-v4-pro-0813`) · Anthropic · Ollama.
   `chatModel` (optional) overrides `llmModel` for "Chat with library" only. The chat answer, the reranker,
@@ -227,9 +217,8 @@ run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm ru
 
 ## Roadmap / next
 
-See [ROADMAP.md](ROADMAP.md). Phases 1–3 and 5 are shipped (0.4.13–0.4.19); what remains is the store
-submission (`docs/STORE_SUBMISSION.md`), an on-device iOS pass (`docs/MOBILE.md`) and Phase 4 (sqlite-vec,
-only when a library outgrows Orama).
+See [ROADMAP.md](ROADMAP.md). Community submission instructions are in
+`docs/STORE_SUBMISSION.md`; Phase 4 (sqlite-vec) remains deferred until a library outgrows Orama.
 
 Done: citeproc-js full CSL (v0.3.0) · cross-identifier dedup on add · secretStorage for API keys
 (v0.4.0) · `main.ts` split into `src/commands/` + the concept-pack feature dropped (MeSH covers it).
@@ -238,7 +227,7 @@ Done: citeproc-js full CSL (v0.3.0) · cross-identifier dedup on add · secretSt
 
 ```bash
 git clone <repo> rag-obsidian && cd rag-obsidian && npm install
-ln -sfn "$(pwd)" "/path/to/Vault/.obsidian/plugins/rag-obsidian"
+ln -sfn "$(pwd)" "/path/to/Vault/.obsidian/plugins/academic-paper-citation-manager"
 npm run dev
 # Obsidian: enable community plugins, enable RAG Obsidian, Cmd-R after rebuilds
 ```
@@ -248,13 +237,14 @@ npm run dev
 Update **all three** on a release: `manifest.json`, `package.json`, `versions.json` (+ a
 CHANGELOG.md entry + the Version line in this file and the **version badge in both
 `README.md` and `README.ko.md`** — the Korean badge sat at 0.3.0 for four releases because
-only the English one was being edited). Then commit `vX.Y.Z: summary`.
+only the English one was being edited). Community releases use an exact `X.Y.Z` tag with no `v`
+prefix. A release commit may use `X.Y.Z: summary`.
 The deck (`presentation/build_deck.py`) reads its version from `manifest.json`, but the prose
 docs (`lecture_script.md`, `slides_content.md`, `lecture_script_tts.md`) hardcode it — grep `v0.X`
-under `presentation/`; the TTS script spells it in Hangul (`영 점 사`), grep `점` there.
+under `presentation/`; the TTS script spells it in Hangul (`영 점 육`), grep `점` there.
 
 ## Git
 
 - Branch `main`, solo dev, direct push.
 - Never commit: `node_modules/`, `main.js`, `data.json`, `_test*`, `_testvault/`, `.obsidian/` (all gitignored).
-- Commit subjects: `feat:`/`fix:`/`docs:`/`chore:` or `vX.Y.Z: summary` for releases.
+- Commit subjects: `feat:`/`fix:`/`docs:`/`chore:` or `X.Y.Z: summary` for Community releases.

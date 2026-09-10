@@ -69,14 +69,12 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       .setName("Embedding provider")
       .setDesc(
         "OpenAI / compatible = recommended — point the base URL at OpenRouter and one key covers " +
-          "embeddings, chat and summaries. Ollama = local, no key (run `ollama pull nomic-embed-text`). " +
-          "Transformers = experimental in-app."
+          "embeddings, chat and summaries. Ollama = local, no key (run `ollama pull nomic-embed-text`)."
       )
       .addDropdown((d) =>
         d
           .addOption("ollama", "Ollama (local)")
           .addOption("openai", "OpenAI / compatible")
-          .addOption("transformers", "Transformers.js (experimental)")
           .setValue(this.plugin.settings.embeddingProvider)
           .onChange(async (v) => {
             this.plugin.settings.embeddingProvider = v as EmbeddingProviderId;
@@ -380,7 +378,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     if (!Platform.isDesktopApp) {
       containerEl.createEl("p", {
         cls: "setting-item-description",
-        text: "MCP access requires Obsidian Desktop. The rest of the plugin remains available on mobile.",
+        text: "This plugin requires Obsidian Desktop.",
       });
       return;
     }
