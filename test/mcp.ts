@@ -9,7 +9,7 @@ import { bridgeSource } from "../src/mcp/bridge";
 import { contentHash, McpVault, validateMarkdownPath } from "../src/mcp/vault";
 import { McpService, MCP_TOOLS } from "../src/mcp/service";
 import { compileMcpManuscript, renderCompiledManuscript } from "../src/write/manuscript";
-import { assertVaultPath, mcpSetupSnippets, McpHttpServer } from "../src/mcp/http";
+import { assertVaultPath, loadDesktopNode, mcpSetupSnippets, McpHttpServer } from "../src/mcp/http";
 import { DEFAULT_SETTINGS } from "../src/types";
 
 async function protocolChecks(): Promise<void> {
@@ -394,6 +394,10 @@ async function manuscriptChecks(): Promise<void> {
 }
 
 async function httpChecks(): Promise<void> {
+  const desktopNode = loadDesktopNode();
+  assert.equal(typeof desktopNode.crypto.randomBytes, "function");
+  assert.equal(typeof desktopNode.http.createServer, "function");
+  assert.equal(desktopNode instanceof Promise, false);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "rag-obsidian-mcp-test-"));
   const vaultPath = path.join(root, "vault");
   const pluginPath = path.join(vaultPath, ".obsidian", "plugins", "rag-obsidian");

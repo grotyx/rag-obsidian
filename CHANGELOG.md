@@ -5,6 +5,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-10
+
+### Fixed
+
+- **MCP now starts on Windows Obsidian.** Electron's renderer cannot resolve dynamic imports such
+  as `import("node:crypto")`, which stopped startup before `mcp-bridge.cjs` could be generated and
+  left Claude Code with `CONNECTION_CLOSED`. Desktop Node built-ins are now loaded synchronously
+  with a lazy `require()` only after the existing desktop guard. Mobile paths remain untouched.
+
 ## [0.5.0] — 2026-09-10
 
 ### Added

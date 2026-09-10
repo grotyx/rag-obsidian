@@ -140,6 +140,7 @@ protect against malicious software already able to inspect your user processes a
 | Symptom | Action |
 |---|---|
 | Bridge cannot find Obsidian | Open the exact vault in Desktop, enable MCP, then restart the client |
+| `CONNECTION_CLOSED` and no `mcp-bridge.cjs` on Windows | Update to 0.5.1 or later, reload Obsidian, then toggle MCP off/on |
 | `ECONNREFUSED` or authentication failure | **Restart and rotate token**, then restart the client |
 | `INDEX_NOT_READY` | Configure embeddings and call `rebuild_search_index` |
 | `CONTENT_CHANGED` | Read again, review the current text, and retry with the new hash |

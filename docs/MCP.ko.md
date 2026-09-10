@@ -147,6 +147,7 @@ vault 내용, API key, MCP token을 로그로 출력하지 않습니다. 같은 
 | 증상 | 확인할 것 |
 |---|---|
 | bridge가 Obsidian을 찾지 못함 | 정확한 vault가 Obsidian Desktop에 열려 있고 MCP가 켜져 있는지 확인 후 재시작 |
+| Windows에서 `CONNECTION_CLOSED`, `mcp-bridge.cjs` 없음 | 0.5.1 이상으로 업데이트하고 Obsidian을 다시 로드한 뒤 MCP를 껐다 켜기 |
 | `ECONNREFUSED` 또는 인증 실패 | 설정에서 **Restart and rotate token**, 외부 클라이언트 재시작 |
 | `INDEX_NOT_READY` | 임베딩 설정 확인 후 `rebuild_search_index` 호출 |
 | `CONTENT_CHANGED` | `read_note`로 다시 읽고 새 hash와 내용을 검토한 뒤 재시도 |

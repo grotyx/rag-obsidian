@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Obsidian on Windows cannot dynamically import node: built-ins */
 /* global Buffer, process -- desktop MCP server runs in Electron's Node.js context */
 import type { Server, IncomingMessage, ServerResponse } from "node:http";
 import { bridgeSource } from "./bridge";
@@ -30,6 +31,23 @@ interface McpHttpOptions {
   callTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
 }
 
+/** Load Node built-ins only after the desktop guard; dynamic node: imports fail in Obsidian on Windows. */
+export function loadDesktopNode(): {
+  crypto: typeof import("node:crypto");
+  fs: typeof import("node:fs/promises");
+  http: typeof import("node:http");
+  os: typeof import("node:os");
+  pathApi: typeof import("node:path");
+} {
+  return {
+    crypto: require("node:crypto"),
+    fs: require("node:fs/promises"),
+    http: require("node:http"),
+    os: require("node:os"),
+    pathApi: require("node:path"),
+  };
+}
+
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
@@ -48,7 +66,7 @@ function inside(root: string, target: string, pathApi: typeof import("node:path"
 
 /** OS-level containment check that catches symlinks after lexical vault-path validation. */
 export async function assertVaultPath(vaultPath: string, relativePath: string, allowMissing: boolean): Promise<void> {
-  const [fs, pathApi] = await Promise.all([import("node:fs/promises"), import("node:path")]);
+  const { fs, pathApi } = loadDesktopNode();
   const safe = validateMarkdownPath(relativePath);
   const root = await fs.realpath(vaultPath);
   const target = pathApi.resolve(root, ...safe.split("/"));
@@ -138,9 +156,7 @@ export class McpHttpServer {
 
   async start(): Promise<McpConnectionInfo> {
     if (this.info) return this.info;
-    const [crypto, fs, http, os, pathApi] = await Promise.all([
-      import("node:crypto"), import("node:fs/promises"), import("node:http"), import("node:os"), import("node:path"),
-    ]);
+    const { crypto, fs, http, os, pathApi } = loadDesktopNode();
     const vaultPath = await fs.realpath(this.options.vaultPath);
     const token = crypto.randomBytes(32).toString("hex");
     let port = 0;
@@ -262,7 +278,7 @@ export class McpHttpServer {
     this.info = null;
     if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
     if (!info) return;
-    const fs = await import("node:fs/promises");
+    const { fs } = loadDesktopNode();
     try {
       const current = JSON.parse(await fs.readFile(info.discoveryPath, "utf8")) as { token?: string };
       if (current.token === info.token) await fs.unlink(info.discoveryPath);
@@ -276,3 +292,4 @@ export class McpHttpServer {
     return this.start();
   }
 }
+/* eslint-enable @typescript-eslint/no-require-imports -- end desktop-only Node loader */

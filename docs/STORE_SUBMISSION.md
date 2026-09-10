@@ -141,7 +141,7 @@ store-review blocker.
 | `normalizePath()` used for constructed vault paths | ✅ | used throughout `data/library.ts`, `commands/*` |
 | No `var` | ✅ | zero hits |
 | `registerEvent`/`registerDomEvent` for listeners that need cleanup | ✅ | vault/workspace listeners go through `registerEvent`; view-owned DOM listeners are torn down when the pane's `contentEl` is emptied/rebuilt (no bare `document`-level listeners left running) |
-| `Platform` checks before desktop-only APIs | ✅ | MCP's server is constructed only behind `Platform.isDesktopApp`, and its Node imports are type-only or dynamic; shared network calls still use `requestUrl` |
+| `Platform` checks before desktop-only APIs | ✅ | MCP's server is constructed only behind `Platform.isDesktopApp`, then loads Node built-ins lazily with `require()`; shared network calls still use `requestUrl` |
 | Settings headings via `setHeading()`, not `<h1>`/`<h2>` | ✅ | fixed, see §1 |
 | Settings headings don't repeat "settings" | ✅ | ("Library", "Retrieval (semantic search)", "Chat (citation-grounded answers)", "Citation graph", "Writing") |
 | Sentence case in UI text | ✅* | *37 residual linter false positives, see §3 |
