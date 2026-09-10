@@ -5,6 +5,44 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-10
+
+### Added
+
+- **Claude Code and Codex can use the live Obsidian vault through MCP.** Enable it in
+  Settings → External AI (MCP), then copy the generated Claude Code command or Codex config.
+  A standalone stdio bridge connects to the running desktop plugin over an authenticated
+  `127.0.0.1` port; there is no remote service or persistent companion daemon.
+- **Sixteen focused MCP tools** cover library/index status, hybrid evidence search, index rebuild,
+  reference/tag browsing, PubMed search, explicit-identifier reference import, paged Markdown
+  reads, create/update/exact-replace/move/trash, and cited manuscript compilation.
+- **Safe external note management.** Paths are vault-relative Markdown only, the Obsidian config
+  folder and traversal are blocked, symlinks are checked by real path, creates never overwrite,
+  writes are serialized, and edits/moves/trash require the latest whole-note SHA-256. Trash uses
+  Obsidian's recoverable trash behavior.
+- **MCP contract and security checks** exercise the generated bridge as a child process, actual
+  loopback HTTP authentication, discovery-file permissions and cleanup, request limits, JSON-RPC
+  request correlation, path/symlink containment, mutation conflicts, every tool family, and
+  source-preserving manuscript compilation.
+- Complete English and Korean setup, workflow, security, and troubleshooting guides in
+  `docs/MCP.md` and `docs/MCP.ko.md`.
+
+### Changed
+
+- Manuscript rendering is now shared pure logic used by both the existing Obsidian command and
+  MCP. MCP compilation writes a separate output note and requires its current hash before replacing
+  an existing output; the source manuscript is never changed.
+- Production builds keep Node built-ins external for the desktop-only MCP transport. The rest of
+  the plugin remains mobile-capable and the MCP controls explain their desktop requirement.
+
+### Privacy
+
+- The MCP path does **not** call Chat with library, paper-summary LLMs, or the LLM reranker. Claude
+  Code or Codex owns all reasoning and prose. Library search and index rebuild may use only the
+  embedding provider already configured in Obsidian.
+- A new random 256-bit token is created per server start. Discovery and bridge files use owner-only
+  permissions where supported; stopping/unloading removes discovery state and closes the port.
+
 ## [0.4.19] — 2026-09-09
 
 ### Changed
