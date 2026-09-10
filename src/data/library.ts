@@ -26,7 +26,7 @@ export class Library {
 
   // Citekeys created this session (citekey → note path), so a batch add (PubMed modal loop)
   // stays unique even before the metadata cache catches up.
-  private createdCitekeys = new Map<string, string>();
+  private createdCitekeys = new Map<string, { path: string; item: CSLItem }>();
 
   // Identifiers (normalized DOI / PMID / normalized title → created note) of references created
   // this session — metadataCache lags vault.create, so rapid double-adds or DOI-then-PMID
@@ -51,7 +51,7 @@ export class Library {
 
   private knownCitekeys(): Set<string> {
     const s = new Set<string>();
-    for (const [ck, path] of this.createdCitekeys) if (this.exists(path)) s.add(ck);
+    for (const [ck, created] of this.createdCitekeys) if (this.exists(created.path)) s.add(ck);
     for (const e of this.list()) s.add(e.citekey);
     return s;
   }
@@ -86,7 +86,7 @@ export class Library {
     const citekey = this.uniqueCitekey(generateCitekey(item, this.settings));
     const filename = this.uniqueFilename(generateFilename(item));
     const path = normalizePath(`${this.folder()}/${filename}.md`);
-    this.createdCitekeys.set(citekey, path);
+    this.createdCitekeys.set(citekey, { path, item });
     this.rememberIds(item, citekey, path);
     const content = buildNote(item, citekey, opts);
     return this.app.vault.create(path, content);
@@ -94,6 +94,8 @@ export class Library {
 
   /** Read a reference's CSL-JSON item by its frontmatter citekey (filename may differ). */
   getItem(citekey: string): CSLItem | null {
+    const created = this.createdCitekeys.get(citekey);
+    if (created && this.exists(created.path)) return created.item;
     const f = this.getFile(citekey);
     if (!f) return null;
     const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
@@ -102,6 +104,11 @@ export class Library {
 
   /** Find the note file whose frontmatter citekey matches (filename is decoupled from citekey). */
   getFile(citekey: string): TFile | null {
+    const created = this.createdCitekeys.get(citekey);
+    if (created) {
+      const file = this.app.vault.getAbstractFileByPath(created.path);
+      if (file instanceof TFile) return file;
+    }
     const prefix = this.folder() + "/";
     for (const file of this.app.vault.getMarkdownFiles()) {
       if (!file.path.startsWith(prefix)) continue;

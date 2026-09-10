@@ -2,9 +2,10 @@
 
 [English](MCP.md) · **한국어**
 
-Academic Paper Citation Manager 0.5.2부터 Claude Code와 Codex가 실행 중인 Obsidian vault를
-직접 검색하고 Markdown 노트를 관리할 수 있습니다. 외부 AI가 논문을 찾고 초안을 쓰며,
-플러그인은 라이브러리·검색 인덱스·인용 엔진과 안전한 파일 작업을 MCP 도구로 제공합니다.
+Academic Paper Citation Manager 0.5.0부터 Claude Code와 Codex가 실행 중인 Obsidian vault를
+직접 검색하고 Markdown 노트를 관리할 수 있으며, 0.5.2에서 외부 AI 요약 저장 흐름을
+추가했습니다. 외부 AI가 논문을 찾고 초안을 쓰며, 플러그인은 라이브러리·검색 인덱스·인용
+엔진과 안전한 파일 작업을 MCP 도구로 제공합니다.
 
 ## 동작 방식
 
@@ -97,8 +98,9 @@ add_reference
   → save_reference_summary
 ```
 
-`get_reference_source`는 PMC 공개 원문을 먼저 조회하고, 없으면 PubMed 또는 노트에 저장된
-초록을 사용합니다. 반환된 `sourceType`과 최신 노트 `hash`를 `save_reference_summary`에
+`get_reference_source`는 PMID/PMCID 메타데이터가 있으면 PMC 공개 원문을 먼저 조회하고,
+없으면 PubMed 또는 저장된 메타데이터 초록을 사용합니다. 반환된 `sourceType`
+(`pmc-fulltext`, `pubmed-abstract`, `stored-abstract`)과 최신 노트 `hash`를 `save_reference_summary`에
 전달해야 합니다. 외부 AI는 반환된 자료만 근거로 삼고 수치와 불확실성을 보존해야 합니다.
 저장할 때는 `## Summary`만 바뀌며 `## Notes`와 `## Highlights`는 유지되고 frontmatter에
 `summary_source`와 `summary_model`이 기록됩니다.

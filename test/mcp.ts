@@ -228,7 +228,7 @@ async function serviceChecks(): Promise<void> {
   assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
 
   const fake = fakeApp({
-    "References/ref.md": "---\ncitekey: smith2024\ntitle: Trial\n---\n\n## Summary\n\nUseful.\n\n## Notes\n\n## Highlights\n\n## Full text (extracted)\n\nvery long",
+    "References/ref.md": "---\ncitekey: smith2024\ntitle: Trial\n---\n\n## Summary\n\nUseful.\n\n##\tNotes\n\n##\tHighlights\n\n## Full text (extracted)\n\nvery long",
   });
   const item = {
     type: "article-journal", title: "Trial", citekey: "smith2024", status: "read",
@@ -316,7 +316,7 @@ async function serviceChecks(): Promise<void> {
   assert.match(summarized, /^summary_model: claude-code$/m);
   assert.match(summarized, /\*\*Results\*\*\nResults\./);
   assert.match(summarized, /\*\*한국어 요약 \(KR\)\*\*\n한국어 요약\./);
-  assert.match(summarized, /## Notes\n\n## Highlights/);
+  assert.match(summarized, /##\tNotes\n\n##\tHighlights/);
   assert.doesNotMatch(summarized, /Useful\./);
   await assert.rejects(() => service.callTool("save_reference_summary", {
     citekey: "smith2024", expected_hash: source.hash, source_type: "pmc-fulltext",
@@ -350,6 +350,17 @@ async function serviceChecks(): Promise<void> {
   const abstractSource = await abstractService.callTool("get_reference_source", { citekey: "smith2024" }) as any;
   assert.equal(abstractSource.sourceType, "pubmed-abstract");
   assert.equal(abstractSource.sourceText, "API abstract");
+
+  const storedPlugin = {
+    ...plugin,
+    library: {
+      ...plugin.library,
+      getItem: () => ({ type: "article-journal", title: "DOI paper", DOI: "10.1/example", abstract: "Crossref abstract" }),
+    },
+  };
+  const storedSource = await new McpService(storedPlugin, vault).callTool("get_reference_source", { citekey: "smith2024" }) as any;
+  assert.equal(storedSource.sourceType, "stored-abstract");
+  assert.equal(storedSource.sourceText, "Crossref abstract");
   const blank = await service.callTool("create_note", { path: "Blank.md", content: "" }) as any;
   assert.equal(blank.path, "Blank.md");
 

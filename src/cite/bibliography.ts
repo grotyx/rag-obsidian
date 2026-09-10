@@ -156,7 +156,7 @@ export function replaceSummaryBlock(content: string, newBlockLines: string[]): s
   const start = m.index + m[1].length;
   let cur = m.index + m[0].length;
   for (;;) {
-    const next = content.slice(cur).search(/\n#{1,2} /);
+    const next = content.slice(cur).search(/\n#{1,2}[ \t]+/);
     if (next < 0) return `${content.slice(0, start)}${block}\n`;
     const at = cur + next + 1;
     // The KR heading is the block's own second half — keep walking past it.

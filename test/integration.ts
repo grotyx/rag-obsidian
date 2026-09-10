@@ -11,7 +11,7 @@ import * as http from "http";
 import * as yaml from "js-yaml";
 
 import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
-import { duplicateGroups, inScope, BackfillScope } from "../src/data/library";
+import { duplicateGroups, inScope, BackfillScope, Library } from "../src/data/library";
 import { mapPool, POOL_WIDTH } from "../src/util/pool";
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { ncbiGate, ncbiGapMs, resetNcbiGate } from "../src/ingest/ncbi";
@@ -738,6 +738,31 @@ async function main() {
     ok(
       groups.length === 1 && groups[0] === "byDoi+byPmid",
       `duplicateGroups joins on a shared PMID and ignores short titles: ${JSON.stringify(groups)}`
+    );
+
+    // A just-created reference must resolve before Obsidian's metadata cache catches up, because
+    // MCP immediately follows add_reference with get_reference_source.
+    const freshFiles = new Map<string, TFile>();
+    const freshApp: any = {
+      vault: {
+        getAbstractFileByPath: (p: string) => freshFiles.get(p) ?? null,
+        getMarkdownFiles: () => [...freshFiles.values()],
+        createFolder: async () => undefined,
+        create: async (p: string) => {
+          const f = new TFile(p);
+          freshFiles.set(p, f);
+          return f;
+        },
+      },
+      metadataCache: { getFileCache: () => null },
+    };
+    const freshLibrary = new Library(freshApp, settings);
+    const freshItem: CSLItem = { type: "article-journal", title: "Immediate MCP source", PMID: "999999" };
+    const freshFile = await freshLibrary.createReference(freshItem);
+    const freshCitekey = freshLibrary.findDuplicate(freshItem)!;
+    ok(
+      freshLibrary.getFile(freshCitekey) === freshFile && freshLibrary.getItem(freshCitekey)?.title === freshItem.title,
+      "a just-created reference resolves before metadata-cache refresh"
     );
 
     // "Add by PMID" keeps the PMC id the esummary payload already carries, so the fill-gaps

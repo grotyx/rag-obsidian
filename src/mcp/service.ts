@@ -74,7 +74,7 @@ export const MCP_TOOLS: McpTool[] = [
     inputSchema: objectSchema({
       citekey: string("Exact citekey returned by get_reference_source."),
       expected_hash: string("Whole-note SHA-256 returned by get_reference_source."),
-      source_type: { type: "string", enum: ["pmc-fulltext", "pubmed-abstract"], description: "Exact sourceType returned by get_reference_source." },
+      source_type: { type: "string", enum: ["pmc-fulltext", "pubmed-abstract", "stored-abstract"], description: "Exact sourceType returned by get_reference_source." },
       summary_model: string("External client/model label; defaults to external-mcp-client."),
       background: string("Faithful background and objective from the source."),
       methods: string("Study design, population, interventions, outcomes, and statistics from the source."),
@@ -368,15 +368,16 @@ export class McpService {
     const full = pmc
       ? await this.deps.fetchPmcFullText(pmc, this.plugin.settings.pubmedApiKey, this.plugin.settings.openalexMailto)
       : "";
-    const sourceText = full || record.abstract || (typeof item.abstract === "string" ? item.abstract : "");
+    const storedAbstract = typeof item.abstract === "string" ? item.abstract : "";
+    const sourceText = full || record.abstract || storedAbstract;
     if (!sourceText) throw new Error("NO_SOURCE_TEXT: reference has no PMC full text or abstract");
-    const sourceType = full ? "pmc-fulltext" : "pubmed-abstract";
+    const sourceType = full ? "pmc-fulltext" : record.abstract ? "pubmed-abstract" : "stored-abstract";
     const limited = sourceText.slice(0, 120_000);
     return {
       citekey, path: file.path, metadata: item, hash: note.hash, sourceType,
       sourceLabel: full
         ? `PMC full text (${pmc}) — complete article body`
-        : "PubMed abstract (full text not retrieved)",
+        : record.abstract ? "PubMed abstract (full text not retrieved)" : "Stored metadata abstract (full text not retrieved)",
       sourceText: limited,
       sourceTruncated: limited.length < sourceText.length,
     };
@@ -387,8 +388,8 @@ export class McpService {
     const file = this.plugin.library.getFile(citekey);
     if (!file) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
     const source = stringArg(args, "source_type");
-    if (source !== "pmc-fulltext" && source !== "pubmed-abstract") {
-      throw new Error("INVALID_ARGUMENT: source_type must be pmc-fulltext or pubmed-abstract");
+    if (!new Set(["pmc-fulltext", "pubmed-abstract", "stored-abstract"]).has(source)) {
+      throw new Error("INVALID_ARGUMENT: source_type must match get_reference_source");
     }
     const sections: SummarySections = {
       background: stringArg(args, "background"), methods: stringArg(args, "methods"),

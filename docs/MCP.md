@@ -2,9 +2,9 @@
 
 **English** · [한국어](MCP.ko.md)
 
-Version 0.5.2 lets Claude Code and Codex work with the vault currently open in Obsidian. The
-external AI finds evidence and writes prose; the plugin exposes its library, index, citation
-engine, and safe Markdown operations as MCP tools.
+Version 0.5.0 introduced access to the vault currently open in Obsidian; 0.5.2 adds the external
+reference-summary workflow. Claude Code or Codex finds evidence and writes prose; the plugin
+exposes its library, index, citation engine, and safe Markdown operations as MCP tools.
 
 ## How it works
 
@@ -91,8 +91,9 @@ add_reference
   → save_reference_summary
 ```
 
-`get_reference_source` tries PMC open-access full text first and falls back to the PubMed or stored
-abstract. It returns `sourceType` and the current whole-note `hash`. The external client must use
+`get_reference_source` tries PMC open-access full text when PMID/PMCID metadata identifies it, then
+falls back to the PubMed or stored metadata abstract. It returns `sourceType` (`pmc-fulltext`,
+`pubmed-abstract`, or `stored-abstract`) and the current whole-note `hash`. The external client must use
 only that returned text, preserve reported quantities and uncertainty, and pass both values to
 `save_reference_summary`. The save replaces only `## Summary`, keeps `## Notes` and
 `## Highlights`, and records `summary_source` and `summary_model` in frontmatter.
