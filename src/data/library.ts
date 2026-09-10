@@ -94,12 +94,12 @@ export class Library {
 
   /** Read a reference's CSL-JSON item by its frontmatter citekey (filename may differ). */
   getItem(citekey: string): CSLItem | null {
-    const created = this.createdCitekeys.get(citekey);
-    if (created && this.exists(created.path)) return created.item;
     const f = this.getFile(citekey);
     if (!f) return null;
     const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
-    return fm ? (fm as unknown as CSLItem) : null;
+    if (fm) return fm as unknown as CSLItem;
+    const created = this.createdCitekeys.get(citekey);
+    return created?.path === f.path ? created.item : null;
   }
 
   /** Find the note file whose frontmatter citekey matches (filename is decoupled from citekey). */

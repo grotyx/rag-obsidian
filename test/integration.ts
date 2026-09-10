@@ -743,6 +743,7 @@ async function main() {
     // A just-created reference must resolve before Obsidian's metadata cache catches up, because
     // MCP immediately follows add_reference with get_reference_source.
     const freshFiles = new Map<string, TFile>();
+    let freshFrontmatter: Record<string, unknown> | null = null;
     const freshApp: any = {
       vault: {
         getAbstractFileByPath: (p: string) => freshFiles.get(p) ?? null,
@@ -754,7 +755,7 @@ async function main() {
           return f;
         },
       },
-      metadataCache: { getFileCache: () => null },
+      metadataCache: { getFileCache: () => freshFrontmatter ? { frontmatter: freshFrontmatter } : null },
     };
     const freshLibrary = new Library(freshApp, settings);
     const freshItem: CSLItem = { type: "article-journal", title: "Immediate MCP source", PMID: "999999" };
@@ -763,6 +764,11 @@ async function main() {
     ok(
       freshLibrary.getFile(freshCitekey) === freshFile && freshLibrary.getItem(freshCitekey)?.title === freshItem.title,
       "a just-created reference resolves before metadata-cache refresh"
+    );
+    freshFrontmatter = { ...freshItem, citekey: freshCitekey, title: "Updated after cache refresh" };
+    ok(
+      freshLibrary.getItem(freshCitekey)?.title === "Updated after cache refresh",
+      "metadata cache replaces the temporary just-created item"
     );
 
     // "Add by PMID" keeps the PMC id the esummary payload already carries, so the fill-gaps
