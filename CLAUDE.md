@@ -5,7 +5,7 @@
 > as 445 listed plugins do, and changing the id would orphan settings + keychain entries)
 > (folder / `data.json` / `community-plugins.json` key unchanged).
 
-**Version**: 0.5.1 · **Status**: Phase 0–5 + live-vault Claude Code/Codex MCP + review/security pass (integration and MCP checks green)
+**Version**: 0.5.2 · **Status**: Phase 0–5 + live-vault Claude Code/Codex MCP + external summary workflow (integration and MCP checks green)
 **Docs**: [README](README.md) (user) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -95,7 +95,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `mcp/bridge.ts` | source generator for the standalone Node stdio bridge written beside `main.js` |
 | `mcp/http.ts` | desktop-only authenticated loopback lifecycle, discovery file, setup snippets, realpath containment |
 | `mcp/vault.ts` | Markdown-only vault CRUD, pagination, hash-based concurrency checks, serialized writes |
-| `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch; deliberately bypasses chat/summary/rerank LLM paths |
+| `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch, including external source-read/summary-save; deliberately bypasses chat/summary/rerank LLM paths |
 | `write/manuscript.ts` | pure citation compilation shared by the Obsidian command and MCP output-copy tool |
 | `ui/{LibraryView,SearchView}.ts` | sidebar panes |
 | `ui/FilterRow.ts` | the year-range / author / tag-chip filter row shared by `SearchView` and `ChatView` (`new FilterRow(host, plugin)` → `.filters(): SearchFilters`, `.clear()`); state is pane-local and never persisted |
@@ -129,7 +129,8 @@ plugin is validated this way. Run with `npm test`. Extend by adding numbered sec
 `test/mcp.ts` also launches the generated bridge as a real child process against the actual
 loopback server. It covers JSON-RPC correlation, authentication, discovery-file permissions and
 cleanup, request limits, traversal/symlink containment, edit hashes, serialized writes, tool
-contracts, PubMed add semantics, and source-preserving manuscript compilation.
+contracts, PubMed add/source/summary semantics, hash-conflict protection, and source-preserving
+manuscript compilation.
 
 **Verified live**: metadata fetch, note build, chunking, Orama hybrid + persist/restore, embedding
 provider contract (Ollama 896-dim), LLM client request/parse (mock), citation formatting,

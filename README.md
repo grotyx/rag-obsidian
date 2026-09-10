@@ -1,6 +1,6 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.5.1-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.5.2-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
 
@@ -54,8 +54,9 @@ no account, no backend — just your vault.
   The filters belong to the pane rather than to settings; in the chat pane they scope which
   papers an answer may draw on, and the answer's source list says what it was narrowed to.
 - **Claude Code / Codex via MCP (desktop):** let an external AI search the live library,
-  find and add PubMed papers, safely create/edit/move/trash Markdown notes, and compile a cited
-  manuscript. The MCP path never calls this plugin's chat, summary, or reranking LLM.
+  find, add, and summarize papers, safely create/edit/move/trash Markdown notes, and compile a
+  cited manuscript. Summary prose comes from Claude/Codex; the MCP path never calls this plugin's
+  chat, summary, or reranking LLM.
 
 ---
 
@@ -136,6 +137,10 @@ safe editing workflow, example prompts, security model, and troubleshooting.
 MCP delegates reasoning and prose to Claude Code or Codex. It does not call **Chat with library**,
 paper summarization, or the LLM reranker; only library search/index rebuild may use the configured
 embedding provider.
+
+For a complete import, ask the client to add and summarize the paper. It will follow
+`add_reference` → `get_reference_source` → `save_reference_summary`: PMC full text is preferred,
+an abstract is the fallback, and a current note hash prevents overwriting concurrent edits.
 
 ---
 

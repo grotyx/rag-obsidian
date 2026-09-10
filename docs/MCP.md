@@ -2,7 +2,7 @@
 
 **English** · [한국어](MCP.ko.md)
 
-Version 0.5.0 lets Claude Code and Codex work with the vault currently open in Obsidian. The
+Version 0.5.2 lets Claude Code and Codex work with the vault currently open in Obsidian. The
 external AI finds evidence and writes prose; the plugin exposes its library, index, citation
 engine, and safe Markdown operations as MCP tools.
 
@@ -73,11 +73,42 @@ Find and save papers:
 
 ```text
 Search PubMed for cervical myelopathy frailty papers since 2023. Show the search_pubmed results
-first. After I select papers, add each one with its explicit PMID, then verify it in the library.
+first. After I select papers, add each one with its explicit PMID, retrieve the best available
+source, write a faithful structured English and Korean summary, and save it to the reference note.
 ```
 
 `add_reference` accepts only an explicit DOI, `PMID:12345`, arXiv ID, or OpenAlex work ID. It
 rejects bare numbers and titles so a fuzzy match cannot silently add the wrong paper.
+
+### External summary workflow
+
+For each selected paper, the client should perform this sequence:
+
+```text
+add_reference
+  → get_reference_source
+  → Claude Code / Codex writes Background, Methods, Results, Conclusions (+ optional Korean)
+  → save_reference_summary
+```
+
+`get_reference_source` tries PMC open-access full text first and falls back to the PubMed or stored
+abstract. It returns `sourceType` and the current whole-note `hash`. The external client must use
+only that returned text, preserve reported quantities and uncertainty, and pass both values to
+`save_reference_summary`. The save replaces only `## Summary`, keeps `## Notes` and
+`## Highlights`, and records `summary_source` and `summary_model` in frontmatter.
+
+This is intentionally a two-tool operation around the external model: the MCP server cannot make
+Claude/Codex generate text from inside a tool call, and it never redirects the request to the
+Obsidian summary LLM. If the note changes while the model is writing, saving fails with
+`CONTENT_CHANGED`; retrieve the source again before retrying.
+
+To fill summaries for references that were already imported:
+
+```text
+Page through list_references and find entries whose summarySource is null. For each one, call
+get_reference_source, write a source-grounded structured summary, and save it with
+save_reference_summary. Process them sequentially and report any NO_SOURCE_TEXT failures.
+```
 
 Write with citations:
 
@@ -96,6 +127,8 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | `rebuild_search_index` | Rebuild the complete private index | Embeddings possible; index write |
 | `list_references` | Page and filter reference metadata | Read-only |
 | `get_reference` | Read metadata and note content by citekey | Read-only |
+| `get_reference_source` | Get PMC full text or abstract for external summarization | Network possible; read-only |
+| `save_reference_summary` | Save the external model's structured summary under a hash guard | Edits a reference note |
 | `list_tags` | List library tags and counts | Read-only |
 | `search_pubmed` | Search PubMed | Network; read-only |
 | `add_reference` | Add a paper from an explicit identifier | Network; creates a note |
@@ -144,6 +177,7 @@ protect against malicious software already able to inspect your user processes a
 | `ECONNREFUSED` or authentication failure | **Restart and rotate token**, then restart the client |
 | `INDEX_NOT_READY` | Configure embeddings and call `rebuild_search_index` |
 | `CONTENT_CHANGED` | Read again, review the current text, and retry with the new hash |
+| `NO_SOURCE_TEXT` | The reference has neither retrievable PMC text nor an abstract; summarize only after supplying a source |
 | `INVALID_PATH` | Use a vault-relative `.md` path outside config/external symlinks |
 | `ALREADY_EXISTS` | Choose another path, or read existing compiled output and pass its expected hash |
 | PubMed rate/error messages | Check the PubMed API key and contact e-mail in plugin settings |

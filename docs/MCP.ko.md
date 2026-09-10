@@ -2,7 +2,7 @@
 
 [English](MCP.md) · **한국어**
 
-Academic Paper Citation Manager 0.5.0부터 Claude Code와 Codex가 실행 중인 Obsidian vault를
+Academic Paper Citation Manager 0.5.2부터 Claude Code와 Codex가 실행 중인 Obsidian vault를
 직접 검색하고 Markdown 노트를 관리할 수 있습니다. 외부 AI가 논문을 찾고 초안을 쓰며,
 플러그인은 라이브러리·검색 인덱스·인용 엔진과 안전한 파일 작업을 MCP 도구로 제공합니다.
 
@@ -79,12 +79,41 @@ Obsidian 라이브러리에서 척추 내시경 수술의 재입원 위험 요�
 
 ```text
 PubMed에서 2023년 이후 cervical myelopathy frailty 논문을 찾아줘.
-search_pubmed 결과를 먼저 표로 보여주고 아직 저장되지 않은 항목은 내가 선택한 뒤
-명시적인 PMID로 add_reference를 호출해. 저장 후 search_library로 확인해줘.
+search_pubmed 결과를 먼저 표로 보여주고, 내가 선택한 논문은 명시적인 PMID로 추가한 뒤
+가장 좋은 원문을 불러와 근거에 충실한 영문·한글 구조화 요약까지 레퍼런스 노트에 저장해줘.
 ```
 
 `add_reference`는 제목 같은 모호한 입력을 받지 않습니다. DOI, `PMID:12345`, arXiv ID,
 OpenAlex work ID처럼 명시적인 식별자만 허용하므로 잘못된 논문이 자동 저장되는 것을 줄입니다.
+
+### 외부 AI 요약 흐름
+
+선택한 논문마다 클라이언트가 다음 순서로 작업합니다.
+
+```text
+add_reference
+  → get_reference_source
+  → Claude Code / Codex가 Background, Methods, Results, Conclusions (+ 선택적 한글)을 작성
+  → save_reference_summary
+```
+
+`get_reference_source`는 PMC 공개 원문을 먼저 조회하고, 없으면 PubMed 또는 노트에 저장된
+초록을 사용합니다. 반환된 `sourceType`과 최신 노트 `hash`를 `save_reference_summary`에
+전달해야 합니다. 외부 AI는 반환된 자료만 근거로 삼고 수치와 불확실성을 보존해야 합니다.
+저장할 때는 `## Summary`만 바뀌며 `## Notes`와 `## Highlights`는 유지되고 frontmatter에
+`summary_source`와 `summary_model`이 기록됩니다.
+
+외부 모델 생성을 사이에 둔 두 도구 작업인 이유는 MCP 도구 실행 중 서버가 Claude/Codex에
+텍스트 생성을 강제할 수 없기 때문입니다. Obsidian 요약 LLM으로 우회하지도 않습니다. 생성
+중 노트가 변경되면 `CONTENT_CHANGED`로 중단되므로 원문을 다시 조회한 뒤 재시도하십시오.
+
+이미 등록된 논문의 빈 요약을 채우려면 다음처럼 요청할 수 있습니다.
+
+```text
+list_references를 끝까지 조회해서 summarySource가 null인 논문을 찾아줘. 각 논문마다
+get_reference_source로 원문을 받고 근거에 충실한 구조화 요약을 작성한 뒤
+save_reference_summary로 저장해. 순서대로 처리하고 NO_SOURCE_TEXT 실패는 따로 보고해줘.
+```
 
 ### 인용 가능한 초안 쓰기
 
@@ -104,6 +133,8 @@ Manuscripts/Review.md를 읽고 "Outcomes" 절을 보강해줘.
 | `rebuild_search_index` | 검색 인덱스 전체 재구축 | 임베딩 가능, 인덱스 변경 |
 | `list_references` | 문헌 메타데이터 필터·페이지 조회 | 읽기 전용 |
 | `get_reference` | citekey로 메타데이터와 노트 조회 | 읽기 전용 |
+| `get_reference_source` | 외부 요약용 PMC 원문 또는 초록 조회 | 네트워크 가능, 읽기 전용 |
+| `save_reference_summary` | 외부 AI의 구조화 요약을 hash 검증 후 저장 | 레퍼런스 노트 수정 |
 | `list_tags` | 문헌 태그와 개수 조회 | 읽기 전용 |
 | `search_pubmed` | PubMed 검색 | 네트워크, 읽기 전용 |
 | `add_reference` | 명시적 식별자로 문헌 노트 추가 | 네트워크, 노트 생성 |
@@ -151,6 +182,7 @@ vault 내용, API key, MCP token을 로그로 출력하지 않습니다. 같은 
 | `ECONNREFUSED` 또는 인증 실패 | 설정에서 **Restart and rotate token**, 외부 클라이언트 재시작 |
 | `INDEX_NOT_READY` | 임베딩 설정 확인 후 `rebuild_search_index` 호출 |
 | `CONTENT_CHANGED` | `read_note`로 다시 읽고 새 hash와 내용을 검토한 뒤 재시도 |
+| `NO_SOURCE_TEXT` | PMC 원문과 초록이 모두 없음. 원문을 제공하기 전에는 요약하지 않기 |
 | `INVALID_PATH` | vault 상대 `.md` 경로인지, 설정 폴더/외부 심볼릭 링크가 아닌지 확인 |
 | `ALREADY_EXISTS` | 새 경로를 사용하거나 기존 출력은 읽어서 `expected_output_hash` 전달 |
 | PubMed 제한/오류 | 플러그인 설정의 PubMed API key와 contact e-mail 확인 |

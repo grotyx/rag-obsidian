@@ -1,6 +1,6 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.5.1-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.5.2-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.5%2B-7c3aed)](https://obsidian.md)
 
@@ -50,8 +50,9 @@
   칩을 여러 개 넣으면 그 태그를 **모두** 가진 논문만 남습니다. 필터는 설정이 아니라 패널에
   저장되며, 챗 패널에서는 답변이 근거로 삼을 논문의 범위를 좁히고 출처 목록에 그 범위가 표시됩니다.
 - **MCP로 Claude Code / Codex 연결(데스크톱):** 외부 AI가 실행 중인 라이브러리를 검색하고,
-  PubMed 논문을 찾아 추가하며, Markdown 노트를 안전하게 생성·수정·이동·휴지통 처리하고,
-  인용 원고를 컴파일할 수 있습니다. MCP 경로는 플러그인의 챗·요약·rerank LLM을 호출하지 않습니다.
+  PubMed 논문을 찾아 추가·요약하며, Markdown 노트를 안전하게 생성·수정·이동·휴지통 처리하고,
+  인용 원고를 컴파일할 수 있습니다. 요약문은 Claude/Codex가 작성하며 MCP 경로는 플러그인의
+  챗·요약·rerank LLM을 호출하지 않습니다.
 
 ---
 
@@ -130,6 +131,11 @@ vault를 열어 두어야 합니다. 도구 목록, 안전한 수정 흐름, 예
 MCP에서 판단과 글쓰기는 Claude Code/Codex가 담당합니다. 플러그인의 **Chat with library**,
 논문 요약, LLM reranker는 호출하지 않으며 라이브러리 검색·인덱스 재구축만 설정된 임베딩
 provider를 사용할 수 있습니다.
+
+논문을 완전히 등록하려면 외부 AI에 “찾아서 추가하고 요약까지 저장해줘”라고 요청하십시오.
+클라이언트가 `add_reference` → `get_reference_source` → `save_reference_summary` 순서로
+진행합니다. PMC 원문을 우선 사용하고 없으면 초록을 사용하며, 최신 노트 hash가 맞지 않으면
+사용자의 동시 수정을 덮어쓰지 않고 중단합니다.
 
 ---
 

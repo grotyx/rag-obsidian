@@ -52,7 +52,7 @@ export async function handleProtocol(
   req: McpRequest,
   tools: McpTool[],
   callTool: (name: string, args: Record<string, unknown>) => Promise<unknown>,
-  version = "0.5.0"
+  version = "0.5.2"
 ): Promise<McpResponse | null> {
   if (!req || req.jsonrpc !== "2.0" || typeof req.method !== "string") {
     return mcpError(req?.id ?? null, -32600, "Invalid JSON-RPC request");
@@ -67,7 +67,7 @@ export async function handleProtocol(
       capabilities: { tools: {} },
       serverInfo: { name: "rag-obsidian", version },
       instructions:
-        "Search the library before factual writing, inspect sources when needed, and cite only returned citekeys as [@citekey].",
+        "Search the library before factual writing and cite only returned citekeys as [@citekey]. After add_reference, unless the user requested metadata only, call get_reference_source, generate a faithful summary yourself, then call save_reference_summary. The server never calls an LLM for this workflow.",
     });
   }
   if (req.method === "ping") return mcpSuccess(req.id, {});

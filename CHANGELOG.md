@@ -5,6 +5,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-09-10
+
+### Added
+
+- **Claude Code and Codex can now complete reference summaries without using Obsidian's LLM.**
+  `get_reference_source` returns PMC open-access full text when available and otherwise an abstract;
+  `save_reference_summary` writes the external model's structured summary with source/model
+  provenance while preserving Notes and Highlights.
+- `add_reference` now returns the next MCP action, and the server instructions teach clients the
+  default `add_reference` → `get_reference_source` → external generation →
+  `save_reference_summary` workflow.
+
+### Safety
+
+- Summary writes require the source read's current SHA-256 and stop with `CONTENT_CHANGED` instead
+  of overwriting a note edited during generation. The plugin performs no LLM request in this flow.
+
 ## [0.5.1] — 2026-09-10
 
 ### Fixed

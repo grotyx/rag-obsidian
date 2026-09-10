@@ -32,6 +32,7 @@ async function protocolChecks(): Promise<void> {
   );
   assert.equal(init?.result?.protocolVersion, "2025-06-18");
   assert.equal((init?.result?.serverInfo as Record<string, unknown>).name, "rag-obsidian");
+  assert.match(String(init?.result?.instructions), /get_reference_source.*save_reference_summary/);
   const defaultInit = await handleProtocol({ jsonrpc: "2.0", id: 10, method: "initialize" }, tools, call);
   assert.equal(defaultInit?.result?.protocolVersion, "2025-11-25");
   const modernInit = await handleProtocol(
@@ -213,9 +214,13 @@ async function vaultChecks(): Promise<void> {
 }
 
 async function serviceChecks(): Promise<void> {
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(process.cwd(), "src/mcp/service.ts"), "utf8"),
+    /from ["'][^"']*(?:llm\/|ingest\/summarize)/,
+  );
   assert.deepEqual(MCP_TOOLS.map((t) => t.name), [
     "library_status", "search_library", "rebuild_search_index", "list_references",
-    "get_reference", "list_tags", "search_pubmed", "add_reference", "list_notes",
+    "get_reference", "get_reference_source", "save_reference_summary", "list_tags", "search_pubmed", "add_reference", "list_notes",
     "read_note", "create_note", "update_note", "replace_in_note", "move_note",
     "trash_note", "compile_manuscript",
   ]);
@@ -223,7 +228,7 @@ async function serviceChecks(): Promise<void> {
   assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
 
   const fake = fakeApp({
-    "References/ref.md": "---\ncitekey: smith2024\ntitle: Trial\n---\n\n## Summary\n\nUseful.\n\n## Full text (extracted)\n\nvery long",
+    "References/ref.md": "---\ncitekey: smith2024\ntitle: Trial\n---\n\n## Summary\n\nUseful.\n\n## Notes\n\n## Highlights\n\n## Full text (extracted)\n\nvery long",
   });
   const item = {
     type: "article-journal", title: "Trial", citekey: "smith2024", status: "read",
@@ -266,6 +271,8 @@ async function serviceChecks(): Promise<void> {
     vaultPath: "/vault/Research",
     searchPubmed: async () => [{ pmid: "123", pmc: "", item }],
     fetchMetadata: async () => ({ type: "article-journal", title: "New", PMID: "999" }),
+    fetchPubmedRecord: async () => ({ abstract: "PubMed abstract", descriptors: [], keywords: [], pmc: "PMC123" }),
+    fetchPmcFullText: async () => "Complete article body with quantitative results.",
   });
 
   assert.deepEqual(await service.callTool("library_status", {}), {
@@ -283,9 +290,38 @@ async function serviceChecks(): Promise<void> {
 
   const refs = await service.callTool("list_references", { tags: ["Spine"] }) as any;
   assert.equal(refs.references[0].citekey, "smith2024");
+  assert.equal(refs.references[0].summarySource, null);
   const ref = await service.callTool("get_reference", { citekey: "smith2024" }) as any;
   assert.equal(ref.fullTextOmitted, true);
   assert.doesNotMatch(ref.content, /very long/);
+  const source = await service.callTool("get_reference_source", { citekey: "smith2024" }) as any;
+  assert.equal(source.sourceType, "pmc-fulltext");
+  assert.match(source.sourceLabel, /PMC123/);
+  assert.match(source.sourceText, /Complete article body/);
+  assert.equal(source.hash, ref.hash);
+  const saved = await service.callTool("save_reference_summary", {
+    citekey: "smith2024",
+    expected_hash: source.hash,
+    source_type: source.sourceType,
+    summary_model: "claude-code",
+    background: "Background.",
+    methods: "Methods.",
+    results: "Results.",
+    conclusions: "Conclusions.",
+    korean: "한국어 요약.",
+  }) as any;
+  const summarized = fake.files.get("References/ref.md")?.content ?? "";
+  assert.equal(saved.summarySource, "pmc-fulltext");
+  assert.match(summarized, /^summary_source: pmc-fulltext$/m);
+  assert.match(summarized, /^summary_model: claude-code$/m);
+  assert.match(summarized, /\*\*Results\*\*\nResults\./);
+  assert.match(summarized, /\*\*한국어 요약 \(KR\)\*\*\n한국어 요약\./);
+  assert.match(summarized, /## Notes\n\n## Highlights/);
+  assert.doesNotMatch(summarized, /Useful\./);
+  await assert.rejects(() => service.callTool("save_reference_summary", {
+    citekey: "smith2024", expected_hash: source.hash, source_type: "pmc-fulltext",
+    background: "B", methods: "M", results: "R", conclusions: "C",
+  }), /CONTENT_CHANGED/);
   const storedReference = fake.files.get("References/ref.md");
   if (storedReference) storedReference.content = "x".repeat(60_000);
   const truncatedRef = await service.callTool("get_reference", { citekey: "smith2024" }) as any;
@@ -300,7 +336,20 @@ async function serviceChecks(): Promise<void> {
   await assert.rejects(() => service.callTool("add_reference", { identifier: "a title" }), /explicit identifier/i);
   const added = await service.callTool("add_reference", { identifier: "PMID:999" }) as any;
   assert.equal(added.status, "created");
+  assert.deepEqual(added.nextAction, {
+    tool: "get_reference_source",
+    arguments: { citekey: added.citekey },
+    then: "Generate a source-grounded summary and call save_reference_summary with the returned hash and sourceType.",
+  });
   assert.equal(created, true);
+
+  const abstractService = new McpService(plugin, vault, {
+    fetchPubmedRecord: async () => ({ abstract: "API abstract", descriptors: [], keywords: [], pmc: "PMC123" }),
+    fetchPmcFullText: async () => "",
+  });
+  const abstractSource = await abstractService.callTool("get_reference_source", { citekey: "smith2024" }) as any;
+  assert.equal(abstractSource.sourceType, "pubmed-abstract");
+  assert.equal(abstractSource.sourceText, "API abstract");
   const blank = await service.callTool("create_note", { path: "Blank.md", content: "" }) as any;
   assert.equal(blank.path, "Blank.md");
 
