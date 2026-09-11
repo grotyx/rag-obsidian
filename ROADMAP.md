@@ -18,6 +18,16 @@ OpenRouter.
 > (visual citation map, review pass with `npm run lint`, desktop declaration + `docs/MOBILE.md`). Two items
 > stay with the user: the community-store submission itself (`docs/STORE_SUBMISSION.md` has the text)
 > and the on-device iOS run (`docs/MOBILE.md` has the script). Phase 4 waits for a library that needs it.
+>
+> **Update (2026-09-11, v0.6.2):** the MCP bridge landed (0.5.0, see "Shipped in 0.5.0" above) and the
+> Community-directory prep from item 11 shipped as 0.6.0 (plugin id `academic-paper-citation-manager`,
+> desktop-only declaration, `docs/MIGRATION-0.6.md`) — the maintainer's store submission is still the
+> only remaining external step. 0.6.1 fixed an MCP discovery bug on non-ASCII vault paths (NFC/NFD
+> Unicode normalization). 0.6.2 added retrieval-quality work outside the original phase numbering:
+> `tags`/`mesh_terms` now boost full-text relevance (`index/store.ts`'s `tagText` field) instead of
+> only filtering, and the LLM reranker (opt-in, `Settings → Rerank chat results with the LLM`) can
+> widen its candidate pool with citation-graph-coupled papers the text search missed
+> (`index/rerank.ts`'s `coupledCandidates`). Phase 4 still waits for a library that needs it.
 
 ## Phase 1 — things that bite during normal use (do first)
 

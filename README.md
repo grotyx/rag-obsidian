@@ -283,7 +283,7 @@ See [`docs/MCP.md`](./docs/MCP.md) for external-AI setup,
 - Source builds/deployments include CSL styles under `styles/` (CC BY-SA 3.0; see
   `styles/README.md`). Community installs fetch and cache a selected CSL style/locale if it is
   not present in the three release files. Plugin code is MIT.
-- Mobile installation is not supported in 0.6.0; see [docs/MOBILE.md](docs/MOBILE.md).
+- Mobile installation is not supported as of 0.6.0; see [docs/MOBILE.md](docs/MOBILE.md).
 
 ## 🔒 Network and privacy
 

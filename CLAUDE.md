@@ -242,6 +242,9 @@ prefix. A release commit may use `X.Y.Z: summary`.
 The deck (`presentation/build_deck.py`) reads its version from `manifest.json`, but the prose
 docs (`lecture_script.md`, `slides_content.md`, `lecture_script_tts.md`) hardcode it — grep `v0.X`
 under `presentation/`; the TTS script spells it in Hangul (`영 점 육`), grep `점` there.
+`docs/STORE_SUBMISSION.md`'s release-contract table also hardcodes the version (twice) and the
+maintainer checklist's tag instruction (once) — it went stale for two releases (0.6.1, 0.6.2)
+before anyone noticed, since nothing points at it on a normal release; grep `0.6.` there too.
 
 ## Git
 

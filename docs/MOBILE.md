@@ -1,7 +1,7 @@
 # Mobile support
 
-Academic Paper Citation Manager 0.6.0 is declared `isDesktopOnly: true` and cannot be installed
-from the Obsidian Community directory on mobile.
+Academic Paper Citation Manager is declared `isDesktopOnly: true` as of 0.6.0 and cannot be
+installed from the Obsidian Community directory on mobile.
 
 The plugin bundle includes the optional live MCP server, which depends on Node APIs available only
 in Obsidian Desktop. Although many citation and library modules use cross-platform Obsidian APIs,

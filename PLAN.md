@@ -1,7 +1,11 @@
 # Obsidian RAG Bibliography Manager — Concept & Plan
 
-**Status:** Phase 0–5 built (verified, 169 integration checks green) · **Date:** 2026-09-07
-**Working name:** *RAG Obsidian* (alt: ObsiCite, Athenaeum, Marginalia, Codex)
+**Status:** Phase 0–6 built and released as **v0.6.2** (community-ready desktop build, 205+ integration
+checks green) · **Originally written:** 2026-09-07 · **Current status:** see [CLAUDE.md](CLAUDE.md) and
+[ROADMAP.md](ROADMAP.md) — this file is the founding design doc; treat §7's phase numbering as
+historical (superseded by ROADMAP.md's post-0.4.12 phase reboot).
+**Name:** *Academic Paper Citation Manager* (plugin id `academic-paper-citation-manager`, working name
+*RAG Obsidian* through 0.5.2 — see `docs/MIGRATION-0.6.md`).
 
 ---
 
