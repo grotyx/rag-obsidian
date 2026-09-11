@@ -160,6 +160,29 @@ address lives in the repo.
 `.obsidian/plugins/`); `npm test` builds its own throwaway `_testvault-auto/` and wipes it each
 run. A vault elsewhere works too (see `.env` → `VAULT_PLUGIN_DIR`, and `npm run deploy`).
 
+## Working style: plan on Opus, implement on Sonnet subagents
+
+For any non-trivial coding task in this project (a new feature, a multi-file change, a bug whose
+fix isn't a one-liner) — not a typo fix or a single-line tweak:
+
+1. **Plan first, fully.** Read the relevant code, form the actual plan (which files, which
+   functions, what the tricky part is), before writing any code. This step deserves the session's
+   full reasoning budget.
+2. **Delegate implementation to Sonnet subagents.** Once the plan is concrete, hand well-scoped
+   pieces to the `Agent` tool with `model: "sonnet"` rather than writing the code inline. Split
+   independent pieces into parallel `Agent` calls in one message (see the tool's own guidance on
+   when a fork vs. a fresh agent is right); a piece with a lot of unresolved judgment calls stays
+   with the orchestrator instead of being delegated half-specified.
+3. **The orchestrator still verifies.** A subagent's report is not proof — read its diff, run
+   `npm run build` / `npm run lint` / `npm test`, and do the in-vault CDP check (see Testing
+   approach above) before trusting the work is done. This project's whole testing discipline
+   (mutation-check new assertions, verify live in `_testvault`) applies to subagent output too,
+   not just code written directly.
+
+This does not override the tool's own bar for when to reach for `Agent` at all — a change small
+enough to just make directly should still be made directly, plan-then-delegate is for work that
+actually has a planning step worth separating from typing.
+
 ## Conventions
 
 - TypeScript, strict null checks, esbuild single-file bundle (`main.js`, gitignored — ship via release).
