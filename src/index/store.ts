@@ -13,7 +13,7 @@ import { Chunk } from "./chunker";
 
 /** Bump on any Orama schema change: an index written under an older number cannot be
  *  restored into the new schema, so `IndexManager.restore` drops it and asks for a rebuild. */
-export const INDEX_SCHEMA = 2;
+export const INDEX_SCHEMA = 3;
 
 export interface StoredMeta {
   modelId: string;
@@ -99,6 +99,10 @@ export class VectorStore {
         // enum[] gives exact, whole-value matching (`containsAll`); string[] would tokenize,
         // so a multi-word tag like "Spinal Fusion" could never be filtered on as one value.
         tags: "enum[]",
+        // A tokenized copy of the same tags, `enum[]` can't participate in full-text relevance
+        // (that's the point of enum) — this is what lets a query mentioning "spinal fusion"
+        // rank a chunk whose only mesh_terms/tags hit is that phrase, boosted in `search()`.
+        tagText: "string",
         author: "enum[]",
         text: "string",
         embedding: `vector[${dim}]`,
@@ -115,6 +119,7 @@ export class VectorStore {
       section: c.section,
       year: c.year,
       tags: c.tags,
+      tagText: c.tags.join(" "),
       author: c.authors,
       text: c.text,
       embedding: vectors[i],
@@ -182,6 +187,10 @@ export class VectorStore {
       similarity: 0,
       includeVectors: false,
       limit: k,
+      // A term hitting a paper's own mesh_terms/tags is a strong topical signal even when the
+      // vector side is lukewarm — moderate boost, not a filter (an unrelated query still ranks
+      // on the passage text/vector, this only sways close calls).
+      boost: { tagText: 1.5 },
       ...(Object.keys(where).length ? { where } : {}),
     } as any);
     return (res.hits as any[]).map((h) => ({

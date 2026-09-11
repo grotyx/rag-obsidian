@@ -1,6 +1,6 @@
 {
   "name": "rag-obsidian",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Academic Paper Citation Manager — AI-native citation manager for Obsidian",
   "main": "main.js",
   "type": "module",

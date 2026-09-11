@@ -3,7 +3,7 @@
 > Display name: **Academic Paper Citation Manager** · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.6.1 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.6.2 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -69,9 +69,9 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `util/pool.ts` | `mapPool` bounded concurrency + `POOL_WIDTH` (15, sized for the LLM wait) — the network/LLM half of a batch; vault writes stay sequential. Takes an optional `AbortSignal`: cancelling lets in-flight items finish, starts no new ones, and still resolves (unstarted slots come back empty) |
 | `index/providers/{ollama,openai}.ts` | embedding backends |
 | `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers (`yearFromIssued`, `authorNames`), `chunkHash` (reindex change detector) |
-| `index/store.ts` | Orama hybrid index wrapper + JSON persist/restore + `SearchFilters` (year range, tag AND, author) over the `tags`/`author` `enum[]` facets + `describeFilters` (one-line label, `""` = unfiltered); `INDEX_SCHEMA` is the rebuild marker |
+| `index/store.ts` | Orama hybrid index wrapper + JSON persist/restore + `SearchFilters` (year range, tag AND, author) over the `tags`/`author` `enum[]` facets + `describeFilters` (one-line label, `""` = unfiltered); `tagText` (tokenized tags, boosted in `search()`) lets a tag/MeSH term move full-text relevance without breaking `tags`' exact-match filtering; `INDEX_SCHEMA` is the rebuild marker |
 | `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding); `search` over-fetches ×3 and thins via `capPerReference` |
-| `index/rerank.ts` | retrieval quality, no Obsidian imports: `capPerReference` (≤3 chunks per reference, tops back up from the spill so k is still returned), `rerankHits`/`buildRerankUser`/`parseRerankOrder` (optional LLM reranker behind `llmRerank`; any failure falls back to retrieval order) |
+| `index/rerank.ts` | retrieval quality, no Obsidian imports: `capPerReference` (≤3 chunks per reference, tops back up from the spill so k is still returned), `rerankHits`/`buildRerankUser`/`parseRerankOrder` (optional LLM reranker behind `llmRerank`; any failure falls back to retrieval order), `coupledCandidates` (citation-graph papers coupled to a top hit, offered to the reranker as unscored candidates via the `CoupledLookup`/`CandidateLookup` shapes `chat/rag.ts` adapts the real `CitationGraph`/`Library` to) |
 | `graph/openalex.ts` | OpenAlex client (`resolveWork`, `fetchTitles`) |
 | `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` + `refIds` (raw cited ids, for the map's dashed nodes) + incremental upkeep: `enqueue` (debounced, one OpenAlex lookup per newly added note, no-op until the graph has been built once), `prune` (drops nodes whose note is gone), `onChange` (views redraw when either fires) |
 | `graph/layout.ts` | `layoutGraph` — deterministic force-directed layout (circle seeding, no RNG) + `topByDegree` node cap; pure math behind the Related pane's SVG map |

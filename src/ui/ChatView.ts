@@ -22,7 +22,7 @@ export class ChatView extends ItemView {
   constructor(leaf: WorkspaceLeaf, plugin: ScholarRagPlugin) {
     super(leaf);
     this.plugin = plugin;
-    this.rag = new RagChat(plugin.indexManager, plugin.library, plugin.settings);
+    this.rag = new RagChat(plugin.indexManager, plugin.library, plugin.settings, plugin.citationGraph);
   }
 
   getViewType(): string {

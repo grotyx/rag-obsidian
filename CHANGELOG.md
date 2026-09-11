@@ -6,6 +6,28 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-09-11
+
+### Added
+
+- **MeSH terms/tags now count toward search relevance, not just filtering.** Until now `tags`
+  was an Orama `enum[]` facet — exact-match only, invisible to full-text ranking, so a query
+  mentioning a MeSH heading got no credit for a paper carrying that exact heading unless the
+  user manually picked it from the filter chips. A tokenized copy of the same tags (`tagText`)
+  is now indexed as a boosted full-text field (`INDEX_SCHEMA` bumped to 3 — rebuild the search
+  index once after updating). It's a boost, not a filter: an unrelated query still ranks on
+  passage text/vector alone, this only sways close calls and tag-only term matches.
+
+- **The citation graph can now widen the reranker's candidate pool.** Vector/BM25 search and the
+  citation graph (OpenAlex `referenced_works`) were entirely separate systems — one answered "what
+  reads like the question", the other "what does this paper cite", and neither fed the other. With
+  the LLM reranker on (`Settings → Rerank chat results with the LLM`) and the citation graph built,
+  the top retrieved papers now seed a lookup for structurally coupled papers (sharing ≥2 references)
+  that the text search missed entirely, offered to the reranker as unscored candidates — it decides
+  whether they actually answer the question, so a bad match just sorts to the back rather than
+  displacing a real hit. Skipped for a filtered question (the graph doesn't know about year/tag/
+  author filters) and a no-op when the graph was never built or the reranker is off.
+
 ## [0.6.1] — 2026-09-11
 
 ### Fixed

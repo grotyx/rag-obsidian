@@ -28,7 +28,7 @@ import { formatCitation } from "../src/cite/format";
 import { CiteEngine } from "../src/cite/csl";
 import { TFile } from "obsidian";
 import { CitationGraph } from "../src/graph/citations";
-import { capPerReference, parseRerankOrder, buildRerankUser } from "../src/index/rerank";
+import { capPerReference, parseRerankOrder, buildRerankUser, coupledCandidates } from "../src/index/rerank";
 import { layoutGraph, topByDegree, LayoutNode, LayoutEdge } from "../src/graph/layout";
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, STASH_MARKER } from "../src/ingest/pdfStash";
@@ -290,6 +290,23 @@ async function main() {
     await new RagChat(idx, lib, rerankOn).answer("what is deep learning?");
     ok(lastBody().model === "chat-model", "rerank on: the answer still comes from chatModel");
     ok(lastBody().reasoning === undefined, "no `reasoning` field for a non-OpenRouter endpoint");
+
+    // Coupled papers reach the reranker's candidate pool — check by name, since the mock server's
+    // canned reply means parseRerankOrder can't tell us anything about what actually got sent.
+    const coupledTitle = "A structurally coupled paper the search never touched";
+    const libWithCoupled: any = {
+      getItem: (ck: string) => (ck === "coupled-extra" ? { title: coupledTitle, abstract: "shares references with the top hit" } : items.get(ck) ?? null),
+    };
+    const graphBuilt = { size: 1, coupled: (ck: string) => (ck === order[0] ? [{ citekey: "coupled-extra", shared: 2 }] : []) };
+    await new RagChat(idx, libWithCoupled, rerankOn, graphBuilt).answer("what is deep learning?");
+    ok(lastBody().messages?.some((m: any) => typeof m.content === "string" && m.content.includes(coupledTitle)), "rerank on + a built graph: a coupled paper the search missed reaches the LLM's candidate pool");
+
+    await new RagChat(idx, libWithCoupled, rerankOn, { size: 0, coupled: () => [{ citekey: "coupled-extra", shared: 2 }] }).answer("what is deep learning?");
+    ok(!lastBody().messages?.some((m: any) => typeof m.content === "string" && m.content.includes(coupledTitle)), "an unbuilt graph (size 0) is a no-op, even if coupled() would return something");
+
+    await new RagChat(idx, libWithCoupled, rerankOn, graphBuilt).answer("what is deep learning?", [], { yearFrom: 2020 });
+    ok(!lastBody().messages?.some((m: any) => typeof m.content === "string" && m.content.includes(coupledTitle)), "a filtered question stays within the filtered index — no unfiltered graph candidates added");
+
     // resolve sources to formatted citations (the grounding payload the UI renders)
     const sources = order.map((ck, i) => ({
       n: i + 1,
@@ -919,6 +936,28 @@ async function main() {
       (await keys({ tags: ["Spinal Fusion", "Outcome"], yearFrom: 2010 }, fstore2)) === "new2022",
       "filters still work on a restored index"
     );
+
+    // MeSH/tags sitting outside relevance was the actual gap: a query term hitting ONLY a
+    // paper's tags (not its title/body) should move its rank. Isolate it — same title/body on
+    // both notes (so `embedText` is identical, meaning the vector score ties exactly), and put
+    // the query term in ONLY one note's tags. Any score gap can only come from the tag boost.
+    // Bodies differ by one filler word so the two vectors aren't bit-identical (Orama's hybrid
+    // normalization needs a non-zero score range across candidates). The query pairs the tag-only
+    // term with a word both bodies share ("outcomes"), giving every candidate a real vector score
+    // — a query with zero vector signal anywhere degenerates Orama's hybrid fusion to NaN, which
+    // would test that edge case instead of the boost.
+    const boosted = mk("boostedTag", "Study of outcomes alpha", 2020, ["Neurostimulation"], []);
+    const plain = mk("plainText", "Study of outcomes beta", 2020, ["Other"], []);
+    const bstore = new VectorStore();
+    bstore.init(dim, providerId);
+    await bstore.addChunks([...boosted, ...plain], await embed([...boosted, ...plain].map((c) => c.embedText)));
+    const [bq] = await embed(["neurostimulation outcomes"]);
+    const bhits = await bstore.search(bq, "neurostimulation outcomes", 5, {});
+    const bscore = (ck: string) => bhits.find((h) => h.citekey === ck)?.score ?? -1;
+    ok(
+      bscore("boostedTag") > bscore("plainText"),
+      `a tag-only term match outranks an identical note without it: boosted=${bscore("boostedTag")} plain=${bscore("plainText")}`
+    );
   }
 
   // ---- 16. summary language setting ----
@@ -1395,6 +1434,36 @@ async function main() {
     const prompt = buildRerankUser("does it work?", [longHit]);
     ok(prompt.includes("[1] (x, 2024)"), "rerank prompt numbers each passage with its title/year");
     ok(prompt.includes("…") && prompt.length < 700, `rerank prompt truncates long passages: ${prompt.length} chars`);
+
+    // Structural candidates from the citation graph: papers coupled to a top hit that the
+    // search itself never surfaced, offered to the reranker (not the answer) as unscored hits.
+    const graphLib = new Map<string, { title: string; abstract?: string; issued?: unknown }>([
+      ["e", { title: "Coupled to a", abstract: "shares references with a" }],
+      ["f", { title: "Coupled to a, second", abstract: "also shares references with a" }],
+      ["g", { title: "Coupled to a, third — should be cut by maxPerHit", abstract: "text" }],
+      ["h", { title: "Coupled to c but has no abstract — should be skipped", abstract: undefined }],
+      ["b", { title: "Coupled to b but already a hit — should be skipped", abstract: "text" }],
+    ]);
+    const fakeLib = { getItem: (ck: string) => graphLib.get(ck) ?? null };
+    const fakeGraph = {
+      coupled: (citekey: string, minShared?: number) => {
+        ok(minShared === 2, `coupledCandidates asks the graph for its own default minShared: ${minShared}`);
+        if (citekey === "a") return [{ citekey: "e", shared: 3 }, { citekey: "f", shared: 2 }, { citekey: "g", shared: 2 }];
+        if (citekey === "b") return [{ citekey: "b", shared: 5 }]; // already a hit
+        if (citekey === "c") return [{ citekey: "h", shared: 2 }]; // no abstract in the library
+        return [];
+      },
+    };
+    const seedHits = [hit("a", 0, 9), hit("b", 0, 4), hit("c", 0, 3), hit("d", 0, 2)]; // d is the 4th distinct citekey, past the default top-3 anchor cutoff
+    const extra = coupledCandidates(seedHits, fakeGraph, fakeLib);
+    ok(extra.map((h) => h.citekey).sort().join() === "e,f", `coupled: only e,f survive (g cut by maxPerHit, h has no abstract, b already a hit): ${extra.map((h) => h.citekey)}`);
+    ok(extra.every((h) => h.score === 0), "coupled candidates are unscored — the reranker decides, not retrieval order");
+    ok(extra.every((h) => h.section === "abstract"), "coupled candidates carry the paper's abstract as their text");
+
+    const queriedFor: string[] = [];
+    const trackingGraph = { coupled: (ck: string) => { queriedFor.push(ck); return []; } };
+    coupledCandidates(seedHits, trackingGraph, fakeLib, { anchorHits: 1 });
+    ok(queriedFor.join() === "a", `anchorHits: 1 queries only the top hit's citekey, not b/c/d: [${queriedFor}]`);
   }
 
   // ---- 23. Plugin id migration ----

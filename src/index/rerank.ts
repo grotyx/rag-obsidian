@@ -1,6 +1,7 @@
 import { LLMClient } from "../llm/client";
 import { ScholarRagSettings } from "../types";
 import { SearchHit } from "./store";
+import { yearFromIssued } from "./chunker";
 
 /** Chunks kept per reference, so one long paper (a stashed PDF full text splits into dozens
  *  of chunks) can't take every slot in the answer's context. */
@@ -33,6 +34,66 @@ export function capPerReference(hits: SearchHit[], k: number, maxPerRef = MAX_PE
   }
   if (kept.length >= k) return kept.slice(0, k);
   return kept.concat(spill.slice(0, k - kept.length));
+}
+
+/** The `CitationGraph.coupled` shape this module needs — kept minimal so this file stays free
+ *  of Obsidian imports; `chat/rag.ts` passes the real graph in, which already matches it. */
+export interface CoupledLookup {
+  coupled(citekey: string, minShared?: number): { citekey: string; shared: number }[];
+}
+
+/** The `Library.getItem` shape this module needs, for the same reason. */
+export interface CandidateLookup {
+  getItem(citekey: string): { title?: unknown; abstract?: unknown; issued?: unknown } | null;
+}
+
+/** Papers sharing at least this many references with an anchor hit count as "coupled". */
+export const COUPLED_MIN_SHARED = 2;
+/** Coupled papers pulled in per anchor hit, so one heavily-coupled paper can't flood the pool. */
+export const COUPLED_MAX_PER_HIT = 2;
+/** Only the strongest retrieved hits seed the lookup — a weak hit's neighbourhood is noise. */
+export const COUPLED_ANCHOR_HITS = 3;
+
+/**
+ * Structural candidates the vector/BM25 search may have missed entirely: papers that share
+ * references with a paper retrieval already found strongly relevant, surfaced via the citation
+ * graph rather than text similarity. Returned as unscored hits (score 0) — they are meant to be
+ * judged by the reranker, not to outrank a real search hit on their own, so a reranker
+ * failure/timeout (which falls back to retrieval order) simply drops them to the back instead of
+ * displacing anything.
+ */
+export function coupledCandidates(
+  hits: SearchHit[],
+  graph: CoupledLookup,
+  library: CandidateLookup,
+  opts: { minShared?: number; maxPerHit?: number; anchorHits?: number } = {}
+): SearchHit[] {
+  const minShared = opts.minShared ?? COUPLED_MIN_SHARED;
+  const maxPerHit = opts.maxPerHit ?? COUPLED_MAX_PER_HIT;
+  const anchorHits = opts.anchorHits ?? COUPLED_ANCHOR_HITS;
+  const already = new Set(hits.map((h) => h.citekey));
+  const anchors = [...new Set(hits.slice(0, anchorHits).map((h) => h.citekey))];
+  const added = new Set<string>();
+  const out: SearchHit[] = [];
+  for (const anchor of anchors) {
+    for (const partner of graph.coupled(anchor, minShared).slice(0, maxPerHit)) {
+      if (already.has(partner.citekey) || added.has(partner.citekey)) continue;
+      const item = library.getItem(partner.citekey);
+      const abstract = typeof item?.abstract === "string" ? item.abstract : "";
+      if (!abstract) continue; // nothing for the reranker to actually judge — skip it
+      added.add(partner.citekey);
+      out.push({
+        id: `${partner.citekey}#coupled`,
+        citekey: partner.citekey,
+        title: typeof item?.title === "string" ? item.title : partner.citekey,
+        section: "abstract",
+        year: yearFromIssued(item?.issued),
+        text: abstract,
+        score: 0,
+      });
+    }
+  }
+  return out;
 }
 
 export const RERANK_SYSTEM =

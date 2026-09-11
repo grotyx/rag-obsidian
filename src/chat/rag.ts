@@ -1,6 +1,6 @@
 import { IndexManager } from "../index/manager";
-import { SearchFilters } from "../index/store";
-import { rerankHits, RERANK_POOL } from "../index/rerank";
+import { SearchFilters, SearchHit } from "../index/store";
+import { rerankHits, coupledCandidates, RERANK_POOL, CoupledLookup } from "../index/rerank";
 import { Library } from "../data/library";
 import { LLMClient, ChatMessage } from "../llm/client";
 import { formatCitation } from "../cite/format";
@@ -33,7 +33,10 @@ export class RagChat {
   constructor(
     private index: IndexManager,
     private library: Library,
-    private settings: ScholarRagSettings
+    private settings: ScholarRagSettings,
+    /** Optional: only used to widen the reranker's candidate pool with structurally coupled
+     *  papers (`coupledCandidates`). Absent, or a graph that was never built, is a no-op. */
+    private citationGraph?: CoupledLookup & { size: number }
   ) {}
 
   async answer(
@@ -49,7 +52,19 @@ export class RagChat {
     // actually answer the question; without it, retrieval order stands.
     const k = this.settings.topK;
     const pool = await this.index.search(query, filters, this.settings.llmRerank ? k * RERANK_POOL : k);
-    const hits = this.settings.llmRerank ? (await rerankHits(query, pool, this.settings)).slice(0, k) : pool;
+    let hits: SearchHit[];
+    if (this.settings.llmRerank) {
+      // Coupled papers bypass the filtered index (the graph doesn't know about year/tag/author
+      // filters), so only add them to an otherwise-unfiltered question — anything narrower means
+      // the user asked for that scope specifically.
+      const candidates =
+        this.citationGraph?.size && Object.keys(filters).length === 0
+          ? pool.concat(coupledCandidates(pool, this.citationGraph, this.library))
+          : pool;
+      hits = (await rerankHits(query, candidates, this.settings)).slice(0, k);
+    } else {
+      hits = pool;
+    }
     if (hits.length === 0) {
       const hint = Object.keys(filters).length ? " Try loosening the filters." : "";
       return {
