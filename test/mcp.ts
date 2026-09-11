@@ -561,6 +561,77 @@ async function httpChecks(): Promise<void> {
   }
 }
 
+/**
+ * On macOS + a cloud-sync client (OneDrive, Dropbox…), a vault folder with non-ASCII characters
+ * can be materialized in decomposed Unicode (NFD) even though the user's own typing/copy-paste
+ * of the same path is precomposed (NFC). The plugin (http.ts) and the standalone bridge
+ * (bridge.ts) hash the vault path independently to find the same discovery file — if either side
+ * skips normalization, a visually identical path hashes two different ways and the bridge reports
+ * "Obsidian MCP is unavailable" against a server that is actually running. Reproduces the real
+ * failure end to end: the server is started with an NFD vault path (as Obsidian would hand back
+ * from such a folder), the bridge is invoked with the NFC form (as a user would type it), and the
+ * exchange must still succeed.
+ */
+/** Spawns the real emitted bridge and round-trips one tools/list call, exactly as
+ *  Claude Code / Codex would over stdio. */
+function runBridgeTools(bridgePath: string, vaultArg: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [bridgePath, "--vault", vaultArg], { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => { child.kill(); reject(new Error(`bridge timeout: ${stderr}`)); }, 5_000);
+    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+      const newline = stdout.indexOf("\n");
+      if (newline < 0) return;
+      clearTimeout(timer);
+      child.kill();
+      resolve(JSON.parse(stdout.slice(0, newline)));
+    });
+    child.stdin.end(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) + "\n");
+  });
+}
+
+async function unicodeVaultPathChecks(): Promise<void> {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rag-obsidian-mcp-nfd-"));
+  const nfdName = "개인".normalize("NFD"); // decomposes into jamo — byte-distinct from the NFC form
+  const nfdVault = path.join(root, nfdName);
+  fs.mkdirSync(nfdVault, { recursive: true });
+  const nfcVault = path.join(root, "개인".normalize("NFC"));
+  // Only meaningful on a normalization-insensitive filesystem (APFS default) — elsewhere the two
+  // forms are simply different paths and the scenario this guards against cannot occur.
+  if (!fs.existsSync(nfcVault)) {
+    console.log("  (skipping: filesystem is not Unicode-normalization-insensitive)");
+    return;
+  }
+  const pluginPath = path.join(nfdVault, ".obsidian", "plugins", "academic-paper-citation-manager");
+  fs.mkdirSync(pluginPath, { recursive: true });
+  const tools = [{ name: "echo", description: "Echo.", inputSchema: { type: "object", properties: {} } }];
+
+  // Direction 1: Obsidian hands back the decomposed (NFD) form — exercises http.ts's normalize.
+  const serverA = new McpHttpServer({ vaultPath: nfdVault, pluginPath, version: "0.6.0", tools, callTool: async (_n, a) => a });
+  const infoA = await serverA.start();
+  try {
+    const bridged = await runBridgeTools(infoA.bridgePath, nfcVault);
+    assert.equal(bridged.result?.tools?.[0]?.name, "echo", "NFD server path + NFC bridge --vault must still connect (http.ts normalizes)");
+  } finally {
+    await serverA.stop();
+  }
+
+  // Direction 2: the server sees the precomposed (NFC) form but the user's --vault is decomposed
+  // (e.g. pasted from a source that already normalizes to NFD) — exercises bridge.ts's normalize.
+  const serverB = new McpHttpServer({ vaultPath: nfcVault, pluginPath, version: "0.6.0", tools, callTool: async (_n, a) => a });
+  const infoB = await serverB.start();
+  try {
+    const bridged = await runBridgeTools(infoB.bridgePath, nfdVault);
+    assert.equal(bridged.result?.tools?.[0]?.name, "echo", "NFC server path + NFD bridge --vault must still connect (bridge.ts normalizes)");
+  } finally {
+    await serverB.stop();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 async function main(): Promise<void> {
   assert.equal(DEFAULT_SETTINGS.mcpEnabled, false);
   await protocolChecks();
@@ -570,6 +641,7 @@ async function main(): Promise<void> {
   await serviceChecks();
   await manuscriptChecks();
   await httpChecks();
+  await unicodeVaultPathChecks();
   console.log("MCP checks passed");
 }
 

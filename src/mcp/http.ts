@@ -157,7 +157,17 @@ export class McpHttpServer {
   async start(): Promise<McpConnectionInfo> {
     if (this.info) return this.info;
     const { crypto, fs, http, os, pathApi } = loadDesktopNode();
-    const vaultPath = await fs.realpath(this.options.vaultPath);
+    // macOS filesystems (and cloud-sync clients like OneDrive) can hand back non-ASCII path
+    // components pre-composed or decomposed (NFC vs NFD) depending on how the folder was
+    // created — the same visible path then hashes to two different discovery filenames on the
+    // server side (here) and the bridge side (mcp-bridge.cjs), so the bridge can never find the
+    // file this process just wrote. Normalize once, right after resolving the real path.
+    // macOS filesystems (and cloud-sync clients like OneDrive) can hand back non-ASCII path
+    // components pre-composed or decomposed (NFC vs NFD) depending on how the folder was
+    // created — the same visible path then hashes to two different discovery filenames on the
+    // server side (here) and the bridge side (mcp-bridge.cjs), so the bridge can never find the
+    // file this process just wrote. Normalize once, right after resolving the real path.
+    const vaultPath = (await fs.realpath(this.options.vaultPath)).normalize("NFC");
     const token = crypto.randomBytes(32).toString("hex");
     let port = 0;
     const authorized = (header: string | undefined): boolean => {

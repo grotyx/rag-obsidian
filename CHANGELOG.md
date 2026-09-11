@@ -6,6 +6,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-09-11
+
+### Fixed
+
+- **MCP connection failed on a vault path with non-ASCII characters** (e.g. a OneDrive-synced
+  folder with Korean/accented text in the name): `connect ECONNREFUSED` or "Obsidian MCP is
+  unavailable" even with the plugin open and MCP enabled. macOS and cloud-sync clients can hand
+  back the same visible path pre-composed (NFC) or decomposed (NFD) depending on how the folder
+  was created, and the plugin (deciding the discovery filename) and the standalone bridge
+  (`mcp-bridge.cjs`, finding it) hashed the vault path independently — a form mismatch on either
+  side meant the bridge was looking for a file the plugin never wrote under that name. Both sides
+  now normalize to NFC before hashing. Root-caused and reproduced end to end (a real Obsidian
+  instance on a Korean-named OneDrive vault, and a regression test that starts the server with one
+  Unicode form and connects the real emitted bridge with the other, in both directions).
+
 ## [0.6.0] — 2026-09-11
 
 ### Changed
