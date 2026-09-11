@@ -43,7 +43,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
   instance on a Korean-named OneDrive vault, and a regression test that starts the server with one
   Unicode form and connects the real emitted bridge with the other, in both directions).
 
-## [0.6.0] — 2026-09-11
+## [0.6.0] — 2026-09-10
 
 ### Changed
 
