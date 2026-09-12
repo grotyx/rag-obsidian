@@ -183,6 +183,18 @@ This does not override the tool's own bar for when to reach for `Agent` at all �
 enough to just make directly should still be made directly, plan-then-delegate is for work that
 actually has a planning step worth separating from typing.
 
+**Option B: Meta's Muse Code CLI (`muse`), not a default.** Installed and authenticated on this
+machine (`muse exec --reasoning-effort high "<prompt>"`, headless). Reach for it only when stuck
+or a genuine second opinion is worth it, or for one large, truly independent chunk of work — never
+as the default path, and always as a deliberate, visible call, never with blanket `--yolo`/
+`--trust-workspace` baked into a habit. Two specific things to hold in mind each time: by default
+it treats this workspace as untrusted (skips `CLAUDE.md`, disables its own internal agent
+delegation) until `--trust-workspace` is passed, and running it unattended needs an explicit
+approval-mode choice (`--approval-mode never` or `--yolo`) — that is handing an external agent
+shell + write access with no per-call approval, so decide that trust level per invocation, not
+once and forget it. Verify its output exactly like a Sonnet subagent's — diff, build/lint/test,
+in-vault CDP check — before trusting it.
+
 ## Conventions
 
 - TypeScript, strict null checks, esbuild single-file bundle (`main.js`, gitignored — ship via release).
