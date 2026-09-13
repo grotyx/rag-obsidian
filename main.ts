@@ -333,6 +333,11 @@ export default class ScholarRagPlugin extends Plugin {
     // Restore persisted indexes once the vault metadata is ready.
     this.app.workspace.onLayoutReady(() => {
       void Promise.allSettled([this.indexManager.restore(), this.citationGraph.restore()]).then(async () => {
+        // A corrupt/unreadable cache used to fail silently (empty search, empty graph).
+        const indexErr = this.indexManager.restoreError;
+        const graphErr = this.citationGraph.restoreError;
+        if (indexErr) new Notice(`Search index not restored (${indexErr}) — rebuild it from the search pane.`);
+        if (graphErr) new Notice(`Citation graph cache ignored (${graphErr}) — rebuild it from the command palette.`);
         if (this.settings.mcpEnabled) await this.startMcp();
       });
     });
@@ -342,8 +347,10 @@ export default class ScholarRagPlugin extends Plugin {
       this.app.metadataCache.on("changed", (file) => {
         if (file instanceof TFile) this.indexManager.enqueue(file);
         if (file instanceof TFile) this.citationGraph.enqueue(file); // new reference joins a built graph
-        if (file.path.startsWith(this.library.folder() + "/")) this.citeCache.clear(); // reference data changed
-        else this.citeCache.delete(file.path); // citation numbering in this note may have shifted
+        if (file.path.startsWith(this.library.folder() + "/")) {
+          this.citeCache.clear(); // reference data changed
+          this.library.invalidateKeyCache();
+        } else this.citeCache.delete(file.path); // citation numbering in this note may have shifted
       })
     );
     this.registerEvent(
@@ -351,12 +358,14 @@ export default class ScholarRagPlugin extends Plugin {
         void this.indexManager.removeFile(file.path);
         void this.citationGraph.prune();
         this.citeCache.delete(file.path);
+        this.library.invalidateKeyCache();
       })
     );
     this.registerEvent(
       this.app.vault.on("rename", (file: TAbstractFile, oldPath: string) => {
         void this.indexManager.removeFile(oldPath);
         this.citeCache.delete(oldPath); // labels were cached under the old path
+        this.library.invalidateKeyCache();
         void this.citationGraph.prune();
         if (file instanceof TFile) this.indexManager.enqueue(file);
         if (file instanceof TFile) this.citationGraph.enqueue(file);

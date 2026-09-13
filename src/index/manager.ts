@@ -75,8 +75,12 @@ export class IndexManager {
     return run;
   }
 
+  /** Set when the last `restore()` failed — main.ts surfaces it instead of staying silent. */
+  restoreError: string | null = null;
+
   /** On load: restore the index if it exists AND matches the current model. */
   async restore(): Promise<void> {
+    this.restoreError = null;
     try {
       const adapter = this.app.vault.adapter;
       if (!(await adapter.exists(this.metaPath))) return;
@@ -94,6 +98,7 @@ export class IndexManager {
       console.debug(`[RAG Obsidian] index restored: ${this.store.count} chunks`);
     } catch (e) {
       console.error("[RAG Obsidian] failed to restore index", e);
+      this.restoreError = e instanceof Error ? e.message : String(e);
     }
   }
 
@@ -175,6 +180,14 @@ export class IndexManager {
       const citekey = chunks[0].citekey;
       const hash = chunkHash(chunks);
       if (oldCitekey === citekey && this.store.hashForPath(file.path) === hash) return false;
+      // Another note already holds this citekey: removing + re-adding under it would
+      // delete that note's chunks (removeCitekey clears every path with the key).
+      // Keep the first note's chunks — rebuild() skips later duplicates the same way.
+      const holder = Object.entries(this.store.paths).find(([p, ck]) => ck === citekey && p !== file.path);
+      if (holder) {
+        console.warn(`[RAG Obsidian] duplicate citekey "${citekey}" — skipping reindex of ${file.path}`);
+        return false;
+      }
       // embed + dim-check BEFORE touching the index, so a model mismatch can't drop the note
       const vecs = await this.getProvider().embed(chunks.map((c) => c.embedText));
       if (vecs[0]?.length !== this.store.dim) {

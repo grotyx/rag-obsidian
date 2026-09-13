@@ -1,7 +1,7 @@
 {
   "id": "academic-paper-citation-manager",
   "name": "Academic Paper Citation Manager",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "minAppVersion": "1.7.2",
   "description": "AI-native citation manager: PubMed search, LLM summaries, MeSH tags, CSL citations, and optional Claude Code/Codex MCP access to the live vault.",
   "author": "Sang-Min Park, M.D., Ph.D.",

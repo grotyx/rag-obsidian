@@ -99,14 +99,14 @@ export function buildBibliography(citekeys: string[], library: Library, style: C
   return formatted.map((e) => `- ${e}`).join("\n");
 }
 
-/** Split a note around its "## References" section: `base` is everything before the heading
- *  (trailing whitespace trimmed), `tail` is any later same-or-higher-level section
- *  (e.g. "## Appendix") to reattach after the freshly built bibliography. */
+/** Split a note around its References section (any heading depth: `##` or `###`):
+ *  `base` is everything before the heading (trailing whitespace trimmed), `tail` is any
+ *  later section (e.g. "## Appendix", "### Notes") to reattach after the bibliography. */
 export function splitAtReferences(content: string): { base: string; tail: string } {
-  const m = content.match(/(^|\n)##\s+References[ \t]*(\n|$)/i);
+  const m = content.match(/(^|\n)#{1,6}\s+References[ \t]*(\n|$)/i);
   if (!m || m.index === undefined) return { base: content.replace(/\s+$/, ""), tail: "" };
   const rest = content.slice(m.index + m[0].length);
-  const next = rest.search(/\n#{1,2} /);
+  const next = rest.search(/\n#{1,6} /);
   return {
     base: content.slice(0, m.index).replace(/\s+$/, ""),
     tail: next >= 0 ? rest.slice(next) : "",

@@ -536,6 +536,10 @@ async function main() {
     ok(s2.base === "" && s2.tail === "", `splitAtReferences (first line): ${JSON.stringify(s2)}`);
     const s3 = splitAtReferences("Body\n\n## References\n\n- old\n\n# Appendix\nkeep\n");
     ok(s3.base === "Body" && s3.tail === "\n# Appendix\nkeep\n", `splitAtReferences (tail kept): ${JSON.stringify(s3)}`);
+    const s4 = splitAtReferences("Body\n\n### References\n\n- old\n");
+    ok(s4.base === "Body" && s4.tail === "", `splitAtReferences (### heading): ${JSON.stringify(s4)}`);
+    const s5 = splitAtReferences("Body\n\n## References\n\n- old\n\n### Notes\nkeep\n");
+    ok(s5.base === "Body" && s5.tail === "\n### Notes\nkeep\n", `splitAtReferences (### tail kept): ${JSON.stringify(s5)}`);
 
     // "Re-summarize this reference" swaps the EN+KR block; anything after it must survive.
     const fresh = ["## Summary (EN)", "", "**Methods**", "new", "", "## 요약 (KR)", "", "새 요약", ""];

@@ -89,6 +89,7 @@ export class Library {
     this.createdCitekeys.set(citekey, { path, item });
     this.rememberIds(item, citekey, path);
     const content = buildNote(item, citekey, opts);
+    this.invalidateKeyCache();
     return this.app.vault.create(path, content);
   }
 
@@ -102,6 +103,30 @@ export class Library {
     return created?.path === f.path ? created.item : null;
   }
 
+  /** citekey → note path, rebuilt lazily and cleared by `invalidateKeyCache()`.
+   *  `getFile` used to scan the whole vault on every call — and `buildBibliography`
+   *  calls it once per cited key. */
+  private citekeyPathCache: Map<string, string> | null = null;
+
+  /** Drop the `getFile` cache; call when notes are created, changed, moved, or deleted. */
+  invalidateKeyCache(): void {
+    this.citekeyPathCache = null;
+  }
+
+  private keyCache(): Map<string, string> {
+    if (!this.citekeyPathCache) {
+      const m = new Map<string, string>();
+      const prefix = this.folder() + "/";
+      for (const file of this.app.vault.getMarkdownFiles()) {
+        if (!file.path.startsWith(prefix)) continue;
+        const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        if (fm && fm.citekey && !m.has(String(fm.citekey))) m.set(String(fm.citekey), file.path);
+      }
+      this.citekeyPathCache = m;
+    }
+    return this.citekeyPathCache;
+  }
+
   /** Find the note file whose frontmatter citekey matches (filename is decoupled from citekey). */
   getFile(citekey: string): TFile | null {
     const created = this.createdCitekeys.get(citekey);
@@ -109,11 +134,21 @@ export class Library {
       const file = this.app.vault.getAbstractFileByPath(created.path);
       if (file instanceof TFile) return file;
     }
+    const cached = this.keyCache().get(citekey);
+    if (cached) {
+      const file = this.app.vault.getAbstractFileByPath(cached);
+      if (file instanceof TFile) return file;
+      // Stale entry (rename/delete beat the invalidation) — fall through and rescan.
+      this.citekeyPathCache?.delete(citekey);
+    }
     const prefix = this.folder() + "/";
     for (const file of this.app.vault.getMarkdownFiles()) {
       if (!file.path.startsWith(prefix)) continue;
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      if (fm && String(fm.citekey) === citekey) return file;
+      if (fm && String(fm.citekey) === citekey) {
+        this.keyCache().set(citekey, file.path);
+        return file;
+      }
     }
     return null;
   }

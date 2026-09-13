@@ -1,6 +1,6 @@
 {
   "name": "rag-obsidian",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Academic Paper Citation Manager — AI-native citation manager for Obsidian",
   "main": "main.js",
   "type": "module",
@@ -11,7 +11,8 @@
     "typecheck": "tsc -noEmit -skipLibCheck",
     "lint": "eslint main.ts src",
     "test:mcp": "esbuild test/mcp.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --outfile=_test-mcp.cjs && node _test-mcp.cjs",
-    "test": "npm run test:mcp && esbuild test/integration.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --outfile=_test.cjs && node _test.cjs"
+    "test:unit": "esbuild test/unit.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --outfile=_test-unit.cjs && node _test-unit.cjs",
+    "test": "npm run test:unit && npm run test:mcp && esbuild test/integration.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --outfile=_test.cjs && node _test.cjs"
   },
   "keywords": [
     "obsidian",

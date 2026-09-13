@@ -7,20 +7,33 @@ import { requestUrl } from "obsidian";
 const RETRY_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
 const MAX_ATTEMPTS = 4;
 
+async function backoff(wait: number, res?: { headers?: Record<string, unknown> }): Promise<number> {
+  const raw = res?.headers?.["retry-after"] ?? res?.headers?.["Retry-After"];
+  const header = Number(raw);
+  // Jitter matters more than the base delay here: without it the 15 workers that hit the limit
+  // together also wake together and reproduce the burst that caused it.
+  const base = Number.isFinite(header) && header > 0 ? header * 1000 : wait;
+  const delay = base * (0.5 + Math.random());
+  await new Promise((r) => setTimeout(r, Math.min(delay, 30000)));
+  return wait * 2;
+}
+
 async function requestWithRetry(
   opts: Parameters<typeof requestUrl>[0]
 ): Promise<Awaited<ReturnType<typeof requestUrl>>> {
   let wait = 1000;
   for (let attempt = 1; ; attempt++) {
-    const res = await requestUrl(opts);
+    let res: Awaited<ReturnType<typeof requestUrl>>;
+    try {
+      res = await requestUrl(opts);
+    } catch (e) {
+      // Connection reset / timeout / DNS: same degraded-wait treatment as a 429.
+      if (attempt >= MAX_ATTEMPTS) throw e;
+      wait = await backoff(wait);
+      continue;
+    }
     if (!RETRY_STATUS.has(res.status) || attempt >= MAX_ATTEMPTS) return res;
-    const header = Number(res.headers?.["retry-after"] ?? res.headers?.["Retry-After"]);
-    // Jitter matters more than the base delay here: without it the 15 workers that hit the limit
-    // together also wake together and reproduce the burst that caused it.
-    const base = Number.isFinite(header) && header > 0 ? header * 1000 : wait;
-    const delay = base * (0.5 + Math.random());
-    await new Promise((r) => setTimeout(r, Math.min(delay, 30000)));
-    wait *= 2;
+    wait = await backoff(wait, res);
   }
 }
 import { ScholarRagSettings } from "../types";
@@ -79,9 +92,13 @@ export class LLMClient {
     });
     if (res.status >= 400) throw new Error(`Anthropic ${res.status}: ${res.text?.slice(0, 200)}`);
     const blocks = res.json?.content;
-    return Array.isArray(blocks)
+    const text = Array.isArray(blocks)
       ? blocks.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("")
       : "";
+    // Reasoning models against a low token cap return 200 with no text — surfacing that
+    // beats saving an empty answer that looks like success.
+    if (!text) throw new Error("Anthropic returned no text content (raise the token cap for reasoning models)");
+    return text;
   }
 
   private async openai(messages: ChatMessage[], system: string, opts: ChatOpts = {}): Promise<string> {

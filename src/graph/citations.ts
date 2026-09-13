@@ -8,6 +8,21 @@ interface GraphData {
   idToCitekey: Record<string, string>;
 }
 
+/** The persisted cache may be hand-edited or truncated — refuse anything unexpected. */
+function isGraphData(v: unknown): v is GraphData {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  if (!o.byCitekey || typeof o.byCitekey !== "object" || Array.isArray(o.byCitekey)) return false;
+  if (!o.idToCitekey || typeof o.idToCitekey !== "object" || Array.isArray(o.idToCitekey)) return false;
+  return Object.values((o.byCitekey as Record<string, unknown>)).every(
+    (n) =>
+      !!n &&
+      typeof n === "object" &&
+      typeof (n as { openalexId?: unknown }).openalexId === "string" &&
+      Array.isArray((n as { refs?: unknown }).refs)
+  );
+}
+
 export interface MissingPaper {
   openalexId: string;
   title: string;
@@ -69,14 +84,22 @@ export class CitationGraph {
     return !!this.data.byCitekey[citekey];
   }
 
+  /** Set when the last `restore()` found a missing/unreadable/invalid cache. */
+  restoreError: string | null = null;
+
   async restore(): Promise<void> {
+    this.restoreError = null;
     const a = this.app.vault.adapter;
     if (await a.exists(this.path)) {
       try {
-        this.data = JSON.parse(await a.read(this.path));
+        const parsed: unknown = JSON.parse(await a.read(this.path));
+        if (!isGraphData(parsed)) throw new Error("unrecognized citation-graph shape");
+        this.data = parsed;
         this.missingCache.clear();
-      } catch {
-        /* ignore corrupt cache */
+      } catch (e) {
+        // Corrupt cache: keep the empty graph so a rebuild starts clean, and let
+        // main.ts tell the user instead of failing silently.
+        this.restoreError = e instanceof Error ? e.message : String(e);
       }
     }
   }
@@ -99,7 +122,14 @@ export class CitationGraph {
     const data: GraphData = { byCitekey: {}, idToCitekey: {} };
     let done = 0;
     for (const e of entries) {
-      const w = await resolveWork(e.item, this.settings.openalexMailto);
+      // One paper's network failure must not abort the whole build: keep going and
+      // preserve the previously resolved node (transient 429/offline), like flushAdds.
+      let w: Awaited<ReturnType<typeof resolveWork>> = null;
+      try {
+        w = await resolveWork(e.item, this.settings.openalexMailto);
+      } catch {
+        w = null;
+      }
       if (w && w.openalexId) {
         data.byCitekey[e.citekey] = { openalexId: w.openalexId, refs: w.referencedWorks };
         data.idToCitekey[w.openalexId] = e.citekey;

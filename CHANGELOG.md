@@ -6,6 +6,47 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.6.4] — 2026-09-13
+
+### Fixed
+
+Correctness and robustness pass over the review findings (full-project code review).
+All but the test-only change are covered by the existing suites (`test:unit` 108 checks,
+live `test/integration.ts` sections); `test:mcp` still needs a real loopback listener.
+
+- **One paper's network failure no longer aborts the whole citation-graph build**
+  (`graph/citations.ts`). `buildNow` had no per-item catch, so a single throw discarded
+  the entire pass; it now keeps going and preserves the previously resolved node on
+  transient failures, like the incremental path already did.
+- **A corrupt citation-graph cache is validated instead of trusted** (`graph/citations.ts`).
+  `restore()` assigned the parsed JSON unchecked; it now shape-checks and records
+  `restoreError` so the plugin reports it instead of failing silently.
+- **Editing a note with a duplicate citekey no longer wipes the other note's index**
+  (`index/manager.ts` + `index/store.ts`). `removeCitekey` clears every path under the
+  key, so reindexing the second note deleted the first note's chunks; the reindex now
+  skips with a warning, matching what a full rebuild already does.
+- **Bracketed years (`[2020]`) survive chat history and answers** (`chat/rag.ts`). Both
+  the history rewrite and the dangling-anchor sanitizer treated any `[digits]` as a
+  source anchor; 4-digit brackets are now left alone.
+- **`splitAtReferences` recognizes `###`-level headings** (`cite/bibliography.ts`). A
+  `### References` heading was missed entirely and a `###` subsection after the
+  bibliography was dropped from the reattached tail.
+- **`getFile` no longer scans the whole vault per lookup** (`data/library.ts`). A lazy
+  citekey→path cache (invalidated on create/change/move/delete) replaces the per-call
+  scan that `buildBibliography` repeated once per cited key.
+- **LLM calls retry network failures and surface empty answers** (`llm/client.ts`).
+  `requestWithRetry` only retried status codes; connection resets/timeouts now get the
+  same backoff. An Anthropic 200 with no text content throws instead of saving an
+  empty answer that looks like success.
+- **A failed index/graph restore is reported, not silent** (`main.ts`). `restoreError`
+  from either store produces a Notice pointing at the rebuild command.
+
+### Added
+
+- Offline `test:unit` suite (108 checks) for the pure functions in `src/ingest/*` and
+  `src/data/*`, wired into `npm test` ahead of the MCP and live integration suites.
+- Regression checks for `###`-level References headings in `test/integration.ts`.
+
 ## [0.6.3] — 2026-09-13
 
 ### Fixed

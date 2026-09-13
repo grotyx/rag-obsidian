@@ -10,6 +10,7 @@ data.json
 # test artifacts
 _test.cjs
 _test-mcp.cjs
+_test-unit.cjs
 _testvault/
 _testvault-auto/
 

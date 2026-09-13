@@ -107,8 +107,11 @@ export class RagChat {
     const cleanHistory: ChatMessage[] = history.map((m) => {
       if (m.role !== "assistant") return { role: m.role, content: m.content };
       const turnSources = m.sources;
-      const content = m.content.replace(/\[(\d+)\]/g, (_, d) => {
-        const ck = turnSources?.[parseInt(d, 10) - 1];
+      const content = m.content.replace(/\[(\d+)\]/g, (match, d) => {
+        const n = parseInt(d, 10);
+        // A 4-digit bracket is a year ("[2020]"), never a source anchor — keep it.
+        if (n >= 1000) return match;
+        const ck = turnSources?.[n - 1];
         return ck ? `[@${ck}]` : "";
       });
       return { role: m.role, content };
@@ -126,9 +129,11 @@ export class RagChat {
       noReasoning: true,
     });
 
-    // Drop dangling anchors (n outside 1..sources) so the UI never maps them.
+    // Drop dangling anchors (n outside 1..sources) so the UI never maps them —
+    // but keep 4-digit brackets: those are years ("[2020]"), not citations.
     const text = raw.replace(/\[(\d+)\]/g, (m, d) => {
       const n = parseInt(d, 10);
+      if (n >= 1000) return m;
       return n >= 1 && n <= order.length ? m : "";
     });
 
