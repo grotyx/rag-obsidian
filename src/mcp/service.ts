@@ -133,7 +133,7 @@ export const MCP_TOOLS: McpTool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   },
   {
-    name: "trash_note", description: "Move a Markdown note to Obsidian's recoverable trash. Read it immediately first and pass its current hash. This is destructive and should require user approval.",
+    name: "trash_note", description: "Move a Markdown note to Obsidian's trash — recoverable only if the vault's \"Deleted files\" setting isn't set to permanently delete. Read it immediately first and pass its current hash. This is destructive and should require user approval.",
     inputSchema: objectSchema({ path: string("Vault-relative .md path."), expected_hash: string("SHA-256 returned by read_note.") }, ["path", "expected_hash"]),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
   },

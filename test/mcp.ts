@@ -448,7 +448,7 @@ async function manuscriptChecks(): Promise<void> {
   assert.doesNotMatch(fallback.content, /\[@known\]/);
   assert.match(fallback.content, /## References/);
 
-  const fake = fakeApp({ "Draft.md": "Finding [@known]." });
+  const fake = fakeApp({ "Draft.md": "Finding [@known].", "Manuscripts/Notes.md": "Finding [@known]." });
   const vault = new McpVault(fake.app);
   const plugin: any = {
     app: fake.app,
@@ -461,6 +461,18 @@ async function manuscriptChecks(): Promise<void> {
   assert.equal(output.path, "Draft (compiled).md");
   assert.match(fake.files.get(output.path)?.content ?? "", /Known citation/);
   await assert.rejects(() => compileMcpManuscript(plugin, vault, "Draft.md"), /expected_output_hash/i);
+
+  // "Manuscripts/Notes.md" and "Manuscripts//Notes.md" are the same file — a lexical
+  // `target === path` check misses that. Deliberately NOT "./Draft.md": that variant happens to
+  // get rejected downstream anyway (validateMarkdownPath refuses any literal "." path segment as
+  // traversal), which would make this test pass whether or not the guard being tested does
+  // anything — the double-slash form has no such coincidental protection, so only this guard
+  // stands between a client and overwriting the source via output_path.
+  await assert.rejects(
+    () => compileMcpManuscript(plugin, vault, "Manuscripts/Notes.md", "Manuscripts//Notes.md"),
+    /INVALID_PATH/,
+    "an output_path that normalizes to the source is rejected, not just an identical string"
+  );
 }
 
 async function httpChecks(): Promise<void> {
@@ -504,6 +516,25 @@ async function httpChecks(): Promise<void> {
       method: "POST", headers: { "content-type": "application/json" }, body: "{}",
     });
     assert.equal(unauthorized.status, 401);
+
+    // A Bearer value can match the token's *string* length while its UTF-8 byte length differs
+    // — crypto.timingSafeEqual throws on a buffer-length mismatch rather than returning false, so
+    // comparing string length before it isn't enough. Must still answer 401, not hang. U+00C8 (È)
+    // is one UTF-16 unit like any ASCII char, but 2 UTF-8 bytes; kept within the Latin-1 range
+    // (≤ U+00FF) so `fetch` accepts it as a header value at all.
+    const nonAsciiSameStringLength = "È".repeat(info.token.length);
+    assert.equal(nonAsciiSameStringLength.length, info.token.length, "test setup: string lengths match");
+    assert.notEqual(
+      Buffer.from(nonAsciiSameStringLength).length,
+      Buffer.from(info.token).length,
+      "test setup: UTF-8 byte lengths differ"
+    );
+    const nonAsciiAuth = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${nonAsciiSameStringLength}`, "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+    });
+    assert.equal(nonAsciiAuth.status, 401, "a same-string-length, different-byte-length Bearer value is rejected cleanly, not hung");
 
     const wrongMethod = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
       headers: { authorization: `Bearer ${info.token}` },
@@ -632,6 +663,67 @@ async function unicodeVaultPathChecks(): Promise<void> {
   }
 }
 
+/**
+ * The bridge path is fixed (<pluginPath>/mcp-bridge.cjs) and the discovery path is a predictable
+ * hash of the vault path — both live in locations another local process could plant something at
+ * before this server ever starts. `start()`'s replace() already refuses to touch a planted
+ * directory (only a plain file/symlink gets clobbered), but it used to rethrow the raw ENOENT/
+ * EPERM from the OS, which tells the user nothing actionable. Confirms it now fails with a message
+ * naming the actual problem.
+ */
+async function discoveryPrePlantChecks(): Promise<void> {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rag-obsidian-mcp-preplant-"));
+  const vaultPath = path.join(root, "vault");
+  const pluginPath = path.join(vaultPath, ".obsidian", "plugins", "rag-obsidian");
+  fs.mkdirSync(pluginPath, { recursive: true });
+  // A directory where the bridge file should go — start() must neither delete it nor silently
+  // succeed; it must fail loudly with something the user can act on.
+  fs.mkdirSync(path.join(pluginPath, "mcp-bridge.cjs"));
+  const server = new McpHttpServer({
+    vaultPath,
+    pluginPath,
+    version: "0.0.0-test",
+    tools: [],
+    callTool: async () => ({}),
+  });
+  try {
+    await assert.rejects(
+      () => server.start(),
+      /Cannot replace .*mcp-bridge\.cjs.*isn't this plugin's own/,
+      "a planted directory at the bridge path fails with an actionable message, not a raw ENOTDIR/EPERM"
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+/**
+ * `stop()` used to warn-and-walk-away on a corrupt discovery file instead of removing it, leaving
+ * a stale file behind that points the bridge at a dead port until the next start() overwrites it.
+ * A parse failure can't be a live instance's valid file either way, so it's safe to clear.
+ */
+async function staleDiscoveryCleanupChecks(): Promise<void> {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rag-obsidian-mcp-stale-"));
+  const vaultPath = path.join(root, "vault");
+  const pluginPath = path.join(vaultPath, ".obsidian", "plugins", "rag-obsidian");
+  fs.mkdirSync(pluginPath, { recursive: true });
+  const server = new McpHttpServer({
+    vaultPath,
+    pluginPath,
+    version: "0.0.0-test",
+    tools: [],
+    callTool: async () => ({}),
+  });
+  try {
+    const info = await server.start();
+    fs.writeFileSync(info.discoveryPath, "not json{{{");
+    await server.stop();
+    assert.equal(fs.existsSync(info.discoveryPath), false, "a corrupted discovery file is removed on stop(), not left stale");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 async function main(): Promise<void> {
   assert.equal(DEFAULT_SETTINGS.mcpEnabled, false);
   await protocolChecks();
@@ -642,6 +734,8 @@ async function main(): Promise<void> {
   await manuscriptChecks();
   await httpChecks();
   await unicodeVaultPathChecks();
+  await discoveryPrePlantChecks();
+  await staleDiscoveryCleanupChecks();
   console.log("MCP checks passed");
 }
 

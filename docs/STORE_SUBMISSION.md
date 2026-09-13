@@ -10,10 +10,10 @@ submission requires the maintainer's Obsidian and GitHub sign-in.
 | Plugin id | `academic-paper-citation-manager` |
 | Name | Academic Paper Citation Manager |
 | Repository | `grotyx/rag-obsidian` |
-| Version | `0.6.2` |
+| Version | `0.6.3` |
 | Minimum Obsidian version | `1.7.2` |
 | Desktop-only | `true` (the bundle contains an optional Node-based MCP server) |
-| GitHub release tag | `0.6.2` — exactly the manifest version, without a `v` prefix |
+| GitHub release tag | `0.6.3` — exactly the manifest version, without a `v` prefix |
 | Required release assets | `main.js`, `manifest.json`, `styles.css` |
 
 The repository name and the MCP server name may remain `rag-obsidian`; the manifest id is the
@@ -24,7 +24,7 @@ identifier constrained by Community directory rules. Existing 0.5.x users should
 
 1. Confirm the default branch HEAD contains the intended `manifest.json`.
 2. Run `npm run lint`, `npm run build`, and `npm test` on the release commit.
-3. Create the exact GitHub tag and release matching the current `manifest.json` version (`0.6.2`
+3. Create the exact GitHub tag and release matching the current `manifest.json` version (`0.6.3`
    as of this writing); attach the three required assets from that same build. Do not prefix the
    tag with `v` for this Community release.
 4. Verify the public release assets download and the tag resolves to the release commit.

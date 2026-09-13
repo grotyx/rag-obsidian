@@ -1,7 +1,7 @@
 import { CSLItem, CiteStyle } from "../types";
 import { McpVault } from "../mcp/vault";
 import type ScholarRagPlugin from "../../main";
-import type { TFile } from "obsidian";
+import { normalizePath, type TFile } from "obsidian";
 import { formatCitation } from "../cite/format";
 import {
   decodeEntities,
@@ -92,7 +92,13 @@ export async function compileMcpManuscript(
   }
   const sourceNote = await vault.readFullNote(path);
   const target = outputPath || path.replace(/\.md$/i, "") + " (compiled).md";
-  if (target === path) throw new Error("INVALID_PATH: compiled output must differ from its source");
+  // Lexical equality misses e.g. "Draft.md" vs "./Draft.md" — the same file, different strings —
+  // which would otherwise pass this guard and let a client with the source's hash overwrite it
+  // via output_path. normalizePath is what Obsidian itself uses to key vault lookups, so it's the
+  // right canonical form to compare, not a full realpath (the target need not exist yet).
+  if (normalizePath(target) === normalizePath(path)) {
+    throw new Error("INVALID_PATH: compiled output must differ from its source");
+  }
   const rendered = await renderCompiledManuscript({
     content: sourceNote.content,
     styleId: plugin.styleForNote(source),

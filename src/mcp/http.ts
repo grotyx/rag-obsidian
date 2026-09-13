@@ -2,7 +2,7 @@
 /* global Buffer, process -- desktop MCP server runs in Electron's Node.js context */
 import type { Server, IncomingMessage, ServerResponse } from "node:http";
 import { bridgeSource } from "./bridge";
-import { handleProtocol, McpRequest, McpTool, mcpError } from "./protocol";
+import { handleProtocol, McpId, McpRequest, McpTool, mcpError } from "./protocol";
 import { validateMarkdownPath } from "./vault";
 
 const MAX_REQUEST_BYTES = 1_000_000;
@@ -162,18 +162,20 @@ export class McpHttpServer {
     // created — the same visible path then hashes to two different discovery filenames on the
     // server side (here) and the bridge side (mcp-bridge.cjs), so the bridge can never find the
     // file this process just wrote. Normalize once, right after resolving the real path.
-    // macOS filesystems (and cloud-sync clients like OneDrive) can hand back non-ASCII path
-    // components pre-composed or decomposed (NFC vs NFD) depending on how the folder was
-    // created — the same visible path then hashes to two different discovery filenames on the
-    // server side (here) and the bridge side (mcp-bridge.cjs), so the bridge can never find the
-    // file this process just wrote. Normalize once, right after resolving the real path.
     const vaultPath = (await fs.realpath(this.options.vaultPath)).normalize("NFC");
     const token = crypto.randomBytes(32).toString("hex");
+    const tokenBuf = Buffer.from(token);
     let port = 0;
     const authorized = (header: string | undefined): boolean => {
       const supplied = header?.startsWith("Bearer ") ? header.slice(7) : "";
-      if (supplied.length !== token.length) return false;
-      return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(token));
+      // Compare byte length, not string length: a non-ASCII Bearer value can match the token's
+      // *string* length while its UTF-8 buffer is a different size, and timingSafeEqual throws
+      // (not just returns false) on a buffer-length mismatch — uncaught here, that becomes an
+      // unhandled rejection with no response ever sent, hanging the caller until the socket
+      // timeout. Any unauthenticated local process could trigger it.
+      const suppliedBuf = Buffer.from(supplied);
+      if (suppliedBuf.length !== tokenBuf.length) return false;
+      return crypto.timingSafeEqual(suppliedBuf, tokenBuf);
     };
     const server = http.createServer((req, res) => {
       void this.handle(req, res, port, authorized);
@@ -196,15 +198,37 @@ export class McpHttpServer {
     const bridgePath = pathApi.join(this.options.pluginPath, "mcp-bridge.cjs");
     const discovery = JSON.stringify({ port, token, pluginVersion: this.options.version, vaultPath, pid: process.pid });
     const replace = async (temp: string, target: string): Promise<void> => {
+      // `target` sits at a predictable path (bridgePath is fixed; discoveryPath is a hash of the
+      // vault path) in a shared location — a foreign-owned file or directory planted there before
+      // this runs blocks every attempt to replace it (a sticky-bit temp dir refuses even `unlink`
+      // on a file you don't own). Same-machine-only and DoS at worst, but the raw ENOENT/EPERM
+      // this would otherwise throw gives the user nothing to act on, so name the actual problem.
+      const blocked = (): Error =>
+        new Error(
+          `Cannot replace ${target}: a file or folder already there isn't this plugin's own — remove ` +
+            `it (or check for another process using the same path) and try again.`
+        );
       try {
         await fs.rename(temp, target);
-      } catch (error) {
-        const code = (error as { code?: string }).code;
-        if (code !== "EEXIST" && code !== "EPERM") throw error;
-        const existing = await fs.lstat(target);
-        if (!existing.isFile() && !existing.isSymbolicLink()) throw error;
-        await fs.unlink(target);
-        await fs.rename(temp, target);
+      } catch {
+        // Whatever the OS's error code for "occupied" turns out to be here (EEXIST and EPERM for
+        // a file/symlink, but a directory in the way is EISDIR on some platforms, ENOTEMPTY/EPERM
+        // on others) — a self-heal is only correct when what's occupying `target` is a plain file
+        // or symlink we can safely replace (e.g. our own leftover from a previous run). Anything
+        // else, or a failure figuring that out, is `blocked()`, not a guess at the original code.
+        let existing;
+        try {
+          existing = await fs.lstat(target);
+        } catch {
+          throw blocked();
+        }
+        if (!existing.isFile() && !existing.isSymbolicLink()) throw blocked();
+        try {
+          await fs.unlink(target);
+          await fs.rename(temp, target);
+        } catch {
+          throw blocked();
+        }
       }
     };
     let bridgeTemp = "";
@@ -260,6 +284,9 @@ export class McpHttpServer {
       res.writeHead(415).end();
       return;
     }
+    // Captured outside the try so a failure past parsing can still echo it — a client can't
+    // correlate an error response to the request it sent without this.
+    let requestId: McpId | null = null;
     try {
       const raw = await readBody(req);
       let request: McpRequest;
@@ -269,6 +296,7 @@ export class McpHttpServer {
         json(res, 200, mcpError(null, -32700, "Parse error"));
         return;
       }
+      requestId = request.id ?? null;
       const response = await handleProtocol(request, this.options.tools, async (name, args) => {
         await guardToolPaths(this.options.vaultPath, { ...request, params: { name, arguments: args } });
         return this.options.callTool(name, args);
@@ -277,7 +305,7 @@ export class McpHttpServer {
       else json(res, 200, response);
     } catch (error) {
       if (error instanceof Error && error.message === "REQUEST_TOO_LARGE") res.writeHead(413).end();
-      else json(res, 200, mcpError(null, -32603, error instanceof Error ? error.message : String(error)));
+      else json(res, 200, mcpError(requestId, -32603, error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -289,11 +317,39 @@ export class McpHttpServer {
     if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
     if (!info) return;
     const { fs } = loadDesktopNode();
-    try {
-      const current = JSON.parse(await fs.readFile(info.discoveryPath, "utf8")) as { token?: string };
-      if (current.token === info.token) await fs.unlink(info.discoveryPath);
-    } catch (error) {
+    const warn = (error: unknown): void => {
       if ((error as { code?: string }).code !== "ENOENT") console.warn("[RAG Obsidian] MCP discovery cleanup failed", error);
+    };
+    let raw: string;
+    try {
+      raw = await fs.readFile(info.discoveryPath, "utf8");
+    } catch (error) {
+      warn(error);
+      return;
+    }
+    let current: { token?: string };
+    try {
+      current = JSON.parse(raw) as { token?: string };
+    } catch (error) {
+      // Unparseable content can't be another live instance's valid discovery file — it's ours,
+      // half-written by a crash, or garbage either way — so it's safe (and better than leaving it
+      // behind: the bridge would otherwise treat a stale file as "unavailable" until this plugin
+      // starts again) to clear it rather than only warn and walk away.
+      try {
+        await fs.unlink(info.discoveryPath);
+      } catch (unlinkError) {
+        warn(unlinkError);
+      }
+      warn(error);
+      return;
+    }
+    // A token mismatch means a different (newer) instance owns this file now — leave it alone.
+    if (current.token === info.token) {
+      try {
+        await fs.unlink(info.discoveryPath);
+      } catch (error) {
+        warn(error);
+      }
     }
   }
 

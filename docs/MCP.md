@@ -142,7 +142,7 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | `update_note` | Replace a whole note if its hash still matches | Edits a note |
 | `replace_in_note` | Replace one exact literal span under a hash guard | Edits a note |
 | `move_note` | Move/rename through Obsidian's file manager | Moves a note |
-| `trash_note` | Move a note to Obsidian's recoverable trash | Destructive, recoverable |
+| `trash_note` | Move a note to Obsidian's trash | Destructive, recoverable per the vault's trash setting |
 | `compile_manuscript` | Render `[@citekey]` and bibliography into a copy | Creates/updates output note |
 
 ## Editing and deletion safeguards
@@ -156,8 +156,9 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
   sync, or another client changes the note, the operation stops with `CONTENT_CHANGED`.
 - `replace_in_note` stops unless `old_text` occurs exactly once.
 - `move_note` never overwrites and uses Obsidian's file manager, including its link-update setting.
-- `trash_note` uses Obsidian's configured trash instead of permanent deletion. Also review the
-  external client's destructive-tool approval prompt.
+- `trash_note` uses Obsidian's configured trash — recoverable only if the vault's "Deleted files"
+  setting isn't set to permanently delete. Also review the external client's destructive-tool
+  approval prompt.
 - Reads are capped at 50,000 characters per call; writes at 2,000,000 characters. Writes are
   serialized.
 

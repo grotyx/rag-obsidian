@@ -149,7 +149,7 @@ Manuscripts/Review.md를 읽고 "Outcomes" 절을 보강해줘.
 | `update_note` | hash가 일치할 때 노트 전체 교체 | 노트 수정 |
 | `replace_in_note` | 정확히 한 번 나타나는 문자열만 교체 | 노트 수정 |
 | `move_note` | Obsidian API로 노트 이동·이름 변경 | 노트 이동 |
-| `trash_note` | 노트를 Obsidian 휴지통으로 이동 | 복구 가능한 삭제 |
+| `trash_note` | 노트를 Obsidian 휴지통으로 이동 | vault의 휴지통 설정에 따라 복구 가능 |
 | `compile_manuscript` | `[@citekey]`와 참고문헌을 렌더링한 사본 생성 | 출력 노트 생성/갱신 |
 
 ## 수정과 삭제의 안전 규칙
@@ -162,8 +162,9 @@ Manuscripts/Review.md를 읽고 "Outcomes" 절을 보강해줘.
   다른 창이나 동기화가 내용을 바꾸면 `CONTENT_CHANGED`로 중단되므로 다시 읽은 뒤 판단해야 합니다.
 - `replace_in_note`의 `old_text`가 0번 또는 2번 이상 나타나면 중단됩니다.
 - `move_note`는 목적지가 있으면 중단되며 Obsidian의 링크 업데이트 설정을 따릅니다.
-- `trash_note`는 영구 삭제하지 않고 Obsidian의 설정에 따른 휴지통으로 보냅니다. 외부 AI
-  클라이언트의 destructive-tool 승인 화면도 확인하십시오.
+- `trash_note`는 Obsidian의 설정에 따른 휴지통으로 보냅니다 — vault의 "Deleted files" 설정이
+  영구 삭제로 되어 있으면 복구되지 않습니다. 외부 AI 클라이언트의 destructive-tool 승인 화면도
+  확인하십시오.
 - 읽기는 한 번에 최대 50,000자, 쓰기는 최대 2,000,000자로 제한됩니다.
 - 동시에 들어온 변경은 순서대로 처리됩니다.
 

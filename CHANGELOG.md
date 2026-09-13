@@ -6,6 +6,47 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.6.3] — 2026-09-13
+
+### Fixed
+
+Independent security review of the MCP module (Meta's Muse Code, high reasoning effort), every
+finding verified against the actual source before being trusted and fixed. Nothing here is
+reachable except by another process already running on the same machine.
+
+- **A malformed Bearer header could crash the MCP server, not just fail to authenticate**
+  (`http.ts`'s `authorized`). It compared the *string* length of the supplied token to the real
+  one before `crypto.timingSafeEqual` — but a non-ASCII value can match that string length while
+  its UTF-8 buffer is a different size, and `timingSafeEqual` throws on a buffer-length mismatch
+  rather than returning `false`. Uncaught, that crashed the whole process (confirmed: an isolated
+  repro threw and terminated Node outright, worse than the hang originally suspected). Any local
+  process could trigger it, no authentication required. Now compares actual buffer length.
+- **The bridge trusted its discovery file with no ownership check** (`bridge.ts`). The file's path
+  is a predictable hash of the vault path, sitting in the shared OS temp directory — on a
+  multi-user machine, another local user could plant a file there pointing at their own listener
+  while Obsidian is closed (the normal state when an agent auto-spawns the bridge), and every tool
+  call — including note contents — would be forwarded to it. The bridge now refuses a discovery
+  file it doesn't own (POSIX only; Windows temp directories aren't shared the same way).
+- **A pre-planted file or directory at the bridge/discovery path failed with a bare, unhelpful
+  filesystem error** instead of naming the actual problem, and the recovery logic only handled
+  `EEXIST`/`EPERM` — a directory in the way throws `EISDIR` on this platform and skipped the
+  self-heal path entirely. The error now says what's blocking it and how to clear it.
+- **`compile_manuscript`'s never-overwrite-the-source guard compared paths lexically**, so
+  `Draft.md` and `./Draft.md` — the same file — passed as "different". Downstream checks happened
+  to catch the one case tested by hand, which is exactly the kind of protection that stops working
+  the moment the coincidence changes; the guard now compares normalized paths.
+- **Error responses for an unexpected server failure always carried `id: null`**, so a client
+  couldn't correlate the error to the request that caused it. Now echoes the parsed request's id
+  when one was available.
+- **`trash_note`'s description overclaimed recoverability.** It said the tool moves a note to
+  "recoverable trash" unconditionally; Obsidian's `trashFile` honors the vault's own "Deleted
+  files" setting, which can be permanent deletion. The description now says so.
+- **A corrupted discovery file was left behind on `stop()`** instead of being cleared, pointing
+  the bridge at a dead port until the next start overwrites it — self-healing but confusing in the
+  meantime. Unparseable content can't be a live instance's valid file either way, so it's removed.
+
+
+
 ## [0.6.2] — 2026-09-11
 
 ### Added

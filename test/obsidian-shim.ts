@@ -39,8 +39,19 @@ export function parseYaml(s: string): unknown {
   return yaml.load(s);
 }
 
+/** Real Obsidian's contract: backslash→slash, resolve `.`/`..` segments, drop leading/trailing
+ *  slashes. The plugin relies on `.`/`..` resolution (src/write/manuscript.ts's same-file guard
+ *  compares two notes by their normalized paths) — a shim that only collapsed slashes would pass
+ *  tests a real mismatch here would catch. */
 export function normalizePath(p: string): string {
-  return p.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+  const parts = p.replace(/\\/g, "/").split("/");
+  const out: string[] = [];
+  for (const part of parts) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") out.pop();
+    else out.push(part);
+  }
+  return out.join("/");
 }
 
 /** Stand-ins for the Obsidian classes that pure modules only reference in type position.

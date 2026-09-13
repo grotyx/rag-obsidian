@@ -52,6 +52,18 @@ function bridgeMain(): void {
     }
     let info: { port: number; token: string };
     try {
+      // The discovery path is predictable (sha256 of the vault path) and lives in a shared temp
+      // directory. On a multi-user machine, anyone can pre-plant a well-formed file there while
+      // the real server is down (e.g. Obsidian not open yet, which is the normal state when an
+      // agent auto-spawns this bridge) and point it at their own listener — this bridge would
+      // then forward tool calls, including note contents, to that attacker's server. Requiring
+      // the file's owner to match this process's own user closes that off; POSIX-only, since
+      // Windows temp directories aren't shared across users the same way and Node exposes no
+      // uid there.
+      if (process.platform !== "win32" && typeof process.getuid === "function") {
+        const owner = fs.statSync(discovery).uid;
+        if (owner !== process.getuid()) throw new Error("discovery file is not ours");
+      }
       info = JSON.parse(fs.readFileSync(discovery, "utf8"));
       if (!Number.isInteger(info.port) || typeof info.token !== "string") throw new Error("invalid discovery file");
     } catch {
