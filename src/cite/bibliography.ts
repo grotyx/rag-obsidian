@@ -106,7 +106,7 @@ export function splitAtReferences(content: string): { base: string; tail: string
   const m = content.match(/(^|\n)#{1,6}\s+References[ \t]*(\n|$)/i);
   if (!m || m.index === undefined) return { base: content.replace(/\s+$/, ""), tail: "" };
   const rest = content.slice(m.index + m[0].length);
-  const next = rest.search(/\n#{1,6} /);
+  const next = rest.search(/\n#{1,6}[ \t]/);
   return {
     base: content.slice(0, m.index).replace(/\s+$/, ""),
     tail: next >= 0 ? rest.slice(next) : "",
@@ -156,7 +156,7 @@ export function replaceSummaryBlock(content: string, newBlockLines: string[]): s
   const start = m.index + m[1].length;
   let cur = m.index + m[0].length;
   for (;;) {
-    const next = content.slice(cur).search(/\n#{1,2}[ \t]+/);
+    const next = content.slice(cur).search(/\n#{1,6}[ \t]+/);
     if (next < 0) return `${content.slice(0, start)}${block}\n`;
     const at = cur + next + 1;
     // The KR heading is the block's own second half — keep walking past it.

@@ -121,13 +121,16 @@ export class CitationGraph {
     const entries = this.library.entries(); // one vault pass (list()+getItem() per note was O(n²))
     const data: GraphData = { byCitekey: {}, idToCitekey: {} };
     let done = 0;
+    let failed = 0;
     for (const e of entries) {
       // One paper's network failure must not abort the whole build: keep going and
       // preserve the previously resolved node (transient 429/offline), like flushAdds.
       let w: Awaited<ReturnType<typeof resolveWork>> = null;
       try {
         w = await resolveWork(e.item, this.settings.openalexMailto);
-      } catch {
+      } catch (err) {
+        failed++;
+        console.warn(`[RAG Obsidian] OpenAlex lookup failed for "${e.citekey}" — keeping the previous node`, err);
         w = null;
       }
       if (w && w.openalexId) {
@@ -143,6 +146,7 @@ export class CitationGraph {
       }
       onProgress?.(++done, entries.length);
     }
+    if (failed) console.warn(`[RAG Obsidian] citation-graph build: ${failed} lookup(s) failed, previous nodes kept`);
     this.data = data;
     this.missingCache.clear();
     await this.persist();

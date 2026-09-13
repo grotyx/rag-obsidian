@@ -6,6 +6,29 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.6.5] — 2026-09-13
+
+### Fixed
+
+Follow-up to the 0.6.4 review (second review pass, six findings).
+
+- **Graph-build failures are logged per paper with a summary count** (`graph/citations.ts`).
+  The per-item catch swallowed offline/429 failures silently; each now warns with the
+  citekey and the build ends with a failed-lookup count. The return shape is unchanged.
+- **Heading-boundary rules unified at `#{1,6}` with tab support** (`cite/bibliography.ts`).
+  `replaceSummaryBlock` still used `#{1,2}` after `splitAtReferences` moved to `#{1,6}`
+  (its "same boundary rule" comment is true again), and both tails now accept a tab
+  after the hashes.
+- **Year-anchor threshold named** (`chat/rag.ts`). The `1000` cutoff is now
+  `YEAR_BRACKET_MIN` with its limit documented (≥1000 cited sources in one answer).
+
+### Added
+
+- Retry-path tests for `requestWithRetry` via an injectable transport (immediate 200,
+  one network throw then success, 429 then success); `test:unit` grows 108 → 111.
+- Stale-cache regression test: a delete beating the invalidation never resurrects a
+  ghost file.
+
 ## [0.6.4] — 2026-09-13
 
 ### Fixed

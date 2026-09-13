@@ -15,6 +15,10 @@ export interface ChatTurn extends ChatMessage {
   filterSummary?: string;
 }
 
+/** Source anchors are small ([1]…[k]); a bracket at/above this is a year ("[2020]"),
+ *  never an anchor. Libraries with ≥1000 cited sources in one answer would break this. */
+const YEAR_BRACKET_MIN = 1000;
+
 export interface AnswerSource {
   n: number;
   citekey: string;
@@ -109,8 +113,7 @@ export class RagChat {
       const turnSources = m.sources;
       const content = m.content.replace(/\[(\d+)\]/g, (match, d) => {
         const n = parseInt(d, 10);
-        // A 4-digit bracket is a year ("[2020]"), never a source anchor — keep it.
-        if (n >= 1000) return match;
+        if (n >= YEAR_BRACKET_MIN) return match;
         const ck = turnSources?.[n - 1];
         return ck ? `[@${ck}]` : "";
       });
@@ -130,10 +133,10 @@ export class RagChat {
     });
 
     // Drop dangling anchors (n outside 1..sources) so the UI never maps them —
-    // but keep 4-digit brackets: those are years ("[2020]"), not citations.
+    // but keep year-like brackets (see YEAR_BRACKET_MIN).
     const text = raw.replace(/\[(\d+)\]/g, (m, d) => {
       const n = parseInt(d, 10);
-      if (n >= 1000) return m;
+      if (n >= YEAR_BRACKET_MIN) return m;
       return n >= 1 && n <= order.length ? m : "";
     });
 

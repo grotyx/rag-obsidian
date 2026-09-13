@@ -540,6 +540,8 @@ async function main() {
     ok(s4.base === "Body" && s4.tail === "", `splitAtReferences (### heading): ${JSON.stringify(s4)}`);
     const s5 = splitAtReferences("Body\n\n## References\n\n- old\n\n### Notes\nkeep\n");
     ok(s5.base === "Body" && s5.tail === "\n### Notes\nkeep\n", `splitAtReferences (### tail kept): ${JSON.stringify(s5)}`);
+    const s6 = splitAtReferences("Body\n\n## References\n\n- old\n\n##\tNotes\nkeep\n");
+    ok(s6.tail === "\n##\tNotes\nkeep\n", `splitAtReferences (tabbed tail kept): ${JSON.stringify(s6)}`);
 
     // "Re-summarize this reference" swaps the EN+KR block; anything after it must survive.
     const fresh = ["## Summary (EN)", "", "**Methods**", "new", "", "## 요약 (KR)", "", "새 요약", ""];

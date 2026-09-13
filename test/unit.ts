@@ -18,6 +18,7 @@ import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summ
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
+import { requestWithRetry } from "../src/llm/client";
 import {
   duplicateGroups,
   inScope,
@@ -303,6 +304,33 @@ AID - 10.1000/xyz123 [doi]
   check(note.includes("# The efficacy of endoscopic diskectomy"), "buildNote: title heading");
   check(note.includes("## Notes") && note.includes("## Highlights"), "buildNote: scaffold sections");
   check(/^\d{4}-\d{2}-\d{2}$/.test(localDate()), "localDate: YYYY-MM-DD shape");
+}
+
+// ---------- llm/client.ts: requestWithRetry (injected transport, no network) ----------
+{
+  const okRes = (status: number) =>
+    ({ status, headers: {}, text: "", json: {}, arrayBuffer: new ArrayBuffer(0) }) as any;
+  let calls = 0;
+  const r1 = await requestWithRetry({ url: "https://x.test/", throw: false }, (async () => {
+    calls++;
+    return okRes(200);
+  }) as any);
+  check(r1.status === 200 && calls === 1, "requestWithRetry: immediate 200 → single call, no wait");
+
+  let flaky = 0;
+  const r2 = await requestWithRetry({ url: "https://x.test/", throw: false }, (async () => {
+    flaky++;
+    if (flaky === 1) throw new Error("socket hang up");
+    return okRes(200);
+  }) as any);
+  check(r2.status === 200 && flaky === 2, "requestWithRetry: one network throw is retried, then succeeds");
+
+  let n429 = 0;
+  const r3 = await requestWithRetry({ url: "https://x.test/", throw: false }, (async () => {
+    n429++;
+    return okRes(n429 === 1 ? 429 : 200);
+  }) as any);
+  check(r3.status === 200 && n429 === 2, "requestWithRetry: 429 is retried, then succeeds");
 }
 
 console.log(`unit: all ${passed} assertions passed`);

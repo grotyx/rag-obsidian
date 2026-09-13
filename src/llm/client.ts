@@ -18,14 +18,16 @@ async function backoff(wait: number, res?: { headers?: Record<string, unknown> }
   return wait * 2;
 }
 
-async function requestWithRetry(
-  opts: Parameters<typeof requestUrl>[0]
+/** Retried request, with the transport injectable so tests can fake failures. */
+export async function requestWithRetry(
+  opts: Parameters<typeof requestUrl>[0],
+  call: typeof requestUrl = requestUrl
 ): Promise<Awaited<ReturnType<typeof requestUrl>>> {
   let wait = 1000;
   for (let attempt = 1; ; attempt++) {
     let res: Awaited<ReturnType<typeof requestUrl>>;
     try {
-      res = await requestUrl(opts);
+      res = await call(opts);
     } catch (e) {
       // Connection reset / timeout / DNS: same degraded-wait treatment as a 429.
       if (attempt >= MAX_ATTEMPTS) throw e;
@@ -124,6 +126,8 @@ export class LLMClient {
       throw: false,
     });
     if (res.status >= 400) throw new Error(`OpenAI ${res.status}: ${res.text?.slice(0, 200)}`);
+    // Empty-text throw is Anthropic-only by design (reasoning-model token caps); the
+    // OpenAI-compatible and Ollama paths keep the endpoint default here.
     return res.json?.choices?.[0]?.message?.content ?? "";
   }
 
