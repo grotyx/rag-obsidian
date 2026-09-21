@@ -141,8 +141,9 @@ Manuscripts/Review.md를 읽고 "Outcomes" 절을 보강해줘.
 | `get_reference_source` | 외부 요약용 PMC 원문 또는 초록 조회 | 네트워크 가능, 읽기 전용 |
 | `save_reference_summary` | 외부 AI의 구조화 요약을 hash 검증 후 저장 | 레퍼런스 노트 수정 |
 | `list_tags` | 문헌 태그와 개수 조회 | 읽기 전용 |
-| `search_pubmed` | PubMed 검색 | 네트워크, 읽기 전용 |
-| `add_reference` | 명시적 식별자로 문헌 노트 추가 | 네트워크, 노트 생성 |
+| `search_pubmed` | PubMed 검색 (`limit` 최대 150, `totalCount`/`truncated`로 잘림 여부 확인) | 네트워크, 읽기 전용 |
+| `add_reference` | 명시적 식별자로 문헌 노트 추가, 선택적 `tags`는 중복 노트에도 병합 | 네트워크, 노트 생성/수정 |
+| `set_reference_fields` | 체계적 문헌고찰용 스크리닝 필드(핵심질문, include/exclude/pending, 근거수준, 설계, 메모) 설정, 태그로 미러링 | 레퍼런스 노트 수정 |
 | `list_notes` | vault의 Markdown 노트 목록 조회 | 읽기 전용 |
 | `read_note` | 노트를 구간별로 읽고 SHA-256 hash 반환 | 읽기 전용 |
 | `create_note` | 새 Markdown 노트와 상위 폴더 생성 | 노트 생성 |

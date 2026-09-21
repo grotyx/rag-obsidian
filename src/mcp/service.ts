@@ -1,10 +1,10 @@
 import type ScholarRagPlugin from "../../main";
 import type { CSLItem, SummarySections } from "../types";
 import { detectId, fetchMetadata, SourceId } from "../ingest/metadata";
-import { fetchPmcFullText, fetchPubmedRecord, PubmedHit, searchPubmed } from "../ingest/pubmedSearch";
+import { fetchPmcFullText, fetchPubmedRecord, PubmedHit, searchPubmedPage } from "../ingest/pubmedSearch";
 import { STASH_MARKER } from "../ingest/pdfStash";
 import { SearchFilters } from "../index/store";
-import { summaryBlock } from "../data/reference";
+import { summaryBlock, keywordsToTags, tagSlug } from "../data/reference";
 import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
@@ -90,16 +90,19 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "search_pubmed",
-    description: "Search PubMed when local evidence is missing. Review results, then pass an explicit PMID to add_reference. Does not add or summarize papers.",
+    description: "Search PubMed when local evidence is missing. Results are relevance-sorted, capped at limit (max 150); when the returned truncated is true, the query matched more than was returned — narrow it (e.g. a shorter [dp] date range) rather than assume this call saw everything. Review results, then pass an explicit PMID to add_reference. Does not add or summarize papers.",
     inputSchema: objectSchema({
-      query: string("PubMed query."), limit: integer("Maximum results.", 1, 50),
+      query: string("PubMed query."), limit: integer("Maximum results.", 1, 150),
       year_from: integer("Earliest publication year.", 1000, 3000), year_to: integer("Latest publication year.", 1000, 3000),
     }, ["query"]), annotations: { ...readOnly, openWorldHint: true },
   },
   {
     name: "add_reference",
-    description: "Add a reference from an explicit DOI, PMID:123, arXiv ID, or OpenAlex work ID. Returns an existing duplicate when present. It never itself calls an LLM or creates a summary; follow the returned nextAction unless the user requested metadata only.",
-    inputSchema: objectSchema({ identifier: string("Explicit DOI, prefixed PMID, arXiv ID, or OpenAlex work ID/URL.") }, ["identifier"]),
+    description: "Add a reference from an explicit DOI, PMID:123, arXiv ID, or OpenAlex work ID. Returns an existing duplicate when present. Optional tags are written on create and merged onto an existing duplicate's note (safe to re-run over overlapping search results). It never itself calls an LLM or creates a summary; follow the returned nextAction unless the user requested metadata only.",
+    inputSchema: objectSchema({
+      identifier: string("Explicit DOI, prefixed PMID, arXiv ID, or OpenAlex work ID/URL."),
+      tags: strings("Optional topic/screening tags (1-64 chars each) to set on the note, merged with any it already has."),
+    }, ["identifier"]),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   {
@@ -142,10 +145,33 @@ export const MCP_TOOLS: McpTool[] = [
     inputSchema: objectSchema({ path: string("Source manuscript .md path."), output_path: string("Optional output .md path."), expected_output_hash: string("Required current hash when replacing an existing output.") }, ["path"]),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
+  {
+    name: "set_reference_fields",
+    description: "Set screening fields on a reference (key questions, include/exclude/pending decision, evidence level, study design, a free-text note) for a systematic-review workflow. Each field is mirrored into the note's tags (e.g. kq-01, include, level-2, design-rct) so list_references/search_library can filter by them. Hash-guarded like the note-edit tools; get the current hash from get_reference or a prior call's result.",
+    inputSchema: objectSchema({
+      citekey: string("Exact citekey returned by another library tool."),
+      expected_hash: string("Whole-note SHA-256 from get_reference or a prior set_reference_fields result."),
+      fields: {
+        type: "object",
+        description: "Only the keys below are accepted; any other key is rejected and nothing is written.",
+        properties: {
+          kq: strings("Key-question ids this reference bears on, e.g. [\"1\", \"3\"]."),
+          include: { type: "string", enum: ["include", "exclude", "pending"], description: "Screening decision." },
+          level: { type: "string", enum: ["1", "2", "3", "4", "5"], description: "Evidence level." },
+          design: string("Study design (free text; slugified into a design-<slug> tag)."),
+          screening_note: string("Free-text screening note."),
+          add_tags: strings("Additional tags to add, merged and deduped."),
+          remove_tags: strings("Tags to remove."),
+        },
+        additionalProperties: false,
+      },
+    }, ["citekey", "expected_hash", "fields"]),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  },
 ];
 
 interface ServiceDeps {
-  searchPubmed: typeof searchPubmed;
+  searchPubmed: typeof searchPubmedPage;
   fetchMetadata: (id: SourceId, pubmedApiKey?: string, mailto?: string) => Promise<CSLItem>;
   fetchPubmedRecord: typeof fetchPubmedRecord;
   fetchPmcFullText: typeof fetchPmcFullText;
@@ -153,7 +179,7 @@ interface ServiceDeps {
   vaultPath?: string;
 }
 
-const DEFAULT_DEPS: ServiceDeps = { searchPubmed, fetchMetadata, fetchPubmedRecord, fetchPmcFullText };
+const DEFAULT_DEPS: ServiceDeps = { searchPubmed: searchPubmedPage, fetchMetadata, fetchPubmedRecord, fetchPmcFullText };
 
 function stringArg(args: Record<string, unknown>, name: string): string {
   const value = args[name];
@@ -190,6 +216,34 @@ function stringArrayArg(args: Record<string, unknown>, name: string): string[] |
     throw new Error(`INVALID_ARGUMENT: ${name} must be an array of non-empty strings`);
   }
   return value as string[];
+}
+
+// Tag-shaped string arrays (add_reference's tags, set_reference_fields' kq/add_tags/remove_tags):
+// same non-empty check as stringArrayArg plus a length cap so one bad element can't smuggle a
+// paragraph into frontmatter.
+function boundedStringArrayArg(args: Record<string, unknown>, name: string, maxLen = 64): string[] | undefined {
+  const value = args[name];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string" || !v.trim() || v.length > maxLen)) {
+    throw new Error(`INVALID_ARGUMENT: ${name} must be an array of strings 1-${maxLen} characters`);
+  }
+  return value as string[];
+}
+
+function enumArg<T extends string>(args: Record<string, unknown>, name: string, allowed: readonly T[]): T | undefined {
+  const value = args[name];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !(allowed as readonly string[]).includes(value)) {
+    throw new Error(`INVALID_ARGUMENT: ${name} must be one of ${allowed.join(", ")}`);
+  }
+  return value as T;
+}
+
+function optionalNonEmptyString(args: Record<string, unknown>, name: string): string | undefined {
+  const value = args[name];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) throw new Error(`INVALID_ARGUMENT: ${name} must be a non-empty string`);
+  return value.trim();
 }
 
 function yearOf(item: CSLItem): number {
@@ -244,7 +298,8 @@ export class McpService {
       case "save_reference_summary": return this.saveReferenceSummary(args);
       case "list_tags": return this.listTags();
       case "search_pubmed": return this.searchPubmed(args);
-      case "add_reference": return this.addReference(stringArg(args, "identifier"));
+      case "add_reference": return this.addReference(stringArg(args, "identifier"), boundedStringArrayArg(args, "tags"));
+      case "set_reference_fields": return this.setReferenceFields(args);
       case "list_notes": return this.vault.listNotes(optionalString(args, "folder"), numberArg(args, "limit", 50, 1, 100), optionalString(args, "cursor"));
       case "read_note": return this.vault.readNote(stringArg(args, "path"), numberArg(args, "offset", 0, 0, 2_000_000), numberArg(args, "max_chars", 12_000, 1, 50_000));
       case "create_note": return this.vault.createNote(stringArg(args, "path"), textArg(args, "content"));
@@ -333,6 +388,8 @@ export class McpService {
         authors: entry.authors, status: entry.item.status ?? "", tags: tagsOf(entry.item),
         DOI: entry.item.DOI ?? null, PMID: entry.item.PMID ?? null,
         summarySource: entry.item.summary_source ?? null,
+        kq: Array.isArray(entry.item.kq) ? entry.item.kq : null,
+        include: entry.item.include ?? null, level: entry.item.level ?? null, design: entry.item.design ?? null,
       })),
       ...(all.length > limit ? { nextCursor: page[page.length - 1].file.path } : {}),
     };
@@ -413,8 +470,8 @@ export class McpService {
   }
 
   private async searchPubmed(args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const hits: PubmedHit[] = await this.deps.searchPubmed(stringArg(args, "query"), {
-      n: numberArg(args, "limit", 8, 1, 50),
+    const { hits, total }: { hits: PubmedHit[]; total: number } = await this.deps.searchPubmed(stringArg(args, "query"), {
+      n: numberArg(args, "limit", 8, 1, 150),
       from: args.year_from === undefined ? undefined : String(numberArg(args, "year_from", 0, 1000, 3000)),
       to: args.year_to === undefined ? undefined : String(numberArg(args, "year_to", 0, 1000, 3000)),
       apiKey: this.plugin.settings.pubmedApiKey,
@@ -434,27 +491,113 @@ export class McpService {
       }
       results.push({ ...hit, existingCitekey });
     }
-    return { results };
+    return { results, totalCount: total, truncated: total > results.length };
   }
 
-  private async addReference(identifier: string): Promise<Record<string, unknown>> {
+  private async addReference(identifier: string, tags?: string[]): Promise<Record<string, unknown>> {
     const raw = identifier.trim();
     if (/^\d+$/.test(raw)) throw new Error("AMBIGUOUS_IDENTIFIER: use an explicit PMID such as PMID:12345");
     const id = detectId(raw);
     if (id.kind === "unknown") throw new Error("INVALID_IDENTIFIER: use an explicit identifier; search_pubmed can resolve a title");
     const item = await this.deps.fetchMetadata(id, this.plugin.settings.pubmedApiKey, this.plugin.settings.openalexMailto);
+    const normalizedTags = tags ? keywordsToTags(tags) : [];
     return this.vault.mutate(async () => {
       const duplicate = this.plugin.library.findDuplicate(item);
       if (duplicate) {
         const file = this.plugin.library.getFile(duplicate);
         if (!file) throw new Error(`NOT_FOUND: duplicate reference file not found: ${duplicate}`);
         await this.vault.assertPath(file.path, false);
-        return { status: "existing", citekey: duplicate, path: file.path, metadata: item, nextAction: this.summaryNextAction(duplicate) };
+        // Re-adding an already-imported paper (overlapping month chunks) must still tag it —
+        // the duplicate short-circuit otherwise silently drops tags the caller asked for.
+        let tagsAdded: string[] = [];
+        if (normalizedTags.length) {
+          await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+            const existing = Array.isArray(fm.tags) ? fm.tags.map(String) : typeof fm.tags === "string" ? [fm.tags] : [];
+            tagsAdded = normalizedTags.filter((t) => !existing.includes(t));
+            if (tagsAdded.length) fm.tags = [...existing, ...tagsAdded];
+          });
+        }
+        return { status: "existing", citekey: duplicate, path: file.path, metadata: item, tagsAdded, nextAction: this.summaryNextAction(duplicate) };
       }
       await this.vault.assertPath(`${this.plugin.library.folder()}/__mcp_write_probe__.md`, true);
-      const file = await this.plugin.library.createReference(item);
+      const file = await this.plugin.library.createReference(item, normalizedTags.length ? { tags: normalizedTags } : {});
       const citekey = this.plugin.library.findDuplicate(item) ?? file.basename;
-      return { status: "created", citekey, path: file.path, metadata: item, nextAction: this.summaryNextAction(citekey) };
+      return { status: "created", citekey, path: file.path, metadata: item, tagsAdded: normalizedTags, nextAction: this.summaryNextAction(citekey) };
+    });
+  }
+
+  private async setReferenceFields(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const citekey = stringArg(args, "citekey");
+    const expectedHash = stringArg(args, "expected_hash");
+    const fieldsRaw = args.fields;
+    if (!fieldsRaw || typeof fieldsRaw !== "object" || Array.isArray(fieldsRaw)) {
+      throw new Error("INVALID_ARGUMENT: fields must be an object");
+    }
+    const fields = fieldsRaw as Record<string, unknown>;
+    const allowedFields = new Set(["kq", "include", "level", "design", "screening_note", "add_tags", "remove_tags"]);
+    const badKey = Object.keys(fields).find((k) => !allowedFields.has(k));
+    if (badKey) throw new Error(`INVALID_ARGUMENT: unknown field: ${badKey}`);
+
+    const kq = boundedStringArrayArg(fields, "kq");
+    const include = enumArg(fields, "include", ["include", "exclude", "pending"] as const);
+    const level = enumArg(fields, "level", ["1", "2", "3", "4", "5"] as const);
+    const design = optionalNonEmptyString(fields, "design");
+    const screeningNote = optionalString(fields, "screening_note");
+    const addTags = boundedStringArrayArg(fields, "add_tags");
+    const removeTags = boundedStringArrayArg(fields, "remove_tags");
+
+    return this.vault.mutate(async () => {
+      const file = this.plugin.library.getFile(citekey);
+      if (!file) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
+      await this.vault.assertPath(file.path, false);
+      const current = await this.vault.readFullNote(file.path);
+      if (current.hash !== expectedHash) throw new Error(`CONTENT_CHANGED: read ${file.path} again before changing it`);
+
+      let finalTags: string[] = [];
+      const finalFields: Record<string, unknown> = {};
+      await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+        let tags: string[] = Array.isArray(fm.tags) ? fm.tags.map(String) : typeof fm.tags === "string" ? [fm.tags] : [];
+        const dropPrefixed = (prefix: string) => { tags = tags.filter((t) => !t.startsWith(prefix)); };
+        const addTag = (t: string) => { if (!tags.includes(t)) tags.push(t); };
+
+        if (kq !== undefined) {
+          fm.kq = kq;
+          dropPrefixed("kq-");
+          for (const k of kq) addTag(/^\d+$/.test(k) ? `kq-${k.padStart(2, "0")}` : `kq-${tagSlug(k)}`);
+        }
+        if (include !== undefined) {
+          fm.include = include;
+          tags = tags.filter((t) => t !== "include" && t !== "exclude" && t !== "pending");
+          addTag(include);
+        }
+        if (level !== undefined) {
+          fm.level = level;
+          dropPrefixed("level-");
+          addTag(`level-${level}`);
+        }
+        if (design !== undefined) {
+          fm.design = design;
+          dropPrefixed("design-");
+          addTag(`design-${tagSlug(design)}`);
+        }
+        if (screeningNote !== undefined) fm.screening_note = screeningNote;
+        if (addTags) for (const t of keywordsToTags(addTags)) addTag(t);
+        if (removeTags) {
+          const drop = new Set(keywordsToTags(removeTags));
+          tags = tags.filter((t) => !drop.has(t));
+        }
+
+        fm.tags = tags;
+        finalTags = tags;
+        finalFields.kq = Array.isArray(fm.kq) ? fm.kq : [];
+        finalFields.include = typeof fm.include === "string" ? fm.include : null;
+        finalFields.level = typeof fm.level === "string" ? fm.level : null;
+        finalFields.design = typeof fm.design === "string" ? fm.design : null;
+        finalFields.screening_note = typeof fm.screening_note === "string" ? fm.screening_note : null;
+      });
+
+      const updated = await this.vault.readFullNote(file.path);
+      return { citekey, path: file.path, hash: updated.hash, tags: finalTags, fields: finalFields };
     });
   }
 

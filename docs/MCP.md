@@ -134,8 +134,9 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | `get_reference_source` | Get PMC full text or abstract for external summarization | Network possible; read-only |
 | `save_reference_summary` | Save the external model's structured summary under a hash guard | Edits a reference note |
 | `list_tags` | List library tags and counts | Read-only |
-| `search_pubmed` | Search PubMed | Network; read-only |
-| `add_reference` | Add a paper from an explicit identifier | Network; creates a note |
+| `search_pubmed` | Search PubMed (`limit` up to 150; `totalCount`/`truncated` report if the query matched more than was returned) | Network; read-only |
+| `add_reference` | Add a paper from an explicit identifier, with optional `tags` (merged onto an existing duplicate too) | Network; creates or edits a note |
+| `set_reference_fields` | Set screening fields (key questions, include/exclude/pending, evidence level, design, note) for a systematic-review workflow, mirrored into tags | Edits a reference note |
 | `list_notes` | Page through Markdown note paths | Read-only |
 | `read_note` | Read a bounded range and return the whole-note SHA-256 | Read-only |
 | `create_note` | Create a note and missing parent folders | Creates a note |

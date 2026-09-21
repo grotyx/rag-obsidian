@@ -29,8 +29,9 @@ function auth(apiKey?: string, email?: string): string {
   return p.length ? "&" + p.join("&") : "";
 }
 
-/** esearch -> PMIDs -> esummary -> parsed CSL metadata (+ PMC id when present). */
-export async function searchPubmed(query: string, opts: PubmedSearchOpts = {}): Promise<PubmedHit[]> {
+/** esearch -> PMIDs -> esummary -> parsed CSL metadata (+ PMC id when present), alongside
+ *  esearch's total match count so a caller can tell a capped page from the whole result set. */
+export async function searchPubmedPage(query: string, opts: PubmedSearchOpts = {}): Promise<{ hits: PubmedHit[]; total: number }> {
   const n = opts.n ?? 8;
   const a = auth(opts.apiKey, opts.email);
 
@@ -42,7 +43,8 @@ export async function searchPubmed(query: string, opts: PubmedSearchOpts = {}): 
   await ncbiGate(!!opts.apiKey);
   const sr = await requestUrl({ url });
   const pmids: string[] = sr.json?.esearchresult?.idlist ?? [];
-  if (!pmids.length) return [];
+  const total = Number(sr.json?.esearchresult?.count) || 0;
+  if (!pmids.length) return { hits: [], total };
 
   await ncbiGate(!!opts.apiKey);
   const sum = await requestUrl({
@@ -76,7 +78,13 @@ export async function searchPubmed(query: string, opts: PubmedSearchOpts = {}): 
     };
     hits.push({ pmid: uid, pmc, item });
   }
-  return hits;
+  return { hits, total };
+}
+
+/** Thin wrapper over `searchPubmedPage` for callers that only need the hits (the PubMed search
+ *  modal, tests) — kept so the total-count plumbing doesn't ripple past the MCP tool that needs it. */
+export async function searchPubmed(query: string, opts: PubmedSearchOpts = {}): Promise<PubmedHit[]> {
+  return (await searchPubmedPage(query, opts)).hits;
 }
 
 export interface PubmedRecord {

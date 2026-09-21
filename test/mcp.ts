@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import * as yaml from "js-yaml";
 import { handleProtocol, McpTool } from "../src/mcp/protocol";
 import { bridgeSource } from "../src/mcp/bridge";
 import { contentHash, McpVault, validateMarkdownPath } from "../src/mcp/vault";
@@ -11,6 +12,7 @@ import { McpService, MCP_TOOLS } from "../src/mcp/service";
 import { compileMcpManuscript, renderCompiledManuscript } from "../src/write/manuscript";
 import { assertVaultPath, loadDesktopNode, mcpSetupSnippets, McpHttpServer } from "../src/mcp/http";
 import { DEFAULT_SETTINGS } from "../src/types";
+import { CiteEngine } from "../src/cite/csl";
 
 async function protocolChecks(): Promise<void> {
   const tools: McpTool[] = [{
@@ -145,6 +147,17 @@ function fakeApp(initial: Record<string, string> = {}): {
         trashed.push(file.path);
         files.delete(file.path);
       },
+      // Mirrors the real Obsidian API: parse frontmatter into an object, let the caller mutate
+      // it in place, then write the note back with the updated YAML.
+      processFrontMatter: async (file: FakeFile, fn: (fm: Record<string, unknown>) => void) => {
+        const entry = files.get(file.path);
+        if (!entry) throw new Error(`NOT_FOUND: ${file.path}`);
+        const match = entry.content.match(/^---\r?\n([\s\S]*?)\r?\n---(?=\r?\n|$)/);
+        const fm = (match ? yaml.load(match[1]) : {}) as Record<string, unknown> ?? {};
+        fn(fm);
+        const body = match ? entry.content.slice(match[0].length) : "\n" + entry.content;
+        put(file.path, `---\n${yaml.dump(fm, { lineWidth: -1 }).trimEnd()}\n---${body}`);
+      },
     },
   };
   return { app, files, trashed };
@@ -232,7 +245,7 @@ async function serviceChecks(): Promise<void> {
     "library_status", "search_library", "rebuild_search_index", "list_references",
     "get_reference", "get_reference_source", "save_reference_summary", "list_tags", "search_pubmed", "add_reference", "list_notes",
     "read_note", "create_note", "update_note", "replace_in_note", "move_note",
-    "trash_note", "compile_manuscript",
+    "trash_note", "compile_manuscript", "set_reference_fields",
   ]);
   assert.equal(MCP_TOOLS.find((t) => t.name === "search_library")?.annotations?.readOnlyHint, true);
   assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
@@ -279,7 +292,7 @@ async function serviceChecks(): Promise<void> {
   const vault = new McpVault(plugin.app, (path) => path.startsWith("References/"));
   const service = new McpService(plugin, vault, {
     vaultPath: "/vault/Research",
-    searchPubmed: async () => [{ pmid: "123", pmc: "", item }],
+    searchPubmed: async () => ({ hits: [{ pmid: "123", pmc: "", item }], total: 1 }),
     fetchMetadata: async () => ({ type: "article-journal", title: "New", PMID: "999" }),
     fetchPubmedRecord: async () => ({ abstract: "PubMed abstract", descriptors: [], keywords: [], pmc: "PMC123" }),
     fetchPmcFullText: async () => "Complete article body with quantitative results.",
@@ -342,16 +355,42 @@ async function serviceChecks(): Promise<void> {
 
   const pubmed = await service.callTool("search_pubmed", { query: "trial" }) as any;
   assert.equal(pubmed.results[0].existingCitekey, "smith2024");
+  assert.equal(pubmed.totalCount, 1);
+  assert.equal(pubmed.truncated, false);
+
+  await assert.rejects(() => service.callTool("search_pubmed", { query: "trial", limit: 151 }), /INVALID_ARGUMENT/);
+  let cappedAt = 0;
+  const cap150 = await new McpService(plugin, vault, {
+    searchPubmed: async (_q: string, opts: { n?: number }) => { cappedAt = opts.n ?? 0; return { hits: [], total: 0 }; },
+  }).callTool("search_pubmed", { query: "trial", limit: 150 }) as any;
+  assert.equal(cappedAt, 150, "limit 150 is accepted and passed through");
+  assert.deepEqual(cap150, { results: [], totalCount: 0, truncated: false });
+
+  const truncatedService = new McpService(plugin, vault, {
+    searchPubmed: async () => ({ hits: [{ pmid: "1", pmc: "", item }, { pmid: "2", pmc: "", item }], total: 500 }),
+  });
+  const truncated = await truncatedService.callTool("search_pubmed", { query: "trial", limit: 2 }) as any;
+  assert.equal(truncated.results.length, 2);
+  assert.equal(truncated.totalCount, 500);
+  assert.equal(truncated.truncated, true, "totalCount above the returned page means truncated");
+
   await assert.rejects(() => service.callTool("add_reference", { identifier: "123" }), /explicit PMID/i);
   await assert.rejects(() => service.callTool("add_reference", { identifier: "a title" }), /explicit identifier/i);
   const added = await service.callTool("add_reference", { identifier: "PMID:999" }) as any;
   assert.equal(added.status, "created");
+  assert.deepEqual(added.tagsAdded, []);
   assert.deepEqual(added.nextAction, {
     tool: "get_reference_source",
     arguments: { citekey: added.citekey },
     then: "Generate a source-grounded summary and call save_reference_summary with the returned hash and sourceType.",
   });
   assert.equal(created, true);
+
+  await assert.rejects(
+    () => service.callTool("add_reference", { identifier: "PMID:999", tags: ["ok", 5] }),
+    /INVALID_ARGUMENT/,
+    "a non-string tag is rejected"
+  );
 
   const abstractService = new McpService(plugin, vault, {
     fetchPubmedRecord: async () => ({ abstract: "API abstract", descriptors: [], keywords: [], pmc: "PMC123" }),
@@ -381,7 +420,7 @@ async function serviceChecks(): Promise<void> {
     if (path.startsWith("References/")) throw new Error("outside vault");
   });
   const blocked = new McpService(plugin, blockedVault, {
-    searchPubmed: async () => [],
+    searchPubmed: async () => ({ hits: [], total: 0 }),
     fetchMetadata: async () => ({ type: "article-journal", title: "Blocked", PMID: "999" }),
   });
   const safeSearch = await blocked.callTool("search_library", { query: "q" }) as any;
@@ -418,6 +457,138 @@ async function serviceChecks(): Promise<void> {
   ]) as any[];
   assert.equal(concurrentCreates, 1);
   assert.deepEqual(concurrent.map((result) => result.status).sort(), ["created", "existing"]);
+}
+
+/** add_reference's optional `tags`: normalized on create, and merged onto an already-imported
+ *  duplicate's frontmatter without duplicating tags it already carries (the PubMed import
+ *  workflow re-runs overlapping date ranges, so a re-add must stay idempotent). */
+async function addReferenceTagsChecks(): Promise<void> {
+  const fake = fakeApp({
+    "References/dup.md": "---\ncitekey: dup2024\ntitle: Existing\ntags:\n  - spine\n---\n\nBody\n",
+  });
+  const file = fake.files.get("References/dup.md")?.file;
+  let createOpts: unknown = null;
+  const plugin: any = {
+    manifest: { version: "0.6.6" },
+    app: fake.app,
+    settings: { referencesFolder: "References", pubmedApiKey: "", openalexMailto: "" },
+    indexManager: { ready: false, count: 0, indexedModelId: null, search: async () => [], rebuild: async () => 0 },
+    library: {
+      folder: () => "References",
+      entries: () => [],
+      getFile: (citekey: string) => citekey === "dup2024" ? file : null,
+      getItem: () => null,
+      findDuplicate: (candidate: Record<string, unknown>) => candidate.PMID === "555" ? "dup2024" : null,
+      createReference: async (_item: unknown, opts?: unknown) => { createOpts = opts; return file; },
+    },
+  };
+  const vault = new McpVault(plugin.app, (path: string) => path.startsWith("References/"));
+
+  const create = new McpService(plugin, vault, {
+    fetchMetadata: async () => ({ type: "article-journal", title: "New", PMID: "111" }),
+  });
+  const created = await create.callTool("add_reference", { identifier: "PMID:111", tags: ["Spine", "New Finding"] }) as any;
+  assert.equal(created.status, "created");
+  assert.deepEqual(created.tagsAdded, ["spine", "new-finding"]);
+  assert.deepEqual(createOpts, { tags: ["spine", "new-finding"] }, "normalized tags reach createReference's opts");
+
+  const dup = new McpService(plugin, vault, {
+    fetchMetadata: async () => ({ type: "article-journal", title: "Dup", PMID: "555" }),
+  });
+  const merged = await dup.callTool("add_reference", { identifier: "PMID:555", tags: ["Spine", "New Finding"] }) as any;
+  assert.equal(merged.status, "existing");
+  assert.deepEqual(merged.tagsAdded, ["new-finding"], "the already-present 'spine' tag is not reported as newly added");
+  const fm = yaml.load((fake.files.get("References/dup.md")?.content.match(/^---\n([\s\S]*?)\n---/) || ["", ""])[1]) as any;
+  assert.deepEqual(fm.tags, ["spine", "new-finding"], "existing tags are preserved, new ones appended once");
+
+  const rerun = await dup.callTool("add_reference", { identifier: "PMID:555", tags: ["Spine"] }) as any;
+  assert.equal(rerun.status, "existing");
+  assert.deepEqual(rerun.tagsAdded, [], "re-adding a duplicate with an already-present tag adds nothing");
+}
+
+/** set_reference_fields: whitelist enforcement, hash guard, field + mirrored-tag writes, and the
+ *  include pending -> include transition that must drop the stale 'pending' tag. */
+async function screeningFieldChecks(): Promise<void> {
+  const fake = fakeApp({
+    "References/kq.md": "---\ncitekey: kq2024\ntitle: Trial\ntags:\n  - existing-tag\n---\n\nBody\n",
+  });
+  const file = fake.files.get("References/kq.md")?.file;
+  const item = { type: "article-journal", title: "Trial", citekey: "kq2024", tags: ["existing-tag"] };
+  const plugin: any = {
+    manifest: { version: "0.6.6" },
+    app: fake.app,
+    settings: { referencesFolder: "References", pubmedApiKey: "", openalexMailto: "" },
+    indexManager: { ready: false, count: 0, indexedModelId: null, search: async () => [], rebuild: async () => 0 },
+    library: {
+      folder: () => "References",
+      entries: () => [{ citekey: "kq2024", item, file, year: "2024", authors: "", title: "Trial" }],
+      getFile: (citekey: string) => citekey === "kq2024" ? file : null,
+      getItem: (citekey: string) => citekey === "kq2024" ? item : null,
+      findDuplicate: () => null,
+      createReference: async () => file,
+    },
+  };
+  const vault = new McpVault(plugin.app, (path: string) => path.startsWith("References/"));
+  const service = new McpService(plugin, vault);
+
+  await assert.rejects(
+    () => service.callTool("set_reference_fields", { citekey: "kq2024", expected_hash: "irrelevant", fields: { bogus: "x" } }),
+    /INVALID_ARGUMENT: unknown field: bogus/,
+    "an unknown fields key is rejected before anything is written"
+  );
+  assert.doesNotMatch(fake.files.get("References/kq.md")?.content ?? "", /bogus/);
+
+  const before = await vault.readFullNote("References/kq.md");
+  await assert.rejects(
+    () => service.callTool("set_reference_fields", { citekey: "kq2024", expected_hash: "stale-hash", fields: { include: "pending" } }),
+    /CONTENT_CHANGED/
+  );
+
+  const pending = await service.callTool("set_reference_fields", {
+    citekey: "kq2024", expected_hash: before.hash,
+    fields: { kq: ["1", "3"], include: "pending", level: "2", design: "Randomized controlled trial", screening_note: "looks relevant" },
+  }) as any;
+  assert.deepEqual(pending.fields.kq, ["1", "3"]);
+  assert.equal(pending.fields.include, "pending");
+  assert.equal(pending.fields.level, "2");
+  assert.equal(pending.fields.design, "Randomized controlled trial");
+  assert.equal(pending.fields.screening_note, "looks relevant");
+  for (const tag of ["kq-01", "kq-03", "pending", "level-2", "design-randomized-controlled-trial", "existing-tag"]) {
+    assert.ok(pending.tags.includes(tag), `missing mirrored tag: ${tag}`);
+  }
+
+  const included = await service.callTool("set_reference_fields", {
+    citekey: "kq2024", expected_hash: pending.hash, fields: { include: "include" },
+  }) as any;
+  assert.ok(!included.tags.includes("pending"), "switching include away from pending drops the stale tag");
+  assert.ok(included.tags.includes("include"));
+  assert.equal(included.fields.include, "include");
+  assert.deepEqual(included.fields.kq, ["1", "3"], "fields not touched by this call keep their prior value");
+  assert.equal(included.fields.level, "2");
+
+  const retagged = await service.callTool("set_reference_fields", {
+    citekey: "kq2024", expected_hash: included.hash,
+    fields: { add_tags: ["extra-tag"], remove_tags: ["existing-tag"] },
+  }) as any;
+  assert.ok(retagged.tags.includes("extra-tag"));
+  assert.ok(!retagged.tags.includes("existing-tag"), "remove_tags takes effect");
+
+  const withScreening = { ...item, kq: ["1"], include: "include", level: "2", design: "rct" };
+  const screenedService = new McpService(
+    { ...plugin, library: { ...plugin.library, entries: () => [{ citekey: "kq2024", item: withScreening, file, year: "2024", authors: "", title: "Trial" }] } },
+    vault
+  );
+  const listed = (await screenedService.callTool("list_references", {}) as any).references[0];
+  assert.deepEqual(
+    { kq: listed.kq, include: listed.include, level: listed.level, design: listed.design },
+    { kq: ["1"], include: "include", level: "2", design: "rct" },
+    "list_references surfaces the screening fields"
+  );
+
+  const engineFields = (CiteEngine as unknown as { PLUGIN_FIELDS: Set<string> }).PLUGIN_FIELDS;
+  for (const key of ["kq", "include", "level", "design", "screening_note"]) {
+    assert.ok(engineFields.has(key), `PLUGIN_FIELDS must strip ${key} from citeproc rendering`);
+  }
 }
 
 async function manuscriptChecks(): Promise<void> {
@@ -731,6 +902,8 @@ async function main(): Promise<void> {
   distributionSecurityChecks();
   await vaultChecks();
   await serviceChecks();
+  await addReferenceTagsChecks();
+  await screeningFieldChecks();
   await manuscriptChecks();
   await httpChecks();
   await unicodeVaultPathChecks();

@@ -6,6 +6,36 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.6.7] — 2026-09-22
+
+### Added
+
+Three MCP changes for running a systematic literature import and screening from an external
+client (the owner's UBE clinical-guideline project: ~1,200 PubMed papers searched month by
+month, screened by abstract, summarized only when included).
+
+- **`search_pubmed` caps at 150 results (was 50) and reports truncation.** PubMed's busiest
+  months for this topic run to ~100 papers — every paper whose record carries only a year is
+  indexed on January 1st — so a 50-cap forced topic-splitting of the query; 150 lets a plain
+  month-by-month sweep cover everything. The response now carries `totalCount` (PubMed's own
+  match count, previously discarded) and `truncated`, so a client can *see* that a query
+  matched more than it returned instead of silently assuming it saw everything. New
+  `searchPubmedPage` in `ingest/pubmedSearch.ts`; the modal's `searchPubmed` is unchanged.
+- **`add_reference` takes optional `tags`.** Written on create, and *merged* onto the existing
+  note when the paper is already in the library — so re-running an overlapping search chunk
+  still tags what it finds. Returns `tagsAdded` (only what was newly written).
+- **New `set_reference_fields` tool** for screening: sets `kq`, `include`
+  (`include`/`exclude`/`pending`), `level` (1–5), `design`, `screening_note`, plus `add_tags`/
+  `remove_tags`, under the same whole-note hash guard as every other write. It keeps a tag
+  mirror (`kq-03`, `include`, `level-2`, `design-rct`) so `list_references`'s tag filter, the
+  fill-gaps scope, and the chat pane's tag chips can all scope by screening state with no
+  further changes; `list_references` also returns the four fields. Any key outside the
+  whitelist is rejected before anything is written. The five keys are plugin-managed frontmatter
+  and are stripped before citeproc rendering.
+
+Regression tests for all three, each mutation-checked; the orchestrator independently
+re-ran lint/build/test and re-verified one mutation claim before releasing.
+
 ## [0.6.6] — 2026-09-22
 
 ### Fixed
