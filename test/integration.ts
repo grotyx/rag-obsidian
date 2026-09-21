@@ -5,6 +5,7 @@
  *
  * Run: node esbuild bundles this with `obsidian` aliased to ./obsidian-shim.ts.
  */
+import "./dom-shim"; // sets globalThis.DOMParser before any ingest module that relies on it loads
 import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
@@ -13,7 +14,7 @@ import * as yaml from "js-yaml";
 import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
 import { duplicateGroups, inScope, BackfillScope, Library } from "../src/data/library";
 import { mapPool, POOL_WIDTH } from "../src/util/pool";
-import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
+import { buildTags, MIN_TAGS, fetchPubmedRecord } from "../src/ingest/pubmedSearch";
 import { ncbiGate, ncbiGapMs, resetNcbiGate } from "../src/ingest/ncbi";
 import { parseMeshList, buildSysPrompt, summarizeSource } from "../src/ingest/summarize";
 import { exportRefs } from "../src/cite/export";
@@ -686,6 +687,18 @@ async function main() {
         waited >= ncbiGapMs(false) - 25,
         `a keyed call after a keyless one still waits the keyless gap (${waited}ms, needs ${ncbiGapMs(false)})`
       );
+    }
+
+    // fetchPubmedRecord's PMC id must come from the article's OWN ArticleIdList, not the first
+    // one anywhere in the XML — efetch also nests an ArticleIdList per *cited reference* inside
+    // <ReferenceList>, and an unscoped selector picks up a reference's pmc id as if it were the
+    // article's. PMID 39261320 (Sellier 2024, a letter with no PMC of its own) reproduces this
+    // live: its third listed reference (Chu 2022) does have one (PMC9002063) and is exactly what
+    // an unscoped query returns first. Confirmed against the raw efetch XML before fixing.
+    {
+      const sellier = await fetchPubmedRecord("39261320");
+      ok(sellier.pmc === "", `an article with no PMC of its own reports none, not a cited reference's: pmc="${sellier.pmc}"`);
+      ok(sellier.abstract === "", "this record has no <AbstractText> either (it's a Letter) — confirms real efetch XML was parsed, not a stub");
     }
 
     // Tags: PubMed MeSH is authoritative but thin on recent papers, so the summary's MeSH line

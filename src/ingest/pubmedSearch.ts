@@ -107,8 +107,15 @@ export async function fetchPubmedRecord(pmid: string, apiKey?: string, email?: s
       })
       .filter(Boolean)
       .join("\n\n");
+    // Scoped to the article's own id list, a direct child of PubmedData — efetch's XML also
+    // carries each *cited reference*'s ArticleIdList inside PubmedData > ReferenceList > Reference,
+    // and an unscoped `querySelectorAll("ArticleId")` picks up the first pmc id anywhere in
+    // document order, including a reference's. An article with no PMC of its own but whose
+    // first-listed reference happens to have one would silently return that reference's full
+    // text as if it were the article's — confirmed live (PMID 39261320, no PMC, first reference
+    // with one is PMC9002063 — a different paper entirely — and that's exactly what came back).
     const pmc =
-      Array.from(doc.querySelectorAll("ArticleId"))
+      Array.from(doc.querySelectorAll("PubmedData > ArticleIdList > ArticleId"))
         .find((n) => n.getAttribute("IdType") === "pmc")
         ?.textContent?.trim() || "";
     return {

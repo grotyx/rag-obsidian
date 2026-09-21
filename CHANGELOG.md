@@ -6,6 +6,29 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.6.6] — 2026-09-22
+
+### Fixed
+
+- **PubMed full-text lookup could silently attach a different paper's PMC article to a note**
+  (`ingest/pubmedSearch.ts`'s `fetchPubmedRecord`). Its PMC-id query, `querySelectorAll
+  ("ArticleId")`, searched the *entire* efetch XML document — but NCBI's XML also nests an
+  `ArticleIdList` per *cited reference* inside `<ReferenceList>`, and an unscoped query returns
+  the first `pmc`-typed id anywhere in document order, a cited reference's included. An article
+  with no PMC of its own, whose earliest-listed reference happens to have one, got that
+  reference's full text fetched and treated as its own. Confirmed live and not hypothetical: PMID
+  39261320 (a letter, no PMC) returned PMC9002063 — a completely different, unrelated paper —
+  caught only because an external client asked for the source text and noticed it didn't match
+  the note it was pulled for, rather than writing a summary from it. Scoped the query to the
+  article's own `PubmedData > ArticleIdList`, which excludes every nested per-reference one. This
+  path is shared by PubMed search import, the MCP `get_reference_source` tool, and every
+  re-summarize/backfill command, so the exposure wasn't limited to any one feature — a fix worth
+  flagging even though it can't retroactively find notes it may have already mis-attached.
+  Regression test added (`test/dom-shim.ts`, a from-scratch minimal DOMParser polyfill for Node,
+  since `fetchPubmedRecord` relies on the real DOM global Electron provides and Node has none —
+  its absence meant this whole function's XML-parsing logic ran untested until now, silently
+  exercising only its catch-all fallback instead); mutation-checked against the live NCBI record.
+
 ## [0.6.5] — 2026-09-13
 
 ### Fixed
