@@ -11,6 +11,13 @@ export function hasStashedText(body: string): boolean {
   return body.includes(STASH_MARKER);
 }
 
+/** Text after the marker, trimmed; "" when the body carries no stash. The one place that reads
+ *  the stash back out, mirroring `appendStash`'s write. */
+export function stashedText(body: string): string {
+  const idx = body.indexOf(STASH_MARKER);
+  return idx < 0 ? "" : body.slice(idx + STASH_MARKER.length).trim();
+}
+
 /** Append `text` under the marker. Idempotent: a body that already carries the section comes
  *  back untouched, so re-running a command never duplicates the full text. */
 export function appendStash(body: string, text: string, maxChars: number = STASH_MAX_CHARS): string {

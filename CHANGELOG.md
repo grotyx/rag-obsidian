@@ -6,6 +6,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.6.8] — 2026-09-22
+
+### Changed
+
+- **`get_reference_source` prefers a linked PDF's extracted text.** Bulk guideline work now
+  downloads open-access PDFs into `PDFs/<citekey>.pdf` and runs "Index linked PDFs", stashing
+  the full body under `## Full text (extracted)` — that stash is now tried first (when it is at
+  least 2,000 characters), ahead of PMC full text and the PubMed/stored abstract. New
+  `sourceType`/`source_type` value `"pdf-fulltext"`. New `stashedText()` helper in
+  `src/ingest/pdfStash.ts` keeps the marker logic in one place. `summary_source: pdf-fulltext`
+  counts as "full text" everywhere the plugin distinguishes full text from an abstract.
+
 ## [0.6.7] — 2026-09-22
 
 ### Added

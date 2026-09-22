@@ -2,7 +2,7 @@ import type ScholarRagPlugin from "../../main";
 import type { CSLItem, SummarySections } from "../types";
 import { detectId, fetchMetadata, SourceId } from "../ingest/metadata";
 import { fetchPmcFullText, fetchPubmedRecord, PubmedHit, searchPubmedPage } from "../ingest/pubmedSearch";
-import { STASH_MARKER } from "../ingest/pdfStash";
+import { STASH_MARKER, stashedText } from "../ingest/pdfStash";
 import { SearchFilters } from "../index/store";
 import { summaryBlock, keywordsToTags, tagSlug } from "../data/reference";
 import { replaceSummaryBlock } from "../cite/bibliography";
@@ -21,6 +21,8 @@ const integer = (description: string, minimum = 1, maximum = 100): JsonSchema =>
 });
 const strings = (description: string): JsonSchema => ({ type: "array", description, items: { type: "string" } });
 const readOnly = { readOnlyHint: true, destructiveHint: false };
+// Below this, a stash is probably just a stub or a failed extraction — fall back to PMC/abstract.
+const PDF_STASH_MIN_CHARS = 2_000;
 
 export const MCP_TOOLS: McpTool[] = [
   {
@@ -64,7 +66,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "get_reference_source",
-    description: "Get the best text for an external AI to summarize: PMC open-access full text when available, otherwise the PubMed or stored abstract. Never calls an LLM. Pass its hash and sourceType to save_reference_summary.",
+    description: "Get the best text for an external AI to summarize: a linked PDF's extracted full text when substantial (e.g. from \"Index linked PDFs\"), else PMC open-access full text, else the PubMed or stored abstract. Never calls an LLM. Pass its hash and sourceType to save_reference_summary.",
     inputSchema: objectSchema({ citekey: string("Exact citekey returned by another library tool.") }, ["citekey"]),
     annotations: { ...readOnly, openWorldHint: true },
   },
@@ -74,7 +76,7 @@ export const MCP_TOOLS: McpTool[] = [
     inputSchema: objectSchema({
       citekey: string("Exact citekey returned by get_reference_source."),
       expected_hash: string("Whole-note SHA-256 returned by get_reference_source."),
-      source_type: { type: "string", enum: ["pmc-fulltext", "pubmed-abstract", "stored-abstract"], description: "Exact sourceType returned by get_reference_source." },
+      source_type: { type: "string", enum: ["pdf-fulltext", "pmc-fulltext", "pubmed-abstract", "stored-abstract"], description: "Exact sourceType returned by get_reference_source." },
       summary_model: string("External client/model label; defaults to external-mcp-client."),
       background: string("Faithful background and objective from the source."),
       methods: string("Study design, population, interventions, outcomes, and statistics from the source."),
@@ -416,6 +418,16 @@ export class McpService {
     const item = this.plugin.library.getItem(citekey);
     if (!file || !item) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
     const note = await this.vault.readFullNote(file.path);
+    const stash = stashedText(note.content);
+    if (stash.length >= PDF_STASH_MIN_CHARS) {
+      const limited = stash.slice(0, 120_000);
+      return {
+        citekey, path: file.path, metadata: item, hash: note.hash, sourceType: "pdf-fulltext",
+        sourceLabel: "Linked PDF text (extracted) — complete article body",
+        sourceText: limited,
+        sourceTruncated: limited.length < stash.length,
+      };
+    }
     const pmid = item.PMID ? String(item.PMID) : "";
     const record = pmid
       ? await this.deps.fetchPubmedRecord(pmid, this.plugin.settings.pubmedApiKey, this.plugin.settings.openalexMailto)
@@ -445,7 +457,7 @@ export class McpService {
     const file = this.plugin.library.getFile(citekey);
     if (!file) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
     const source = stringArg(args, "source_type");
-    if (!new Set(["pmc-fulltext", "pubmed-abstract", "stored-abstract"]).has(source)) {
+    if (!new Set(["pdf-fulltext", "pmc-fulltext", "pubmed-abstract", "stored-abstract"]).has(source)) {
       throw new Error("INVALID_ARGUMENT: source_type must match get_reference_source");
     }
     const sections: SummarySections = {

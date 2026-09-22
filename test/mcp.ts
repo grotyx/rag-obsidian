@@ -410,6 +410,43 @@ async function serviceChecks(): Promise<void> {
   const storedSource = await new McpService(storedPlugin, vault).callTool("get_reference_source", { citekey: "smith2024" }) as any;
   assert.equal(storedSource.sourceType, "stored-abstract");
   assert.equal(storedSource.sourceText, "Crossref abstract");
+
+  // A substantial linked-PDF stash (>= 2,000 chars) wins over PMC/PubMed, and skips both fetches.
+  let pmcCalls = 0;
+  const countingDeps = {
+    fetchPubmedRecord: async () => { pmcCalls++; return { abstract: "", descriptors: [], keywords: [], pmc: "PMC999" }; },
+    fetchPmcFullText: async () => { pmcCalls++; return "Fallback PMC body."; },
+  };
+  const refEntry = fake.files.get("References/ref.md");
+  if (!refEntry) throw new Error("test fixture missing References/ref.md");
+  const pdfStashText = "Extracted PDF sentence. ".repeat(100).trim(); // ~2,500 chars
+  refEntry.content = `---\ncitekey: smith2024\ntitle: Trial\n---\n\n## Summary\n\nOld.\n\n##\tNotes\n\n##\tHighlights\n\n## Full text (extracted)\n\n${pdfStashText}`;
+  const pdfService = new McpService(plugin, vault, countingDeps);
+  const pdfSource = await pdfService.callTool("get_reference_source", { citekey: "smith2024" }) as any;
+  assert.equal(pdfSource.sourceType, "pdf-fulltext");
+  assert.match(pdfSource.sourceLabel, /Linked PDF/);
+  assert.equal(pdfSource.sourceText, pdfStashText);
+  assert.equal(pmcCalls, 0, "a substantial PDF stash must skip fetchPubmedRecord/fetchPmcFullText entirely");
+
+  // save_reference_summary accepts source_type "pdf-fulltext" and records it in frontmatter
+  // (must run before the content below changes, so pdfSource.hash still matches).
+  const pdfSaved = await pdfService.callTool("save_reference_summary", {
+    citekey: "smith2024", expected_hash: pdfSource.hash, source_type: "pdf-fulltext",
+    background: "B.", methods: "M.", results: "R.", conclusions: "C.",
+  }) as any;
+  assert.equal(pdfSaved.summarySource, "pdf-fulltext");
+  assert.match(fake.files.get("References/ref.md")?.content ?? "", /^summary_source: pdf-fulltext$/m);
+
+  // A short stash (< 2,000 chars) is not substantial: falls back to the PMC/PubMed path.
+  // (updateNote/save above replaced the map entry, so re-fetch it before mutating.)
+  const refEntryAfterSave = fake.files.get("References/ref.md");
+  if (!refEntryAfterSave) throw new Error("test fixture missing References/ref.md");
+  refEntryAfterSave.content = `---\ncitekey: smith2024\ntitle: Trial\n---\n\n## Full text (extracted)\n\ntoo short`;
+  const shortStashSource = await pdfService.callTool("get_reference_source", { citekey: "smith2024" }) as any;
+  assert.equal(shortStashSource.sourceType, "pmc-fulltext");
+  assert.equal(shortStashSource.sourceText, "Fallback PMC body.");
+  assert.equal(pmcCalls, 2, "a short stash falls back to fetchPubmedRecord + fetchPmcFullText");
+
   const blank = await service.callTool("create_note", { path: "Blank.md", content: "" }) as any;
   assert.equal(blank.path, "Blank.md");
 

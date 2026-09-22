@@ -13,7 +13,7 @@ import { parseLibrary } from "../src/ingest/import";
 import { cleanDoi, detectId, splitName, parsePubDate } from "../src/ingest/metadata";
 import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
 import { findIdentifier } from "../src/ingest/pdf";
-import { hasStashedText, appendStash, resolvePdfLink, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
+import { hasStashedText, appendStash, resolvePdfLink, stashedText, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
 import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summarize";
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
@@ -182,6 +182,10 @@ AID - 10.1000/xyz123 [doi]
   check(resolvePdfLink("papers/a.pdf") === "papers/a.pdf", "resolvePdfLink: bare path");
   check(resolvePdfLink("[[note.md]]") === null, "resolvePdfLink: non-pdf → null");
   check(resolvePdfLink(undefined) === null, "resolvePdfLink: non-string → null");
+
+  check(stashedText("plain body") === "", "stashedText: empty without marker");
+  check(stashedText(`body\n\n${STASH_MARKER}\n\n  text  \n`) === "text", "stashedText: trimmed text after marker");
+  check(stashedText(`${STASH_MARKER}\n\nkept…[truncated]`) === "kept…[truncated]", "stashedText: leaves a truncation suffix as-is");
 }
 
 // ---------- ingest/summarize.ts ----------

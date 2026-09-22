@@ -49,7 +49,7 @@ async function rewriteSummary(
   return tag;
 }
 
-const sourceName = (tag: string) => (tag === "pmc-fulltext" ? "full text" : "abstract");
+const sourceName = (tag: string) => (tag === "pmc-fulltext" || tag === "pdf-fulltext" ? "full text" : "abstract");
 
 /** Redo the summary on the active reference note — the batch command skips notes that already
  *  have one, so a poor summary is otherwise stuck until someone hand-edits the frontmatter. */

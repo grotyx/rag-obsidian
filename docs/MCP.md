@@ -94,9 +94,11 @@ add_reference
   → save_reference_summary
 ```
 
-`get_reference_source` tries PMC open-access full text when PMID/PMCID metadata identifies it, then
-falls back to the PubMed or stored metadata abstract. It returns `sourceType` (`pmc-fulltext`,
-`pubmed-abstract`, or `stored-abstract`) and the current whole-note `hash`. The external client must use
+`get_reference_source` prefers a linked PDF's extracted text (the `## Full text (extracted)` stash
+left by "Index linked PDFs" or PDF import) when it is substantial, then tries PMC open-access full
+text when PMID/PMCID metadata identifies it, then falls back to the PubMed or stored metadata
+abstract. It returns `sourceType` (`pdf-fulltext`, `pmc-fulltext`, `pubmed-abstract`, or
+`stored-abstract`) and the current whole-note `hash`. The external client must use
 only that returned text, preserve reported quantities and uncertainty, and pass both values to
 `save_reference_summary`. The save replaces only `## Summary`, keeps `## Notes` and
 `## Highlights`, and records `summary_source` and `summary_model` in frontmatter.
