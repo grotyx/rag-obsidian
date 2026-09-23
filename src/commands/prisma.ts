@@ -30,5 +30,5 @@ export async function buildPrismaDiagram(plugin: ScholarRagPlugin, scope: Backfi
   const counts = prismaCounts(records, groups, (r) => fullTextSet.has(r.citekey));
   const label = scopeLabel(scope);
   const md = prismaMarkdown(counts, label, localDate());
-  await plugin.writeAndOpen(normalizePath(`PRISMA flow (${label}).md`), md);
+  await plugin.writeAndOpen(normalizePath(`PRISMA flow (${label.replace(/^#/, "")}).md`), md);
 }
