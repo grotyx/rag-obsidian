@@ -29,6 +29,13 @@ OpenRouter.
 > widen its candidate pool with citation-graph-coupled papers the text search missed
 > (`index/rerank.ts`'s `coupledCandidates`). Phase 4 still waits for a library that needs it.
 
+> **Update (2026-09-23, v0.7.0):** Phase 4's trigger arrived — a 1,265-reference library grew a 512 MB
+> `orama.json`. Instead of sqlite-vec, the index is now persisted as `docs.json` + raw Float32
+> vectors (~8.6× smaller) and can live outside a synced vault; sqlite-vec stays deferred. 0.7.0 also
+> adds Zotero/EndNote staples found missing in a feature comparison: duplicate merge, batch
+> retraction check, batch open-access download, folder-of-PDFs linking, Word export, library sort
+> and filters — plus Codex/OpenCode CLI as keyless LLM providers.
+
 ## Phase 1 — things that bite during normal use (do first)
 
 1. **Cancel and progress for batches.** Adding 50 papers or filling gaps over a whole library now runs

@@ -1,6 +1,6 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.6.8-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.7.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.7.2%2B-7c3aed)](https://obsidian.md)
 
@@ -34,7 +34,13 @@
   Related 패널 버튼으로 한 번 만들면, 이후 추가된 문헌은 자동으로 그래프에 합류한다.
   Related 패널에 **지도**로 그려집니다 — 실선 노드는 보유 논문, 점선 노드는 미보유 논문이며
   점선 노드를 클릭하면 바로 추가 창이 열립니다.
-- 읽기 상태, **대시보드**, 중복 찾기, 인용수, 철회 확인.
+- 읽기 상태, **대시보드**, 인용수. **라이브러리 창**에서 연도·제목·저자·인용수·추가일로 정렬하고,
+  빠른 필터(PDF 있음 / 없음 / 안 읽음 / 철회)로 좁힘.
+- **중복**: 찾은 뒤 **병합** — 한 노트만 남기고 빈 칸은 다른 노트에서 채우며, 볼트 전체의
+  `[@옛키]` 인용도 바꿔 씀.
+- **철회 확인**: 노트 하나 또는 라이브러리 전체(OpenAlex), 결과 노트 생성.
+- **PDF**: PDF가 없는 참고문헌 전체의 OA 사본 다운로드(Unpaywall), 또는 이미 가진
+  **PDF 폴더를 연결** — 파일 이름·DOI·PMID·제목으로 짝지음.
 
 **✍️ 인용·집필**
 - `@` 입력 → 자동완성으로 `[@citekey]` 삽입.
@@ -52,7 +58,10 @@
 - **MCP로 Claude Code / Codex 연결(데스크톱):** 외부 AI가 실행 중인 라이브러리를 검색하고,
   PubMed 논문을 찾아 추가·요약하며, Markdown 노트를 안전하게 생성·수정·이동·휴지통 처리하고,
   인용 원고를 컴파일할 수 있습니다. 요약문은 Claude/Codex가 작성하며 MCP 경로는 플러그인의
-  챗·요약·rerank LLM을 호출하지 않습니다.
+  챗·요약·rerank LLM을 호출하지 않습니다. Claude Code·Codex·OpenCode·Antigravity 설정 버튼이
+  있고, 노트 편집 도구 7개는 끌 수 있습니다.
+- **LLM에 API 키 불필요(데스크톱):** 챗과 요약을 로그인된 **Codex CLI** 또는 **OpenCode CLI**로
+  돌릴 수 있습니다. 검색용 임베딩은 여전히 OpenRouter/OpenAI 또는 로컬 Ollama가 필요합니다.
 
 ---
 
@@ -187,13 +196,14 @@ provider를 사용할 수 있습니다.
 ```text
 Obsidian:  Manuscript.md 작성  →  @ 로 인용  →  저널 지정: csl: springer-basic-brackets
            Ctrl/Cmd-P → "Compile manuscript"   →  Manuscript (compiled).md
-터미널:    node scripts/to-docx.cjs "Manuscript (compiled).md"   →  서식 .docx (Pandoc 필요)
+           Ctrl/Cmd-P → "Export manuscript to Word (.docx)"  →  Manuscript.docx (Pandoc 필요)
 ```
 
 - **Compile manuscript**가 모든 `[@citekey]`를 저널 형식 in-text로 풀고 `## References`를
   붙임 — Pandoc / 제출 준비 완료.
-- `scripts/to-docx.cjs`(또는 manuscript-docx 워크플로)가 Times New Roman 12pt,
-  더블스페이스, 검정 `.docx`로 렌더.
+- **Export manuscript to Word (.docx)**가 같은 방식으로 컴파일한 뒤 내장 학술 템플릿으로
+  Pandoc을 실행 — Times New Roman 12pt, 더블스페이스, 검정. Pandoc은 흔한 설치 위치에서 자동으로
+  찾고, 다른 곳에 있으면 설정 → Writing에서 경로 지정. (터미널에서는 `scripts/to-docx.cjs`도 그대로 사용 가능.)
 
 ---
 
@@ -228,9 +238,9 @@ csl: springer-basic-brackets
 | 그룹 | 명령 |
 |---|---|
 | **추가** | Search PubMed · DOI / PMID / arXiv / 제목 추가 · Import(BibTeX / RIS / nbib / CSL-JSON) · Import PDF |
-| **독서** | 읽기 상태(unread / reading / read) · Reading queue · OA PDF 찾기 · OA PDF 다운로드 · PDF 형광펜 추출 · 링크된 PDF 본문 색인 · 이 노트의 PDF 색인 · 온라인으로 열기 |
-| **정리** | 요약·태그 일괄 채우기 · 이 참고문헌 요약·태그 채우기 · 폴더/태그 범위로 요약·태그 채우기… · 이 참고문헌 다시 요약 · 옛 모델로 만든 요약 다시 생성 · 대시보드 · 중복 찾기 · 인용수 채우기 · 철회 확인 · 태그 변경 · 메타데이터 보강 · 관련 논문 추천 · 인용 네트워크 내보내기 |
-| **집필** | `@` 자동완성 · 선택 문단에 인용 추천 · 근거 없는 주장 찾기 · Update bibliography · Compile manuscript · 인용 복사 · 주석 참고문헌 · 최근 챗 답변을 노트로 저장 |
+| **독서** | 읽기 상태(unread / reading / read) · Reading queue · OA PDF 찾기 · OA PDF 다운로드 · OA PDF 일괄 다운로드 · 폴더의 PDF 연결 · PDF 형광펜 추출 · 링크된 PDF 본문 색인 · 이 노트의 PDF 색인 · 온라인으로 열기 |
+| **정리** | 요약·태그 일괄 채우기 · 이 참고문헌 요약·태그 채우기 · 폴더/태그 범위로 요약·태그 채우기… · 이 참고문헌 다시 요약 · 옛 모델로 만든 요약 다시 생성 · 대시보드 · 중복 찾기 · 중복 병합… · 인용수 채우기 · 철회 확인(이 노트 / 전체) · 태그 변경 · 메타데이터 보강 · 관련 논문 추천 · 인용 네트워크 내보내기 |
+| **집필** | `@` 자동완성 · 선택 문단에 인용 추천 · 근거 없는 주장 찾기 · Update bibliography · Compile manuscript · Word(.docx)로 내보내기 · 인용 복사 · 주석 참고문헌 · 최근 챗 답변을 노트로 저장 |
 | **검색** | 의미 검색 · 챗 · 관련 논문 · 인용 그래프 만들기 · 인덱스 재생성 |
 | **내보내기** | 라이브러리 → BibTeX / RIS / CSL-JSON |
 

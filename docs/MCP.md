@@ -157,7 +157,7 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | `rebuild_search_index` | Rebuild the complete private index | Embeddings possible; index write |
 | `list_references` | Page and filter reference metadata | Read-only |
 | `get_reference` | Read metadata and note content by citekey | Read-only |
-| `get_reference_source` | Get PMC full text or abstract for external summarization | Network possible; read-only |
+| `get_reference_source` | Get a linked PDF's extracted text, else PMC full text, else the abstract, for external summarization | Network possible; read-only |
 | `save_reference_summary` | Save the external model's structured summary under a hash guard | Edits a reference note |
 | `list_tags` | List library tags and counts | Read-only |
 | `search_pubmed` | Search PubMed (`limit` up to 150; `totalCount`/`truncated` report if the query matched more than was returned) | Network; read-only |
@@ -171,6 +171,11 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | `move_note` | Move/rename through Obsidian's file manager | Moves a note |
 | `trash_note` | Move a note to Obsidian's trash | Destructive, recoverable per the vault's trash setting |
 | `compile_manuscript` | Render `[@citekey]` and bibliography into a copy | Creates/updates output note |
+
+The seven note tools (`list_notes` through `trash_note`) can be hidden: **Settings → External AI
+(MCP) → Allow note editing tools**, off. Clients then see only the 12 library tools, and a direct
+call to a hidden tool is refused with `UNKNOWN_TOOL`. Clients read the tool list when a session
+starts, so start a new Claude Code / Codex / OpenCode session after changing it.
 
 ## Editing and deletion safeguards
 

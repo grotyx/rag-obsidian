@@ -163,7 +163,7 @@ Manuscripts/Review.md를 읽고 "Outcomes" 절을 보강해줘.
 | `rebuild_search_index` | 검색 인덱스 전체 재구축 | 임베딩 가능, 인덱스 변경 |
 | `list_references` | 문헌 메타데이터 필터·페이지 조회 | 읽기 전용 |
 | `get_reference` | citekey로 메타데이터와 노트 조회 | 읽기 전용 |
-| `get_reference_source` | 외부 요약용 PMC 원문 또는 초록 조회 | 네트워크 가능, 읽기 전용 |
+| `get_reference_source` | 외부 요약용 원문 조회: 연결된 PDF의 추출 본문, 없으면 PMC 원문, 없으면 초록 | 네트워크 가능, 읽기 전용 |
 | `save_reference_summary` | 외부 AI의 구조화 요약을 hash 검증 후 저장 | 레퍼런스 노트 수정 |
 | `list_tags` | 문헌 태그와 개수 조회 | 읽기 전용 |
 | `search_pubmed` | PubMed 검색 (`limit` 최대 150, `totalCount`/`truncated`로 잘림 여부 확인) | 네트워크, 읽기 전용 |
@@ -177,6 +177,11 @@ Manuscripts/Review.md를 읽고 "Outcomes" 절을 보강해줘.
 | `move_note` | Obsidian API로 노트 이동·이름 변경 | 노트 이동 |
 | `trash_note` | 노트를 Obsidian 휴지통으로 이동 | vault의 휴지통 설정에 따라 복구 가능 |
 | `compile_manuscript` | `[@citekey]`와 참고문헌을 렌더링한 사본 생성 | 출력 노트 생성/갱신 |
+
+노트 도구 7개(`list_notes`~`trash_note`)는 숨길 수 있습니다. **설정 → External AI (MCP) →
+Allow note editing tools**를 끄면 클라이언트에는 라이브러리 도구 12개만 보이고, 숨긴 도구를
+직접 호출해도 `UNKNOWN_TOOL`로 거부됩니다. 클라이언트는 세션을 시작할 때 도구 목록을 읽으므로,
+바꾼 뒤에는 Claude Code / Codex / OpenCode 세션을 새로 시작하세요.
 
 ## 수정과 삭제의 안전 규칙
 

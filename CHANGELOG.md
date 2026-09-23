@@ -6,6 +6,71 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-09-23
+
+Driven by running the plugin on a 1,265-reference library for a clinical guideline, and by a
+feature comparison against Zotero and EndNote.
+
+### Changed
+
+- **Search index is ~8.6× smaller on disk.** The Orama database is no longer dumped as JSON
+  (every embedding written as text, twice). The index is now `docs.json` + `vectors.f32`
+  (raw Float32) + `meta.json`, and the Orama database is rebuilt on load. Measured: 1,000
+  chunks at 1536 dimensions went from 64 MB to 7.5 MB; the owner's 8,151-chunk index from
+  512 MB to about 61 MB. `INDEX_SCHEMA` is 4 — **run "Rebuild search index" once after
+  updating**; the plugin says so on start-up. A leftover `orama.json` is deleted on the
+  first save.
+- **Enrich library metadata** now also re-queries notes missing only `volume` or `page`
+  (ahead-of-print papers: 108 and 178 of 1,265 in the measured library were skipped before),
+  runs through the batch pool with a progress bar and Cancel, and reports filled / unchanged /
+  failed.
+- **Library pane**: sort (newest/oldest year, title, first author, most cited, recently added),
+  quick filters (has PDF, no PDF, unread, retracted), badges (PDF, retracted, status, citation
+  count), journal in the meta line and the text filter, and 200 rows at a time so a large
+  library stays responsive.
+
+### Added
+
+- **Codex CLI and OpenCode CLI as LLM providers** (desktop). Chat, reranking, summaries, MeSH
+  suggestions and PDF metadata extraction run through your installed, logged-in CLI — no API
+  key stored. Calls run from an empty temp folder with the CLI's own user config skipped (its
+  MCP servers and hooks would otherwise start on every call: 23 s → 4 s for OpenCode, 9.5 s
+  → 6 s for Codex). Batches use 3 workers instead of 15 for these providers (`poolWidth`).
+  Settings: executable path (blank = probe the usual install folders) and a Test button.
+  Embeddings still need OpenRouter/OpenAI or Ollama.
+- **Keep the search index outside the vault** (setting, desktop): stores it in the OS cache
+  folder so OneDrive / iCloud / Obsidian Sync stop re-uploading it after every reindex.
+- **Link PDFs in a folder to references**: matches every PDF in a chosen folder to a reference
+  by file name = citekey, then by DOI, PMID or title (+ year) found in the first 4,000
+  characters of the PDF, and writes the `pdf:` link (and the extracted text when the note has
+  none). Unmatched files are listed in `PDF link report.md`. Nothing is renamed or moved.
+- **Check retraction status for all references** (and a re-check-everything variant): OpenAlex,
+  8 at a time, writes `retracted:` and lists hits in `Retracted references.md`.
+- **Download open-access PDFs for references without one**: Unpaywall, 4 at a time, saves
+  `PDFs/<citekey>.pdf` only when the download is really a PDF (`%PDF` header), links it and
+  stashes its text.
+- **Merge duplicate references…**: a review modal per duplicate group with a proposed keeper;
+  merges frontmatter (keeper wins, gaps filled, tags and MeSH unioned, `retracted: true` wins),
+  appends the other notes' `## Notes`, moves a PDF text stash when the keeper has none,
+  rewrites `[@old]` citations across the vault (code spans untouched, clusters de-duplicated),
+  then trashes the others. A group whose files changed since the modal opened is skipped.
+- **Export manuscript to Word (.docx)**: compiles citations the same way "Compile manuscript"
+  does and runs Pandoc with the bundled academic template (Times New Roman 12 pt, double
+  spaced). Pandoc path setting, blank = auto-detect.
+- **MCP**: setup buttons for OpenCode and Antigravity (`agy`), and a setting to hide the seven
+  note-editing tools (`list_notes`, `read_note`, `create_note`, `update_note`,
+  `replace_in_note`, `move_note`, `trash_note`) so a client sees only the 12 library tools.
+
+### Fixed
+
+- **Search could null the stored embeddings.** Orama's `includeVectors: false` clears the
+  vector on the *stored* document, not just on the returned hit, so a search followed by a
+  save wrote empty vectors. `search()` now asks for vectors and simply doesn't read them.
+- **The Word template never applied.** Its zip entries used Windows backslash paths
+  (`word\styles.xml`); Pandoc looks for `word/styles.xml` and silently fell back to its own
+  defaults (Aptos). Repacked, with the style fonts set to Times New Roman directly.
+- A CLI that exits before reading its prompt no longer raises an unhandled EPIPE.
+
 ## [0.6.8] — 2026-09-22
 
 ### Changed
@@ -23,7 +88,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 ### Added
 
 Three MCP changes for running a systematic literature import and screening from an external
-client (the owner's UBE clinical-guideline project: ~1,200 PubMed papers searched month by
+client (the owner's biportal endoscopy clinical-guideline project: ~1,200 PubMed papers searched month by
 month, screened by abstract, summarized only when included).
 
 - **`search_pubmed` caps at 150 results (was 50) and reports truncation.** PubMed's busiest

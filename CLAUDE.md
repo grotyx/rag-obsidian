@@ -3,7 +3,7 @@
 > Display name: **Academic Paper Citation Manager** · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.6.8 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.7.0 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -55,6 +55,8 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `settings.ts` | Settings tab UI (Library / Retrieval / Chat / Citation graph / Writing) |
 | `data/reference.ts` | citekey generation, CSL-JSON → markdown note builder |
 | `data/library.ts` | CRUD over `References/`, `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` (add-time) + `matchKeys`/`duplicateGroups` (report, groups on any shared identifier) + `BackfillScope`/`inScope` (pure filter for fill-gaps scoping) |
+| `data/pdfMatch.ts` | `matchPdf` — PDF ↔ reference by file name = citekey, then DOI / PMID / title+year in the first 4,000 chars only (reference lists name other papers) |
+| `data/merge.ts` | duplicate merge logic: `pickKeeper`, `mergeFrontmatter`, `mergeBodies` (`renameCiteKeys` lives in `cite/bibliography.ts`) |
 | `ingest/metadata.ts` | `detectId` + Crossref / PubMed / arXiv fetchers → CSLItem |
 | `ingest/ncbi.ts` | the one queue every E-utilities request waits in (3/s, 10/s with a key) |
 | `ingest/pdf.ts` | bundled pinned pdfjs (dynamic evaluation disabled; injectable loader) text extraction + `findIdentifier` |
@@ -66,15 +68,17 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `ingest/retraction.ts` | `checkRetraction` via OpenAlex `is_retracted` (+ "RETRACTED:" title guard) |
 | `ingest/import.ts` | BibTeX / RIS / `.nbib` / CSL-JSON parsing → CSLItem[] |
 | `index/embedding.ts` | `EmbeddingProvider` interface + factory |
-| `util/pool.ts` | `mapPool` bounded concurrency + `POOL_WIDTH` (15, sized for the LLM wait) — the network/LLM half of a batch; vault writes stay sequential. Takes an optional `AbortSignal`: cancelling lets in-flight items finish, starts no new ones, and still resolves (unstarted slots come back empty) |
+| `util/pool.ts` | `mapPool` bounded concurrency + `POOL_WIDTH` (15, sized for the LLM wait) + `poolWidth(settings)` (3 for the CLI providers) — the network/LLM half of a batch; vault writes stay sequential. Takes an optional `AbortSignal`: cancelling lets in-flight items finish, starts no new ones, and still resolves (unstarted slots come back empty) |
 | `index/providers/{ollama,openai}.ts` | embedding backends |
 | `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers (`yearFromIssued`, `authorNames`), `chunkHash` (reindex change detector) |
-| `index/store.ts` | Orama hybrid index wrapper + JSON persist/restore + `SearchFilters` (year range, tag AND, author) over the `tags`/`author` `enum[]` facets + `describeFilters` (one-line label, `""` = unfiltered); `tagText` (tokenized tags, boosted in `search()`) lets a tag/MeSH term move full-text relevance without breaking `tags`' exact-match filtering; `INDEX_SCHEMA` is the rebuild marker |
+| `index/store.ts` | Orama hybrid index wrapper + compact persist/restore (`docs.json` + raw Float32 `vectors.f32`, Orama rebuilt on load; never pass `includeVectors: false` — Orama then nulls the *stored* vector) + `SearchFilters` (year range, tag AND, author) over the `tags`/`author` `enum[]` facets + `describeFilters` (one-line label, `""` = unfiltered); `tagText` (tokenized tags, boosted in `search()`) lets a tag/MeSH term move full-text relevance without breaking `tags`' exact-match filtering; `INDEX_SCHEMA` is the rebuild marker |
+| `index/localFiles.ts` | `FileIO` (the vault adapter or `NodeFileIO` over fs.promises) + `cacheRoot`/`localIndexDir` — where the index lives when `indexLocal` keeps it out of a synced vault |
 | `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding); `search` over-fetches ×3 and thins via `capPerReference` |
 | `index/rerank.ts` | retrieval quality, no Obsidian imports: `capPerReference` (≤3 chunks per reference, tops back up from the spill so k is still returned), `rerankHits`/`buildRerankUser`/`parseRerankOrder` (optional LLM reranker behind `llmRerank`; any failure falls back to retrieval order), `coupledCandidates` (citation-graph papers coupled to a top hit, offered to the reranker as unscored candidates via the `CoupledLookup`/`CandidateLookup` shapes `chat/rag.ts` adapts the real `CitationGraph`/`Library` to) |
 | `graph/openalex.ts` | OpenAlex client (`resolveWork`, `fetchTitles`) |
 | `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` + `refIds` (raw cited ids, for the map's dashed nodes) + incremental upkeep: `enqueue` (debounced, one OpenAlex lookup per newly added note, no-op until the graph has been built once), `prune` (drops nodes whose note is gone), `onChange` (views redraw when either fires) |
 | `graph/layout.ts` | `layoutGraph` — deterministic force-directed layout (circle seeding, no RNG) + `topByDegree` node cap; pure math behind the Related pane's SVG map |
+| `llm/cli.ts` | `codex` / `opencode` providers: spawns the logged-in CLI from an empty temp dir with its user config skipped (`--ignore-user-config`, `XDG_CONFIG_HOME`), prompt on stdin; `cliCandidates` probes install folders because Obsidian from the Dock lacks the shell PATH |
 | `llm/client.ts` | provider-agnostic chat (Anthropic / OpenAI / Ollama) via `requestUrl`, with 429/5xx backoff; `noReasoning` sends OpenRouter's `reasoning:{enabled:false}` (that host only — a plain OpenAI endpoint 400s on the unknown field) |
 | `chat/rag.ts` | retrieve (under optional `SearchFilters`) → number sources → [n] grounded answer → resolve citations |
 | `cite/csl.ts` | citeproc-js rendering: bundled styles + CSL-repo fetch/cache, per-note `csl:` override |
@@ -87,6 +91,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `commands/writing.ts` | update bibliography, compile manuscript, copy citation, annotated bibliography, suggest citations for selection, find unsupported claims |
 | `commands/openaccess.ts` | Unpaywall lookup, OA PDF download (+ stashes the saved PDF's text), retraction check, PDF highlight extraction |
 | `commands/pdfs.ts` | `indexLinkedPdfs` / `indexLinkedPdfActive` — extract + stash the text of linked PDFs that have none (pool width 2: pdfjs is CPU-bound in the renderer; writes sequential, one note written as its text lands) + `findPdfFile`, the one resolver (`pdf:` link → `PDFs/<citekey>.pdf`) shared with `commands/openaccess.ts` |
+| `commands/merge.ts` | `mergeDuplicateGroups` — merge, rewrite `[@old]` across the vault, trash the others; skips a group whose files changed since the modal opened |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them, scoped via `BackfillScope`/`inScope` (`src/data/library.ts`) to all, one note, a folder, or a tag |
 | `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
 | `mcp/protocol.ts` | minimal JSON-RPC/MCP initialize, tools/list and tools/call contract |
@@ -94,14 +99,16 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `mcp/http.ts` | desktop-only authenticated loopback lifecycle, discovery file, setup snippets, realpath containment |
 | `mcp/vault.ts` | Markdown-only vault CRUD, pagination, hash-based concurrency checks, serialized writes |
 | `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch, including external source-read/summary-save (`get_reference_source` prefers a linked PDF's stashed extracted text over PMC full text over the abstract) and `set_reference_fields` (screening kq/include/level/design/screening_note, mirrored into tags); deliberately bypasses chat/summary/rerank LLM paths |
+| `write/docx.ts` + `write/pandoc.ts` | "Export manuscript to Word": Pandoc with the bundled `styles/manuscript-reference.docx` (esbuild `.docx` binary loader); `pandocCandidates` is the pure probe list |
 | `write/manuscript.ts` | pure citation compilation shared by the Obsidian command and MCP output-copy tool |
 | `ui/{LibraryView,SearchView}.ts` | sidebar panes |
+| `ui/libraryFilter.ts` | `filterAndSort` for the Library pane (sort keys, quick-filter chips, missing values last) |
 | `ui/FilterRow.ts` | the year-range / author / tag-chip filter row shared by `SearchView` and `ChatView` (`new FilterRow(host, plugin)` → `.filters(): SearchFilters`, `.clear()`); state is pane-local and never persisted |
 | `ui/RelatedView.ts` | citation-graph pane: SVG map (`graph/layout.ts`, ≤40 nodes; dashed node → `AddReferenceModal` prefilled with the OpenAlex id) above the unchanged text lists |
 | `ui/ChatView.ts` | chat pane — a `FilterRow` between log and input scopes the next answer (its `describeFilters` label rides along on the persisted turn and heads the source list), history persisted to `<pluginDir>/chat.json` (last 50 messages; the model still sees the last 8), Clear chat, and "Save as note" per answer → `Chat/<date> <question>.md` |
 | `ui/progress.ts` | `startBatch`/`cancelBatch` — status-bar progress with a ✕ for the two batch commands, one batch at a time, hands out the `AbortSignal` |
 | `ui/CiteSuggestModal.ts` | `CiteSuggestModal` (pick a retrieved reference → insert `[@citekey]`) + `UnsupportedClaimsModal` (uncited claim paragraphs, one **Suggest** button each) |
-| `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal,BackfillScopeModal}.ts` | modals |
+| `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal,BackfillScopeModal,MergeDuplicatesModal,FolderSuggestModal}.ts` | modals |
 | `main.ts` | plugin lifecycle, views, `addCommand` wiring, ribbons, events, citation rendering + shared plumbing (`writeAndOpen`, `activeRef`, `styleForNote`) |
 
 ## Commands (dev)
@@ -113,7 +120,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # MCP checks + live integration suite (188 checks)
+npm test               # unit (196) + MCP checks + live integration suite (216 checks)
 ```
 
 ## Testing approach (important)
@@ -216,7 +223,8 @@ in-vault CDP check — before trusting it.
   one key also covers chat) · Ollama `nomic-embed-text` (local, needs `ollama pull` + a server
   started with embeddings). Dimension is discovered from the first response.
 - **LLM (chat)**: OpenAI-compatible against OpenRouter (default: `deepseek/deepseek-v4-flash-0731`,
-  chat `deepseek/deepseek-v4-pro-0813`) · Anthropic · Ollama.
+  chat `deepseek/deepseek-v4-pro-0813`) · Anthropic · Ollama · **Codex CLI / OpenCode CLI** (desktop,
+  the user's own login, no key; deliberately no Claude CLI).
   `chatModel` (optional) overrides `llmModel` for "Chat with library" only. The chat answer, the reranker,
   summaries, MeSH suggestions and PDF metadata extraction all pass `noReasoning`, so on OpenRouter they send `reasoning:{enabled:false}` — both
   read already-ranked sources, and a hybrid-reasoning model otherwise spends ~4k thinking tokens
