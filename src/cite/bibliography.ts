@@ -162,21 +162,20 @@ function safeCodePoint(n: number): string {
   }
 }
 
-/** Replace a note's summary block with `newBlockLines`, appending it at the end when the note
- *  has none. The opening heading is `## Summary` (current, language-agnostic) or, for notes
- *  written before the heading was unified, the legacy `## Summary (EN)` — optionally followed
- *  by its `## 요약 (KR)` other half, which the walk below also skips over. The block ends at the
- *  first same-or-higher-level heading that is not that KR half (same boundary rule as
- *  `splitAtReferences`), so a following `## Notes` / `## References` / `# Appendix` survives. */
-export function replaceSummaryBlock(content: string, newBlockLines: string[]): string {
-  const block = newBlockLines.join("\n").replace(/\s*$/, "");
+/** Where a note's summary block starts (its heading line) and ends (the next heading that is
+ *  not its own `## 요약 (KR)` half, or end of content), or null when there is none. The opening
+ *  heading is `## Summary` (current, language-agnostic) or, for notes written before the heading
+ *  was unified, the legacy `## Summary (EN)` — optionally followed by its `## 요약 (KR)` other
+ *  half, which the walk below also skips over. Shared by `replaceSummaryBlock` (insert) and
+ *  `extractSummaryBlock` (read) so they can never disagree on the boundary. */
+function summaryBlockRange(content: string): { start: number; end: number } | null {
   const m = content.match(/(^|\n)##[ \t]+(Summary(?:[ \t]*\([^)\n]*\))?|요약 \(KR\))[ \t]*(\n|$)/);
-  if (!m || m.index === undefined) return `${content.replace(/\s*$/, "")}\n\n${block}\n`;
+  if (!m || m.index === undefined) return null;
   const start = m.index + m[1].length;
   let cur = m.index + m[0].length;
   for (;;) {
     const next = content.slice(cur).search(/\n#{1,6}[ \t]+/);
-    if (next < 0) return `${content.slice(0, start)}${block}\n`;
+    if (next < 0) return { start, end: content.length };
     const at = cur + next + 1;
     // The KR heading is the block's own second half — keep walking past it.
     const kr = content.slice(at).match(/^##[ \t]+요약 \(KR\)[ \t]*(\n|$)/);
@@ -184,6 +183,28 @@ export function replaceSummaryBlock(content: string, newBlockLines: string[]): s
       cur = at + kr[0].length;
       continue;
     }
-    return `${content.slice(0, start)}${block}\n\n${content.slice(at)}`;
+    return { start, end: at };
   }
+}
+
+/** Replace a note's summary block with `newBlockLines`, appending it at the end when the note
+ *  has none (see `summaryBlockRange` for the boundary rule, same one `splitAtReferences` uses,
+ *  so a following `## Notes` / `## References` / `# Appendix` survives). */
+export function replaceSummaryBlock(content: string, newBlockLines: string[]): string {
+  const block = newBlockLines.join("\n").replace(/\s*$/, "");
+  const range = summaryBlockRange(content);
+  if (!range) return `${content.replace(/\s*$/, "")}\n\n${block}\n`;
+  const { start, end } = range;
+  if (end >= content.length) return `${content.slice(0, start)}${block}\n`;
+  return `${content.slice(0, start)}${block}\n\n${content.slice(end)}`;
+}
+
+/** The note's summary block as written (heading line included), trimmed — or null when the note
+ *  has no block, or the block is heading-only with no text under it. The read-side counterpart
+ *  of `replaceSummaryBlock`, used by merge-duplicates to move a loser's summary into the keeper. */
+export function extractSummaryBlock(content: string): string | null {
+  const range = summaryBlockRange(content);
+  if (!range) return null;
+  const text = content.slice(range.start, range.end).trim();
+  return text || null;
 }

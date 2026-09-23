@@ -2,6 +2,7 @@
  *  merge its frontmatter and body with the others, and never touch the vault or Obsidian API
  *  (kept obsidian-free so it's covered by test/unit.ts, like the rest of src/data). */
 import { hasStashedText, stashedText, STASH_MARKER } from "../ingest/pdfStash";
+import { extractSummaryBlock, replaceSummaryBlock } from "../cite/bibliography";
 
 export interface MergeNote {
   citekey: string;
@@ -77,9 +78,20 @@ function numVal(v: unknown): number | null {
   return null;
 }
 
-// Never copied from another note: citekey identifies the note itself, and `position` is
-// metadataCache's own line-range marker on the SOURCE note's frontmatter block, not data.
-const NEVER_COPY = new Set(["citekey", "position", "tags", "mesh_terms", "retracted", "cited_by_count"]);
+// Never copied from another note: citekey identifies the note itself, `position` is
+// metadataCache's own line-range marker on the SOURCE note's frontmatter block (not data), and
+// summary_source/summary_model are decided by planMerge together with whether a summary block
+// actually moved (see planMerge) — copying them here independently is the bug this fixes.
+const NEVER_COPY = new Set([
+  "citekey",
+  "position",
+  "tags",
+  "mesh_terms",
+  "retracted",
+  "cited_by_count",
+  "summary_source",
+  "summary_model",
+]);
 
 /** Keeper's values win; any key missing/empty on the keeper is filled from `others` in order. */
 export function mergeFrontmatter(
@@ -113,20 +125,62 @@ export interface OtherBody {
   body: string;
 }
 
-/** Keeper body unchanged, plus a `## Merged from <citekey>` section per other note that has a
- *  non-empty `## Notes` section, plus the first other note's PDF-text stash moved in as the
- *  keeper's own stash when the keeper has none. Never touches the Summary block. */
-export function mergeBodies(keeperBody: string, others: OtherBody[]): string {
-  let out = keeperBody;
-  const keeperHasStash = hasStashedText(keeperBody);
-  let movedStash: string | null = null;
-  for (const { citekey, body } of others) {
-    const notes = extractSection(body, "## Notes").trim();
-    if (notes) out = `${out.replace(/\s*$/, "")}\n\n## Merged from ${citekey}\n\n${notes}\n`;
-    if (!keeperHasStash && movedStash === null && hasStashedText(body)) movedStash = stashedText(body);
+/** Keeper body plus, for every other note, a `## Merged from <citekey>` section holding whatever
+ *  of its `### Notes` / `### Highlights` is non-empty; plus (only when the keeper has none) the
+ *  first other note's PDF-text stash, moved in as the keeper's own stash. `summaryDonor`, when
+ *  it names one of `others`, moves that note's summary block in too — decided once by
+ *  `planMerge` so the body and the frontmatter's summary_source/summary_model can't disagree.
+ *  Everything merged-in lands BEFORE an existing keeper stash (never inside it); a moved-in
+ *  stash always goes last. */
+export function mergeBodies(keeperBody: string, others: OtherBody[], summaryDonor: string | null = null): string {
+  const hasKeeperStash = hasStashedText(keeperBody);
+  const markerIdx = keeperBody.indexOf(STASH_MARKER);
+  let prefix = hasKeeperStash ? keeperBody.slice(0, markerIdx).replace(/\s*$/, "") : keeperBody;
+  const suffix = hasKeeperStash ? keeperBody.slice(markerIdx) : "";
+
+  if (summaryDonor) {
+    const donor = others.find((o) => o.citekey === summaryDonor);
+    const block = donor ? extractSummaryBlock(donor.body) : null;
+    if (block) prefix = replaceSummaryBlock(prefix, block.split("\n"));
   }
-  if (movedStash !== null) out = `${out.replace(/\s*$/, "")}\n\n${STASH_MARKER}\n\n${movedStash}\n`;
-  return out;
+
+  for (const { citekey, body } of others) {
+    const section = mergedFromSection(citekey, body);
+    if (section) prefix = `${prefix.replace(/\s*$/, "")}\n\n${section}`;
+  }
+
+  let movedStash: string | null = null;
+  if (!hasKeeperStash) {
+    for (const { body } of others) {
+      if (hasStashedText(body)) {
+        movedStash = stripTrailingMergedBlocks(stashedText(body));
+        break;
+      }
+    }
+  }
+
+  if (movedStash !== null) return `${prefix.replace(/\s*$/, "")}\n\n${STASH_MARKER}\n\n${movedStash}\n`;
+  return hasKeeperStash ? `${prefix.replace(/\s*$/, "")}\n\n${suffix}` : prefix;
+}
+
+/** `## Merged from <citekey>` holding the other note's non-empty `## Notes` / `## Highlights`
+ *  as `### Notes` / `### Highlights` subsections; "" when both are empty (nothing to merge in). */
+function mergedFromSection(citekey: string, body: string): string {
+  const notes = extractSection(body, "## Notes").trim();
+  const highlights = extractSection(body, "## Highlights").trim();
+  if (!notes && !highlights) return "";
+  const parts = [`## Merged from ${citekey}`];
+  if (notes) parts.push("", "### Notes", "", notes);
+  if (highlights) parts.push("", "### Highlights", "", highlights);
+  return `${parts.join("\n")}\n`;
+}
+
+/** A moved-in stash is `marker → EOF` (cheap: `appendStash` always writes it last) — except an
+ *  earlier merge could have left `## Merged from …` sections trailing after it, which are not
+ *  full text and must not ride along. */
+function stripTrailingMergedBlocks(stash: string): string {
+  const idx = stash.search(/(^|\n)## Merged from /);
+  return idx < 0 ? stash : stash.slice(0, idx).replace(/\s*$/, "");
 }
 
 /** Text under a `## <heading>` line, up to the next heading (any level) or end of body.
@@ -138,4 +192,64 @@ function extractSection(body: string, heading: string): string {
   const rest = body.slice(m.index + m[0].length);
   const next = rest.search(/\n#{1,6}[ \t]/);
   return next >= 0 ? rest.slice(0, next) : rest;
+}
+
+export interface MergeSourceNote {
+  citekey: string;
+  fm: Record<string, unknown>;
+  body: string;
+}
+
+export interface MergePlan {
+  fm: Record<string, unknown>;
+  body: string;
+}
+
+/** The single place that decides a group's merged frontmatter AND body, so they can't disagree
+ *  about which loser's summary (if any) the keeper ends up with: pick the summary donor once —
+ *  the first `other` with a summary block, only when the keeper has none — then feed that same
+ *  decision into both `mergeFrontmatter`'s summary_source/summary_model and `mergeBodies`' text
+ *  move. */
+export function planMerge(keeper: MergeSourceNote, others: MergeSourceNote[]): MergePlan {
+  const summaryDonor = extractSummaryBlock(keeper.body)
+    ? null
+    : (others.find((o) => extractSummaryBlock(o.body))?.citekey ?? null);
+
+  const fm = mergeFrontmatter(keeper.fm, others.map((o) => o.fm));
+  if (summaryDonor) {
+    const donor = others.find((o) => o.citekey === summaryDonor)!;
+    if (isEmpty(fm.summary_source) && !isEmpty(donor.fm.summary_source)) fm.summary_source = donor.fm.summary_source;
+    if (isEmpty(fm.summary_model) && !isEmpty(donor.fm.summary_model)) fm.summary_model = donor.fm.summary_model;
+  }
+
+  const body = mergeBodies(keeper.body, others.map((o) => ({ citekey: o.citekey, body: o.body })), summaryDonor);
+  return { fm, body };
+}
+
+export interface WikilinkRename {
+  /** Vault path without the `.md` extension, e.g. `References/smith2020`. */
+  path: string;
+  keeperBasename: string;
+}
+
+// `[[target]]`, `![[target]]`, with an optional `#heading` and/or `|alias` suffix kept verbatim.
+const WIKILINK_RE = /(!?\[\[)([^\]|#]+)((?:#[^\]|]*)?(?:\|[^\]]*)?)(\]\])/g;
+
+/** Rewrite wikilinks to a trashed loser onto the keeper's basename, across one note's text.
+ *  `renames` carries each loser's full vault path (no `.md`) and bare basename — both are valid
+ *  link targets in Obsidian — mapped to exact strings, so `[[smith2020b]]` is an exact-match miss
+ *  against `smith2020` and is left alone. The link's `#heading`/`|alias` suffix and a leading `!`
+ *  embed marker are preserved verbatim. */
+export function renameWikilinks(text: string, renames: WikilinkRename[]): string {
+  if (!renames.length) return text;
+  const map = new Map<string, string>();
+  for (const r of renames) {
+    map.set(r.path, r.keeperBasename);
+    const base = r.path.split("/").pop();
+    if (base) map.set(base, r.keeperBasename);
+  }
+  return text.replace(WIKILINK_RE, (whole, open: string, target: string, rest: string, close: string) => {
+    const keeper = map.get(target.trim());
+    return keeper ? `${open}${keeper}${rest}${close}` : whole;
+  });
 }
