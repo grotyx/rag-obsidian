@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, debounce, normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { RefEntry } from "../data/library";
+import { filterAndSort, QuickFilters, SortKey, SORT_OPTIONS } from "./libraryFilter";
 import { AddReferenceModal } from "./AddReferenceModal";
 import { VIEW_TYPE_SEARCH } from "./SearchView";
 import { VIEW_TYPE_CHAT } from "./ChatView";
@@ -9,11 +10,23 @@ import { ImportPdfModal } from "./ImportPdfModal";
 
 export const VIEW_TYPE_LIBRARY = "rag-obsidian-library";
 
+const PAGE_SIZE = 200;
+
+const CHIP_DEFS: { key: keyof QuickFilters; label: string }[] = [
+  { key: "hasPdf", label: "Has PDF" },
+  { key: "noPdf", label: "No PDF" },
+  { key: "unread", label: "Unread" },
+  { key: "retracted", label: "Retracted" },
+];
+
 export class LibraryView extends ItemView {
   private plugin: ScholarRagPlugin;
   private filter = "";
+  private sort: SortKey = "year-desc";
+  private chips: QuickFilters = {};
+  private visibleCount = PAGE_SIZE;
   private listEl!: HTMLElement;
-  private refresh = debounce(() => this.renderList(), 300, true);
+  private refresh = debounce(() => this.render(), 300, true);
 
   constructor(leaf: WorkspaceLeaf, plugin: ScholarRagPlugin) {
     super(leaf);
@@ -70,10 +83,38 @@ export class LibraryView extends ItemView {
 
     const search = header.createEl("input", { type: "text", placeholder: "Filter…" });
     search.value = this.filter;
-    search.oninput = () => {
-      this.filter = search.value.toLowerCase();
+    const onInput = debounce(
+      () => {
+        this.filter = search.value.toLowerCase();
+        this.visibleCount = PAGE_SIZE;
+        this.renderList();
+      },
+      150,
+      true
+    );
+    search.oninput = onInput;
+
+    const sortSel = header.createEl("select", { cls: "srag-sort" });
+    for (const opt of SORT_OPTIONS) sortSel.createEl("option", { value: opt.key, text: opt.label });
+    sortSel.value = this.sort;
+    sortSel.onchange = () => {
+      this.sort = sortSel.value as SortKey;
+      this.visibleCount = PAGE_SIZE;
       this.renderList();
     };
+
+    const chipsRow = c.createDiv({ cls: "srag-quick-chips" });
+    for (const def of CHIP_DEFS) {
+      const btn = chipsRow.createEl("button", { cls: "srag-quick-chip", text: def.label });
+      btn.toggleClass("is-active", !!this.chips[def.key]);
+      btn.onclick = () => {
+        this.chips[def.key] = !this.chips[def.key];
+        if (def.key === "hasPdf" && this.chips.hasPdf) this.chips.noPdf = false;
+        if (def.key === "noPdf" && this.chips.noPdf) this.chips.hasPdf = false;
+        this.visibleCount = PAGE_SIZE;
+        this.render();
+      };
+    }
 
     this.listEl = c.createDiv({ cls: "srag-list" });
     this.renderList();
@@ -82,26 +123,43 @@ export class LibraryView extends ItemView {
   private renderList(): void {
     if (!this.listEl) return;
     this.listEl.empty();
-    const entries = this.plugin.library.list().filter((e) => this.match(e));
+    const all = this.plugin.library.list();
+    const matched = filterAndSort(all, { text: this.filter, sort: this.sort, chips: this.chips });
+    const shown = Math.min(this.visibleCount, matched.length);
+
     this.listEl.createDiv({
       cls: "srag-count",
-      text: `${entries.length} reference(s)`,
+      text: `${shown} shown · ${matched.length} matched · ${all.length} total`,
     });
-    for (const e of entries) {
+
+    for (const e of matched.slice(0, shown)) {
       const row = this.listEl.createDiv({ cls: "srag-row" });
       row.createDiv({ cls: "srag-title", text: e.title });
       row.createDiv({
         cls: "srag-meta",
-        text: [e.authors, e.year].filter(Boolean).join(" · "),
+        text: [e.authors, e.year, e.journal].filter(Boolean).join(" · "),
       });
+      this.renderBadges(row, e);
       row.onclick = () => void this.app.workspace.getLeaf(false).openFile(e.file);
+    }
+
+    if (matched.length > shown) {
+      const more = this.listEl.createEl("button", {
+        cls: "srag-show-more",
+        text: `Show ${PAGE_SIZE} more (${matched.length - shown} left)`,
+      });
+      more.onclick = () => {
+        this.visibleCount += PAGE_SIZE;
+        this.renderList();
+      };
     }
   }
 
-  private match(e: RefEntry): boolean {
-    if (!this.filter) return true;
-    return `${e.title} ${e.authors} ${e.year} ${e.citekey}`
-      .toLowerCase()
-      .includes(this.filter);
+  private renderBadges(row: HTMLElement, e: RefEntry): void {
+    const badges = row.createDiv({ cls: "srag-badges" });
+    if (e.hasPdf) badges.createSpan({ cls: "srag-badge", text: "📄" });
+    if (e.retracted) badges.createSpan({ cls: "srag-badge srag-badge-error", text: "⚠ Retracted" });
+    if (e.status) badges.createSpan({ cls: "srag-badge", text: e.status });
+    if (e.citedBy) badges.createSpan({ cls: "srag-badge", text: `cited ${e.citedBy}` });
   }
 }

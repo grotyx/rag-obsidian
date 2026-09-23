@@ -27,7 +27,9 @@ import {
   matchKeys,
   normDoi,
   normTitle,
+  RefEntry,
 } from "../src/data/library";
+import { filterAndSort } from "../src/ui/libraryFilter";
 import { matchPdf, PdfCandidate } from "../src/data/pdfMatch";
 import {
   getYear,
@@ -485,6 +487,90 @@ AID - 10.1000/xyz123 [doi]
   );
   check(cacheRoot("linux", { XDG_CACHE_HOME: "/xdg-cache" }, home) === "/xdg-cache", "cacheRoot: linux → $XDG_CACHE_HOME");
   check(cacheRoot("linux", {}, home) === `${home}/.cache`, "cacheRoot: linux without XDG_CACHE_HOME falls back to ~/.cache");
+}
+
+// ---------- ui/libraryFilter.ts: filterAndSort ----------
+{
+  const mk = (o: Partial<RefEntry>): RefEntry => ({
+    file: {} as any,
+    citekey: "x",
+    title: "",
+    authors: "",
+    year: "",
+    ...o,
+  });
+  const alpha = mk({
+    citekey: "alpha",
+    title: "Banana Paper",
+    authors: "Smith",
+    year: "2020",
+    journal: "Nature",
+    added: "2024-01-01",
+    status: "unread",
+    citedBy: 5,
+    hasPdf: true,
+    retracted: false,
+  });
+  const beta = mk({
+    citekey: "beta",
+    title: "Apple Paper",
+    authors: "Adams",
+    year: "2018",
+    journal: "Science",
+    added: "2023-06-01",
+    status: "read",
+    citedBy: 20,
+    hasPdf: false,
+    retracted: true,
+  });
+  const gamma = mk({ citekey: "gamma", title: "Cherry Paper" }); // every optional field missing
+  const keys = (rows: RefEntry[]) => rows.map((r) => r.citekey).join(",");
+
+  check(
+    keys(filterAndSort([alpha, beta, gamma], { text: "", sort: "year-desc", chips: {} })) === "alpha,beta,gamma",
+    "filterAndSort: year-desc, missing year sorts last"
+  );
+  check(
+    keys(filterAndSort([alpha, beta, gamma], { text: "", sort: "year-asc", chips: {} })) === "beta,alpha,gamma",
+    "filterAndSort: year-asc, missing year sorts last"
+  );
+  check(
+    keys(filterAndSort([alpha, beta, gamma], { text: "", sort: "title-asc", chips: {} })) === "beta,alpha,gamma",
+    "filterAndSort: title A-Z"
+  );
+  check(
+    keys(filterAndSort([alpha, beta, gamma], { text: "", sort: "author-asc", chips: {} })) === "beta,alpha,gamma",
+    "filterAndSort: first-author A-Z, missing author sorts last"
+  );
+  check(
+    keys(filterAndSort([alpha, beta, gamma], { text: "", sort: "cited-desc", chips: {} })) === "beta,alpha,gamma",
+    "filterAndSort: most cited, missing citedBy sorts last"
+  );
+  check(
+    keys(filterAndSort([alpha, beta, gamma], { text: "", sort: "added-desc", chips: {} })) === "alpha,beta,gamma",
+    "filterAndSort: recently added, missing added sorts last"
+  );
+
+  check(
+    keys(filterAndSort([alpha, beta, gamma], { text: "", sort: "year-desc", chips: { hasPdf: true, unread: true } })) ===
+      "alpha",
+    "filterAndSort: hasPdf + unread chips AND together"
+  );
+  check(
+    keys(
+      filterAndSort([alpha, beta, gamma], { text: "", sort: "year-desc", chips: { noPdf: true, retracted: true } })
+    ) === "beta",
+    "filterAndSort: noPdf + retracted chips AND together"
+  );
+
+  check(
+    keys(filterAndSort([alpha, beta, gamma], { text: "nature", sort: "year-desc", chips: {} })) === "alpha",
+    "filterAndSort: text matches journal, case-insensitive"
+  );
+  check(
+    keys(filterAndSort([alpha, beta, gamma], { text: "BETA", sort: "year-desc", chips: {} })) === "beta",
+    "filterAndSort: text matches citekey, case-insensitive"
+  );
 }
 
 console.log(`unit: all ${passed} assertions passed`);

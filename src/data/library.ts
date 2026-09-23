@@ -8,6 +8,18 @@ export interface RefEntry {
   title: string;
   authors: string;
   year: string;
+  /** container-title (journal/venue). */
+  journal?: string;
+  /** `added` frontmatter, ISO-ish string. */
+  added?: string;
+  status?: string;
+  /** `cited_by_count` frontmatter. */
+  citedBy?: number;
+  /** `pdf:` frontmatter non-empty, or a `PDFs/<citekey>.pdf` file exists. */
+  hasPdf?: boolean;
+  retracted?: boolean;
+  /** Screening decision (`include` frontmatter: include/exclude/pending). */
+  include?: string;
 }
 
 export class Library {
@@ -186,20 +198,36 @@ export class Library {
 
   /** Single-pass scan returning each note's citekey, CSL item, and file together —
    *  avoids the O(n²) of calling getItem()/getFile() per citekey over the whole library. */
-  entries(): { citekey: string; item: CSLItem; file: TFile; year: string; authors: string; title: string }[] {
+  entries(): (RefEntry & { item: CSLItem })[] {
     const prefix = this.folder() + "/";
-    const out: { citekey: string; item: CSLItem; file: TFile; year: string; authors: string; title: string }[] = [];
+    const out: (RefEntry & { item: CSLItem })[] = [];
     for (const file of this.app.vault.getMarkdownFiles()) {
       if (!file.path.startsWith(prefix)) continue;
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
       if (!fm || !fm.citekey) continue;
+      const citekey = String(fm.citekey);
+      const citedByRaw = fm.cited_by_count;
+      const citedBy =
+        citedByRaw === undefined || citedByRaw === null || citedByRaw === "" ? undefined : Number(citedByRaw);
+      const pdfField = fm.pdf;
+      const hasLinkedPdf = typeof pdfField === "string" ? pdfField.trim().length > 0 : !!pdfField;
+      const hasPdf =
+        hasLinkedPdf ||
+        this.app.vault.getAbstractFileByPath(normalizePath(`PDFs/${citekey}.pdf`)) instanceof TFile;
       out.push({
-        citekey: String(fm.citekey),
+        citekey,
         item: fm as unknown as CSLItem,
         file,
         year: extractYear(fm.issued),
         authors: formatAuthors(fm.author),
         title: String(fm.title ?? file.basename),
+        journal: fm["container-title"] ? String(fm["container-title"]) : undefined,
+        added: fm.added ? String(fm.added) : undefined,
+        status: fm.status ? String(fm.status) : undefined,
+        citedBy: citedBy !== undefined && !Number.isNaN(citedBy) ? citedBy : undefined,
+        hasPdf,
+        retracted: fm.retracted === true,
+        include: fm.include ? String(fm.include) : undefined,
       });
     }
     out.sort((a, b) => b.year.localeCompare(a.year) || a.title.localeCompare(b.title));
