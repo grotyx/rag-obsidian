@@ -14,6 +14,10 @@ import {
   PubmedHit,
 } from "../ingest/pubmedSearch";
 
+/** A caught value is `unknown` by nature; almost always an Error or (rarely) a string in this
+ *  codebase, so those are the only cases worth a real message. */
+const errMsg = (e: unknown): string => (e instanceof Error ? e.message : typeof e === "string" ? e : "unknown error");
+
 export class PubmedSearchModal extends Modal {
   private plugin: ScholarRagPlugin;
   private query = "";
@@ -232,7 +236,7 @@ export class PubmedSearchModal extends Modal {
         if (tags.length) opts.tags = tags;
         if (mesh.length) opts.meshTerms = mesh;
         return { hit, item, opts, error: null as unknown };
-      } catch (e) {
+      } catch (e: unknown) {
         failed++;
         return { hit, item, opts, error: e };
       } finally {
@@ -245,7 +249,7 @@ export class PubmedSearchModal extends Modal {
       if (!p) continue;
       if (p.error) {
         console.error("[RAG Obsidian] add failed", p.hit.pmid, p.error);
-        new Notice(`Failed PMID ${p.hit.pmid}: ${p.error instanceof Error ? p.error.message : String(p.error)}`);
+        new Notice(`Failed PMID ${p.hit.pmid}: ${errMsg(p.error)}`);
         continue;
       }
       // Re-check: two selected hits can be the same work under different PMIDs.

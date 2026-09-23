@@ -17,7 +17,7 @@ export class TagRenameModal extends Modal {
     const { contentEl } = this;
     contentEl.createEl("h2", { text: "Rename tag across library" });
     contentEl.createEl("p", {
-      text: "Replace a topic tag on every reference note. Leave “New tag” empty to remove the tag.",
+      text: "Replace a topic tag on every reference note. Leave “new tag” empty to remove the tag.",
       cls: "setting-item-description",
     });
 

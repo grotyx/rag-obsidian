@@ -43,7 +43,7 @@ export class UnsupportedClaimsModal extends Modal {
     const { contentEl } = this;
     contentEl.createEl("h2", { text: `Unsupported claims (${this.claims.length})` });
     contentEl.createEl("p", {
-      text: "Declarative paragraphs above ## References with no [@citekey]. Suggest searches the index for evidence and inserts the citation at the end of the paragraph.",
+      text: "Declarative paragraphs above ## references with no [@citekey]. Suggest searches the index for evidence and inserts the citation at the end of the paragraph.",
       cls: "setting-item-description",
     });
     for (const claim of this.claims) {

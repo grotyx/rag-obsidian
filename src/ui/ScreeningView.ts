@@ -241,7 +241,7 @@ export class ScreeningView extends ItemView {
 
     controls.createDiv({ text: "Design", cls: "srag-count" });
     const designSelect = controls.createEl("select");
-    designSelect.createEl("option", { value: "", text: "(unset)" });
+    designSelect.createEl("option", { value: "", text: "(Unset)" });
     for (const d of DESIGNS) designSelect.createEl("option", { value: d, text: d });
     designSelect.value = this.working.design ?? "";
     designSelect.onchange = () => { this.working.design = designSelect.value || undefined; };
@@ -295,7 +295,7 @@ export class ScreeningView extends ItemView {
         return;
       }
       try {
-        await this.plugin.app.fileManager.processFrontMatter(fresh, (fm) => {
+        await this.plugin.app.fileManager.processFrontMatter(fresh, (fm: Record<string, unknown>) => {
           applyScreening(fm, this.buildFields(include));
         });
       } catch (e) {

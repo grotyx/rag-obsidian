@@ -277,7 +277,7 @@ export class RelatedView extends ItemView {
     }
 
     const hidden = nodes.length - kept.length;
-    host.createEl("div", {
+    host.createDiv({
       cls: "srag-count",
       text: hidden > 0
         ? `Showing the ${kept.length} best-connected papers · +${hidden} more in the lists below`
