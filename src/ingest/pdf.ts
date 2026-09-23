@@ -127,3 +127,9 @@ export function findIdentifier(text: string): { kind: "doi" | "arxiv"; value: st
   if (arx) return { kind: "arxiv", value: arx[1] };
   return null;
 }
+
+/** True when `data` starts with the PDF magic number. A repository can 200 with an HTML landing
+ *  page instead of the file it links to — this is the guard against saving that as a `.pdf`. */
+export function isPdfMagic(data: ArrayBuffer): boolean {
+  return String.fromCharCode(...new Uint8Array(data.slice(0, 5))) === "%PDF-";
+}

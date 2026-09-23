@@ -224,9 +224,24 @@ export default class ScholarRagPlugin extends Plugin {
       callback: () => void oaCmd.checkRetractionForActive(this),
     });
     this.addCommand({
+      id: "check-retraction-all",
+      name: "Check retraction status for all references",
+      callback: () => void oaCmd.checkRetractionAll(this),
+    });
+    this.addCommand({
+      id: "check-retraction-all-recheck",
+      name: "Check retraction status for all references (re-check everything)",
+      callback: () => void oaCmd.checkRetractionAll(this, true),
+    });
+    this.addCommand({
       id: "download-oa-pdf",
       name: "Download open-access PDF into the vault",
       callback: () => void oaCmd.downloadOaPdf(this),
+    });
+    this.addCommand({
+      id: "download-oa-pdfs-all",
+      name: "Download open-access PDFs for references without one",
+      callback: () => void oaCmd.downloadOaPdfsAll(this),
     });
     this.addCommand({
       id: "suggest-related",

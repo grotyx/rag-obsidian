@@ -34,6 +34,7 @@ import { layoutGraph, topByDegree, LayoutNode, LayoutEdge } from "../src/graph/l
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, STASH_MARKER } from "../src/ingest/pdfStash";
 import { findOpenAccess } from "../src/ingest/unpaywall";
+import { checkRetraction } from "../src/ingest/retraction";
 import {
   anchorsToCitekeys,
   extractCitekeys,
@@ -432,6 +433,17 @@ async function main() {
     } else {
       log("     (set CONTACT_EMAIL to also check the live oa_locations scan)");
     }
+  }
+
+  // checkRetraction: a real, permanently-retracted paper (the Surgisphere/Lancet hydroxychloroquine
+  // "multinational registry analysis", retracted May 2020) must come back retracted:true, and the
+  // retitled-to-"RETRACTED:" title guard applies too — a live OpenAlex-shape check, same pattern
+  // as the findOpenAccess live calls above.
+  {
+    const retracted = await checkRetraction({ type: "article-journal", DOI: "10.1016/S0140-6736(20)31180-6" });
+    ok(retracted?.retracted === true, `checkRetraction: known-retracted DOI → ${JSON.stringify(retracted)}`);
+    const clean = await checkRetraction({ type: "article-journal", DOI: "10.1038/nature14539" });
+    ok(clean?.retracted === false, `checkRetraction: non-retracted DOI → ${JSON.stringify(clean)}`);
   }
 
   // ---- 10. bibliography / citations (Phase 5) ----
