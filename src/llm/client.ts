@@ -39,6 +39,7 @@ export async function requestWithRetry(
   }
 }
 import { ScholarRagSettings } from "../types";
+import { runCli } from "./cli";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -67,6 +68,9 @@ export class LLMClient {
         return this.openai(messages, system, opts);
       case "ollama":
         return this.ollama(messages, system);
+      case "codex":
+      case "opencode":
+        return runCli(this.settings, messages, system, opts);
       case "anthropic":
       default:
         return this.anthropic(messages, system, opts);

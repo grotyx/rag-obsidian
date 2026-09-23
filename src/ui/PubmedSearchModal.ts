@@ -3,7 +3,7 @@ import type ScholarRagPlugin from "../../main";
 import { CSLItem } from "../types";
 import { BuildNoteOpts } from "../data/reference";
 import { LLMClient } from "../llm/client";
-import { mapPool, POOL_WIDTH } from "../util/pool";
+import { mapPool, poolWidth } from "../util/pool";
 import { startBatch, cancelBatch, Batch } from "./progress";
 import { summarizeSource } from "../ingest/summarize";
 import {
@@ -189,7 +189,7 @@ export class PubmedSearchModal extends Modal {
 
     // The slow half — one PubMed record, maybe a PMC full text, and the summary — runs several
     // papers at a time. The vault writes afterwards stay sequential.
-    const prepared = await mapPool(fresh, POOL_WIDTH, async (hit) => {
+    const prepared = await mapPool(fresh, poolWidth(this.plugin.settings), async (hit) => {
       const item: CSLItem = { ...hit.item };
       const opts: BuildNoteOpts = {};
       try {
