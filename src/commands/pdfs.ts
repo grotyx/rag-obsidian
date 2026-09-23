@@ -2,6 +2,8 @@ import { Notice, TFile, normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { extractPdfText } from "../ingest/pdf";
 import { appendStash, hasStashedText, resolvePdfLink } from "../ingest/pdfStash";
+import { matchPdf, PdfCandidate, PdfMatch } from "../data/pdfMatch";
+import { yearFromIssued } from "../index/chunker";
 import { mapPool } from "../util/pool";
 import { startBatch } from "../ui/progress";
 
@@ -92,4 +94,134 @@ export async function indexLinkedPdfs(plugin: ScholarRagPlugin, only?: TFile): P
 export async function indexLinkedPdfActive(plugin: ScholarRagPlugin): Promise<void> {
   const r = plugin.activeRef();
   if (r) await indexLinkedPdfs(plugin, r.file);
+}
+
+/** Explicit `pdf:` link this note's frontmatter already resolves to, or null. Deliberately
+ *  ignores the `PDFs/<citekey>.pdf` fallback `findPdfFile` also tries — "Link PDFs in a folder"
+ *  exists precisely to turn that implicit fallback into a real frontmatter link. */
+function resolvedPdfLink(plugin: ScholarRagPlugin, pdfValue: unknown, notePath: string): TFile | null {
+  const link = resolvePdfLink(pdfValue);
+  return link ? plugin.app.metadataCache.getFirstLinkpathDest(link, notePath) : null;
+}
+
+/** Match every PDF in a folder (recursive) to a library reference and write a `pdf:` link.
+ *  Pass 1 matches by filename == citekey (no extraction). Pass 2 extracts the remaining PDFs'
+ *  text (pool width `PDF_WIDTH`, same CPU-bound reasoning as `indexLinkedPdfs`) and matches by
+ *  DOI / PMID / title via `matchPdf`. A note with no stashed text gets the pass-2 extraction
+ *  stashed for free; pass-1 matches are left for "Index linked PDFs" to pick up. */
+export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: string): Promise<void> {
+  const entries = plugin.library.entries();
+
+  const linkedPaths = new Set<string>();
+  let candidates: PdfCandidate[] = [];
+  const citekeyToFile = new Map<string, TFile>();
+  for (const e of entries) {
+    const linked = resolvedPdfLink(plugin, e.item.pdf, e.file.path);
+    if (linked) {
+      linkedPaths.add(linked.path);
+      continue;
+    }
+    candidates.push({
+      citekey: e.citekey,
+      DOI: e.item.DOI,
+      PMID: e.item.PMID,
+      title: e.item.title,
+      year: yearFromIssued(e.item.issued) || undefined,
+    });
+    citekeyToFile.set(e.citekey, e.file);
+  }
+
+  const prefix = normalizePath(folderPath).replace(/\/+$/, "") + "/";
+  const pdfs = plugin.app.vault
+    .getFiles()
+    .filter((f) => f.extension.toLowerCase() === "pdf" && f.path.startsWith(prefix) && !linkedPaths.has(f.path));
+
+  if (!pdfs.length || !candidates.length) {
+    new Notice(`Nothing to link · ${pdfs.length} unlinked PDF(s), ${candidates.length} reference(s) without a PDF`);
+    return;
+  }
+
+  const batch = startBatch(plugin, "Linking PDFs", pdfs.length);
+  if (!batch) return;
+
+  const unmatched: TFile[] = [];
+  const byType: Record<PdfMatch["by"], number> = { name: 0, doi: 0, pmid: 0, title: 0 };
+  let done = 0;
+  let failed = 0;
+  let outcome = "Linking PDFs failed (see console)";
+
+  const link = async (pdf: TFile, m: PdfMatch, text?: string): Promise<void> => {
+    candidates = candidates.filter((c) => c.citekey !== m.citekey);
+    const note = citekeyToFile.get(m.citekey);
+    if (!note) return;
+    await plugin.app.fileManager.processFrontMatter(note, (fm) => {
+      fm.pdf = `[[${pdf.path}]]`;
+    });
+    if (text != null && !hasStashedText(await plugin.app.vault.cachedRead(note))) {
+      await plugin.app.vault.process(note, (body) => appendStash(body, text));
+    }
+    byType[m.by]++;
+  };
+
+  try {
+    // Pass 1: filename == citekey, no extraction, no pool (nothing CPU-bound to parallelize).
+    const pass2: TFile[] = [];
+    for (const pdf of pdfs) {
+      if (batch.signal.aborted) break;
+      try {
+        const m = matchPdf(pdf.basename, null, candidates);
+        if (m) await link(pdf, m);
+        else pass2.push(pdf);
+      } catch (err) {
+        failed++;
+        console.error("[RAG Obsidian] Link PDFs (name pass) failed", pdf.path, err);
+      } finally {
+        batch.tick(++done, failed);
+      }
+    }
+
+    // Pass 2: extract text, match by DOI / PMID / title.
+    let writes: Promise<void> = Promise.resolve();
+    await mapPool(
+      pass2,
+      PDF_WIDTH,
+      async (pdf) => {
+        try {
+          const { text } = await extractPdfText(await plugin.app.vault.readBinary(pdf));
+          writes = writes
+            .catch(() => {}) // an earlier note's failed write must not fail this one
+            .then(async () => {
+              const m = matchPdf(pdf.basename, text.slice(0, 4000), candidates);
+              if (m) await link(pdf, m, text);
+              else unmatched.push(pdf);
+            });
+          await writes;
+        } catch (err) {
+          failed++;
+          console.error("[RAG Obsidian] Link PDFs (content pass) failed", pdf.path, err);
+        } finally {
+          batch.tick(++done, failed);
+        }
+      },
+      batch.signal
+    );
+
+    const linked = byType.name + byType.doi + byType.pmid + byType.title;
+    const cancelled = pdfs.length - done;
+    outcome =
+      `${linked} linked (${byType.name} name · ${byType.doi} doi · ${byType.pmid} pmid · ${byType.title} title) · ` +
+      `${unmatched.length} unmatched · ${failed} failed` +
+      (cancelled ? ` · ${cancelled} cancelled` : "");
+  } finally {
+    batch.finish(outcome);
+  }
+
+  if (unmatched.length) {
+    const report =
+      `# PDF link report\n\n${unmatched.length} unmatched PDF(s) in "${folderPath}":\n\n` +
+      unmatched.map((f) => `- ${f.path}`).join("\n") +
+      "\n";
+    await plugin.writeAndOpen(normalizePath("PDF link report.md"), report);
+  }
+  new Notice(outcome);
 }

@@ -1,9 +1,11 @@
-import { Notice, normalizePath } from "obsidian";
+import { Notice, TFile, normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { duplicateGroups } from "../data/library";
 import { exportRefs, ExportFormat, ExportRef } from "../cite/export";
 import { resolveWork, relatedWorks } from "../graph/openalex";
 import { detectId, fetchMetadata } from "../ingest/metadata";
+import { mapPool, POOL_WIDTH } from "../util/pool";
+import { startBatch } from "../ui/progress";
 
 /** Write a Dataview-powered dashboard note (live, sortable). Falls back to a static table. */
 export async function buildDashboard(plugin: ScholarRagPlugin): Promise<void> {
@@ -121,42 +123,86 @@ export async function backfillCitationCounts(plugin: ScholarRagPlugin): Promise<
   }
 }
 
-/** Re-fetch metadata for notes missing abstract / journal / authors and fill the gaps. */
+/** Re-fetch metadata for notes missing abstract / journal / authors / volume / page and fill
+ *  the gaps. Volume and page are common ahead-of-print gaps — issue alone is not (many journals
+ *  simply have none), so it is not part of `needs`. */
 export async function enrichMetadata(plugin: ScholarRagPlugin): Promise<void> {
-  const entries = plugin.library.entries();
-  const notice = new Notice(`Enriching 0/${entries.length}…`, 0);
-  let done = 0;
-  let filled = 0;
-  for (const e of entries) {
+  const todo: { file: TFile; idStr: string }[] = [];
+  let skipped = 0;
+  for (const e of plugin.library.entries()) {
     const item = e.item;
-    const file = e.file;
-    done++;
-    notice.setMessage(`Enriching ${done}/${entries.length}…`);
-    const needs = !item.abstract || !item["container-title"] || !item.author || !item.author.length;
+    const needs =
+      !item.abstract ||
+      !item["container-title"] ||
+      !item.author ||
+      !item.author.length ||
+      !item.volume ||
+      !item.page;
     // Crossref usually omits abstracts — prefer PubMed when that is the gap.
     const pmid = item.PMID ? `pmid:${item.PMID}` : "";
     const idStr = !item.abstract && pmid ? pmid : item.DOI || pmid;
-    if (!needs || !idStr) continue;
-    try {
-      const fresh = await fetchMetadata(detectId(idStr), plugin.settings.pubmedApiKey);
-      let changed = false;
-      await plugin.app.fileManager.processFrontMatter(file, (fm) => {
-        const set = (k: string, v: unknown) => ((fm[k] = v), (changed = true));
-        if (!fm.abstract && fresh.abstract) set("abstract", fresh.abstract);
-        if (!fm["container-title"] && fresh["container-title"]) set("container-title", fresh["container-title"]);
-        if ((!fm.author || (Array.isArray(fm.author) && !fm.author.length)) && fresh.author) set("author", fresh.author);
-        if (!fm.volume && fresh.volume) set("volume", fresh.volume);
-        if (!fm.issue && fresh.issue) set("issue", fresh.issue);
-        if (!fm.page && fresh.page) set("page", fresh.page);
-        if (!fm.DOI && fresh.DOI) set("DOI", fresh.DOI);
-      });
-      if (changed) filled++;
-    } catch {
-      /* skip on fetch error */
+    if (!needs || !idStr) {
+      skipped++;
+      continue;
     }
+    todo.push({ file: e.file, idStr });
   }
-  notice.hide();
-  new Notice(`Enriched ${filled} reference(s).`);
+  if (!todo.length) {
+    new Notice(`Nothing to enrich · ${skipped} skipped (complete already / no identifier)`);
+    return;
+  }
+
+  const batch = startBatch(plugin, "Enriching metadata", todo.length);
+  if (!batch) return;
+  let done = 0;
+  let failed = 0;
+  let filled = 0;
+  let unchanged = 0;
+  let outcome = "Enriching metadata failed (see console)";
+  // Vault writes stay sequential (and off the fetch pool) but happen as each result lands.
+  let writes: Promise<void> = Promise.resolve();
+  try {
+    await mapPool(
+      todo,
+      POOL_WIDTH,
+      async (t) => {
+        try {
+          const fresh = await fetchMetadata(detectId(t.idStr), plugin.settings.pubmedApiKey);
+          writes = writes
+            .catch(() => {}) // an earlier note's failed write must not fail this one
+            .then(async () => {
+              let changed = false;
+              await plugin.app.fileManager.processFrontMatter(t.file, (fm) => {
+                const set = (k: string, v: unknown) => ((fm[k] = v), (changed = true));
+                if (!fm.abstract && fresh.abstract) set("abstract", fresh.abstract);
+                if (!fm["container-title"] && fresh["container-title"]) set("container-title", fresh["container-title"]);
+                if ((!fm.author || (Array.isArray(fm.author) && !fm.author.length)) && fresh.author) set("author", fresh.author);
+                if (!fm.volume && fresh.volume) set("volume", fresh.volume);
+                if (!fm.issue && fresh.issue) set("issue", fresh.issue);
+                if (!fm.page && fresh.page) set("page", fresh.page);
+                if (!fm.DOI && fresh.DOI) set("DOI", fresh.DOI);
+              });
+              if (changed) filled++;
+              else unchanged++;
+            });
+          await writes;
+        } catch (err) {
+          failed++;
+          console.error("[RAG Obsidian] Enrich metadata failed", t.file.path, err);
+        } finally {
+          batch.tick(++done, failed);
+        }
+      },
+      batch.signal
+    );
+    const cancelled = todo.length - done; // never started — the user cancelled
+    outcome =
+      `${filled} filled · ${unchanged} unchanged · ${skipped} skipped · ${failed} failed` +
+      (cancelled ? ` · ${cancelled} cancelled` : "");
+  } finally {
+    batch.finish(outcome);
+  }
+  new Notice(outcome);
 }
 
 /** Rename (or delete, if newTag is empty) a tag across every reference note. */
