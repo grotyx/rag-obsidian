@@ -59,6 +59,8 @@ import {
   localDate,
 } from "../src/data/reference";
 import { DEFAULT_SETTINGS } from "../src/types";
+import { applyScreening } from "../src/data/screening";
+import { prismaCounts, prismaMarkdown, PrismaRecord } from "../src/data/prisma";
 
 let passed = 0;
 function check(cond: boolean, label: string): void {
@@ -860,6 +862,94 @@ AID - 10.1000/xyz123 [doi]
   );
 
   check(renameCiteKeys("[@unknown]", { a: "k" }) === "[@unknown]", "renameCiteKeys: unmapped citekey is left as written");
+}
+
+// ---------- data/screening.ts: applyScreening ----------
+{
+  // include with no kq (neither passed nor already on the note) is rejected, nothing written.
+  const fm1: Record<string, unknown> = { tags: ["existing"] };
+  assert.throws(
+    () => applyScreening(fm1, { include: "include" }),
+    /include requires at least one kq/,
+    "applyScreening: include without kq is rejected"
+  );
+  check(
+    Array.isArray(fm1.tags) && fm1.tags.length === 1 && fm1.tags[0] === "existing",
+    "applyScreening: rejected call left fm.tags untouched"
+  );
+  check(!("include" in fm1), "applyScreening: rejected call left fm.include unset");
+
+  // include is fine when kq is passed alongside it in the same call.
+  const fm2: Record<string, unknown> = { tags: [] };
+  const r2 = applyScreening(fm2, { kq: ["1"], include: "include" });
+  check(r2.fields.include === "include" && r2.fields.kq.length === 1, "applyScreening: include with kq in the same call succeeds");
+
+  // include is also fine when kq was already on the note from an earlier call.
+  const fm3: Record<string, unknown> = { tags: ["kq-01"], kq: ["1"] };
+  const r3 = applyScreening(fm3, { include: "include" });
+  check(r3.fields.include === "include", "applyScreening: include succeeds when kq already exists on the note");
+
+  // tags mirrored, and swapping a decision/level replaces the stale tag rather than stacking it.
+  const fm4: Record<string, unknown> = { tags: [] };
+  applyScreening(fm4, { kq: ["1", "3"], include: "pending", level: "2", design: "Randomized controlled trial" });
+  const afterPending = applyScreening(fm4, { include: "exclude" });
+  check(!afterPending.tags.includes("pending"), "applyScreening: switching pending -> exclude drops the stale include-state tag");
+  check(afterPending.tags.includes("exclude"), "applyScreening: exclude tag mirrored");
+  const afterLevel = applyScreening(fm4, { level: "3" });
+  check(!afterLevel.tags.includes("level-2") && afterLevel.tags.includes("level-3"), "applyScreening: level-2 -> level-3 replaces the tag");
+  check(afterLevel.tags.includes("kq-01") && afterLevel.tags.includes("kq-03"), "applyScreening: kq tags survive an unrelated field update");
+  check(afterLevel.tags.includes("design-randomized-controlled-trial"), "applyScreening: design tag slugified");
+
+  // an invalid design (empty/blank, not just any free text) is rejected before anything is written.
+  const fm5: Record<string, unknown> = { tags: [] };
+  assert.throws(
+    () => applyScreening(fm5, { design: "   " }),
+    /design must be a non-empty string/,
+    "applyScreening: a blank design is rejected"
+  );
+  check(!("design" in fm5), "applyScreening: rejected design call left fm.design unset");
+}
+
+// ---------- data/prisma.ts: prismaCounts / prismaMarkdown ----------
+{
+  const records: PrismaRecord[] = [
+    { citekey: "a2020", include: "include", screening_note: null }, // has full text
+    { citekey: "b2020", include: "include", screening_note: null }, // no full text
+    { citekey: "c2020", include: "exclude", screening_note: "Wrong population: pediatric cohort" },
+    { citekey: "d2020", include: "exclude", screening_note: "no recognized prefix here" },
+    { citekey: "e2020", include: "pending", screening_note: null },
+    { citekey: "f2020", include: null, screening_note: null }, // unscreened
+    { citekey: "g2020", include: "include", screening_note: null }, // duplicate of a2020, dropped
+  ];
+  const dupGroups = [["a2020", "g2020"]];
+  const fullText = new Set(["a2020"]);
+  const counts = prismaCounts(records, dupGroups, (r) => fullText.has(r.citekey));
+
+  check(counts.recordsIdentified === 7, "prismaCounts: recordsIdentified counts every scoped record");
+  check(counts.duplicatesRemoved === 1, "prismaCounts: one duplicate (beyond the first) removed");
+  check(counts.recordsScreened === 6, "prismaCounts: recordsScreened = identified - duplicates");
+  check(counts.excludedAtScreening === 2, "prismaCounts: two excluded");
+  check(counts.awaitingDecision === 2, "prismaCounts: pending + unscreened = awaiting decision");
+  check(counts.reportsSoughtForRetrieval === 2, "prismaCounts: two included (duplicate not double-counted)");
+  check(counts.reportsAssessed === 1, "prismaCounts: one included record has full text");
+  check(counts.reportsNotRetrieved === 1, "prismaCounts: one included record has no full text");
+  check(counts.studiesIncluded === 2, "prismaCounts: studiesIncluded mirrors included count");
+  const wrongPop = counts.exclusionReasons.find((r) => r.reason === "Wrong population");
+  const other = counts.exclusionReasons.find((r) => r.reason === "Other");
+  check(!!wrongPop && wrongPop.count === 1, "prismaCounts: exclusion reason grouped by recognized prefix");
+  check(!!other && other.count === 1, "prismaCounts: unrecognized note grouped under Other");
+
+  const md = prismaMarkdown(counts, "all references", "2026-09-23");
+  check(md.includes("flowchart TD"), "prismaMarkdown: contains a valid mermaid flowchart header");
+  check(md.includes("n = 7"), "prismaMarkdown: records identified count appears in the diagram");
+  check(md.includes("| Records identified | 7 |"), "prismaMarkdown: records identified appears in the table");
+  check(md.includes("| Studies included in review | 2 |"), "prismaMarkdown: included count appears in the table");
+  check(md.includes("Wrong population"), "prismaMarkdown: exclusion reason listed");
+
+  // mutation check: a broken prismaCounts (off-by-one on duplicates) must fail the assertions above.
+  const brokenDupGroups: string[][] = [];
+  const brokenCounts = prismaCounts(records, brokenDupGroups, (r) => fullText.has(r.citekey));
+  check(brokenCounts.recordsScreened === 7, "prismaCounts mutation check: no dup groups -> nothing removed");
 }
 
 console.log(`unit: all ${passed} assertions passed`);

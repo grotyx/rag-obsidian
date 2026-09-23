@@ -18,6 +18,8 @@ import { LibraryView, VIEW_TYPE_LIBRARY } from "./src/ui/LibraryView";
 import { SearchView, VIEW_TYPE_SEARCH } from "./src/ui/SearchView";
 import { ChatView, VIEW_TYPE_CHAT } from "./src/ui/ChatView";
 import { RelatedView, VIEW_TYPE_RELATED } from "./src/ui/RelatedView";
+import { ScreeningView, VIEW_TYPE_SCREENING } from "./src/ui/ScreeningView";
+import { PrismaScopeModal } from "./src/ui/PrismaScopeModal";
 import { CitationGraph } from "./src/graph/citations";
 import { ImportPdfModal } from "./src/ui/ImportPdfModal";
 import { CitationSuggest } from "./src/cite/suggest";
@@ -91,6 +93,7 @@ export default class ScholarRagPlugin extends Plugin {
     this.registerView(VIEW_TYPE_SEARCH, (leaf) => new SearchView(leaf, this));
     this.registerView(VIEW_TYPE_CHAT, (leaf) => new ChatView(leaf, this));
     this.registerView(VIEW_TYPE_RELATED, (leaf) => new RelatedView(leaf, this));
+    this.registerView(VIEW_TYPE_SCREENING, (leaf) => new ScreeningView(leaf, this));
 
     this.addRibbonIcon("book-open", "Open library", () => {
       void this.activateView(VIEW_TYPE_LIBRARY);
@@ -349,6 +352,16 @@ export default class ScholarRagPlugin extends Plugin {
       id: "enrich-metadata",
       name: "Enrich library metadata (fill gaps)",
       callback: () => void libraryCmd.enrichMetadata(this),
+    });
+    this.addCommand({
+      id: "open-screening",
+      name: "Open screening pane",
+      callback: () => void this.activateView(VIEW_TYPE_SCREENING),
+    });
+    this.addCommand({
+      id: "prisma-diagram",
+      name: "Create PRISMA flow diagram…",
+      callback: () => new PrismaScopeModal(this.app, this).open(),
     });
 
     // Phase 5: @-autocomplete for citekeys.
