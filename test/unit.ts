@@ -26,6 +26,7 @@ import {
   normDoi,
   normTitle,
 } from "../src/data/library";
+import { matchPdf, PdfCandidate } from "../src/data/pdfMatch";
 import {
   getYear,
   firstAuthorFamily,
@@ -267,6 +268,49 @@ AID - 10.1000/xyz123 [doi]
   check(!inScope({ file: { path: "References/Spine2/a.md" }, item: {} }, { kind: "folder", folder: "References/Spine" }), "inScope: folder prefix is strict");
   check(inScope(entry, { kind: "tag", tag: "diskectomy" }), "inScope: tag case-insensitive, # tolerant");
   check(!inScope(entry, { kind: "tag", tag: "endoscopy" }), "inScope: tag mismatch");
+}
+
+// ---------- data/pdfMatch.ts: matchPdf ----------
+{
+  const cands: PdfCandidate[] = [
+    { citekey: "park2021efficacy", DOI: "10.1038/x", PMID: "12345678", title: "The efficacy of endoscopic diskectomy for lumbar herniation", year: 2021 },
+    { citekey: "kim2019outcomes", DOI: "10.1038/y", PMID: "87654321", title: "Outcomes of biportal endoscopy in spinal stenosis patients", year: 2019 },
+  ];
+
+  check(matchPdf("park2021efficacy", null, cands)?.by === "name", "matchPdf: filename equals citekey");
+  check(matchPdf("Park2021Efficacy", null, cands)?.by === "name", "matchPdf: filename match is case-insensitive");
+  check(matchPdf("random-download", null, cands) === null, "matchPdf: no head, no name match → null");
+
+  const doiHead = "Downloaded from https://doi.org/10.1038/x. on 2024-01-01\nSome intro text.";
+  check(matchPdf("random-download", doiHead, cands)?.citekey === "park2021efficacy", "matchPdf: DOI with URL prefix + trailing period");
+  check(matchPdf("random-download", doiHead, cands)?.by === "doi", "matchPdf: DOI match reports by=doi");
+
+  const pmidHead = "Article header.\nPMID: 87654321\nAbstract follows.";
+  const pmidHit = matchPdf("random-download", pmidHead, cands);
+  check(pmidHit?.citekey === "kim2019outcomes" && pmidHit?.by === "pmid", "matchPdf: PMID match");
+
+  const titleHead = "The Efficacy of Endoscopic Diskectomy for Lumbar Herniation\nJournal of Spine, 2021.\nAuthors: Park et al.";
+  const titleHit = matchPdf("random-download", titleHead, cands);
+  check(titleHit?.citekey === "park2021efficacy" && titleHit?.by === "title", "matchPdf: title match with year present");
+
+  const wrongYearHead = "The Efficacy of Endoscopic Diskectomy for Lumbar Herniation\nJournal of Spine, 2020.";
+  check(matchPdf("random-download", wrongYearHead, cands) === null, "matchPdf: title matches but year is wrong → null");
+
+  // The 4000-char head slice must actually be enforced, not just documented (mutation-checked
+  // by hand: widening pdfMatch.ts's HEAD_CHARS makes this assertion fail — see report).
+  const padded = "x".repeat(4000) + "\n" + titleHead;
+  check(matchPdf("random-download", padded, cands) === null, "matchPdf: title present only past char 4000 → null");
+
+  const ambiguous: PdfCandidate[] = [
+    { citekey: "a1", title: "Outcomes of biportal endoscopy in spinal stenosis patients", year: 2019 },
+    { citekey: "a2", title: "Outcomes of biportal endoscopy in spinal stenosis patients", year: 2019 },
+  ];
+  const dupHead = "Outcomes of biportal endoscopy in spinal stenosis patients\nSpine 2019.";
+  check(matchPdf("random-download", dupHead, ambiguous) === null, "matchPdf: two candidates with the same title → null (ambiguous)");
+
+  const shortTitleCands: PdfCandidate[] = [{ citekey: "short1", title: "Editorial note", year: 2021 }];
+  const shortHead = "Editorial note\nSpine, 2021.";
+  check(matchPdf("random-download", shortHead, shortTitleCands) === null, "matchPdf: short title (<25 chars) never title-matches");
 }
 
 // ---------- data/reference.ts ----------

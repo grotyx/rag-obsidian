@@ -40,7 +40,8 @@ import * as oaCmd from "./src/commands/openaccess";
 import { backfillSummaries } from "./src/commands/backfill";
 import { cancelBatch } from "./src/ui/progress";
 import { resummarizeActive, resummarizeOutdated } from "./src/commands/summaries";
-import { indexLinkedPdfs, indexLinkedPdfActive } from "./src/commands/pdfs";
+import { indexLinkedPdfs, indexLinkedPdfActive, linkPdfsInFolder } from "./src/commands/pdfs";
+import { FolderSuggestModal } from "./src/ui/FolderSuggestModal";
 import { McpVault } from "./src/mcp/vault";
 import { MCP_TOOLS, McpService } from "./src/mcp/service";
 import { assertVaultPath, McpHttpServer, McpServerStatus } from "./src/mcp/http";
@@ -261,6 +262,12 @@ export default class ScholarRagPlugin extends Plugin {
       id: "index-linked-pdf-active",
       name: "Index this note's PDF",
       callback: () => void indexLinkedPdfActive(this),
+    });
+    this.addCommand({
+      id: "link-pdfs-in-folder",
+      name: "Link PDFs in a folder to references",
+      callback: () =>
+        new FolderSuggestModal(this.app, (folder) => void linkPdfsInFolder(this, folder.path)).open(),
     });
     this.addCommand({
       id: "extract-highlights",
