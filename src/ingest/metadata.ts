@@ -80,7 +80,12 @@ export async function fetchMetadata(id: SourceId, pubmedApiKey = "", mailto = ""
  *  decodes entities so an entity-escaped title ("&lt;65") comes out as the literal text. */
 function stripTags(s: string | undefined): string {
   if (!s) return "";
-  const noTags = s.replace(/<\/?[A-Za-z][A-Za-z0-9]*(\s[^>]*)?>/g, "");
+  // Only real markup: a namespaced tag (<jats:p>, <mml:math>) or a known inline HTML tag. A bare
+  // "<[^>]+>" also ate comparators in titles ("aged <65 and >80", "grade <II and >IV").
+  const noTags = s.replace(
+    /<\/?(?:[A-Za-z][\w.-]*:[A-Za-z][\w.-]*|(?:i|b|u|em|strong|sup|sub|sc|span|a|br|p|div|title|italic|bold|underline|list|list-item|sec|inline-formula|math))(?=[\s/>])[^<>]*>/gi,
+    ""
+  );
   return decodeEntities(noTags).replace(/\s+/g, " ").trim();
 }
 

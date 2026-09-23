@@ -3,7 +3,7 @@
 > Display name: **Academic Paper Citation Manager** · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.7.6 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.7.7 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -125,7 +125,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (274) + MCP checks + live integration suite (216 checks)
+npm test               # unit (300) + MCP checks + live integration suite (216 checks)
 ```
 
 ## Testing approach (important)

@@ -1,6 +1,7 @@
-// Narrate every main slide with an OpenRouter speech model through the running Obsidian, then
-// transcribe each clip back and compare it with the script; a clip below MIN_SIM is regenerated
-// (up to 3 tries) and reported if it still doesn't match.
+// Narrate every main slide with an OpenRouter speech model through the running Obsidian, then have
+// an audio model judge each clip against the script (nothing missing, added, cut off, or turned into
+// a different word). A clip that fails, or is far shorter than the script, is regenerated (up to 3
+// tries) and reported if it still fails. The transcript similarity is recorded for reference only.
 //   MODEL=minimax/speech-2.8-hd VOICE=Korean_ReliableYouth node narrate.mjs [--force]
 import fs from "node:fs";
 import path from "node:path";
@@ -9,7 +10,6 @@ import { execFileSync } from "node:child_process";
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const MODEL = process.env.MODEL || "minimax/speech-2.8-hd";
 const VOICE = process.env.VOICE || "Korean_ReliableYouth";
-const MIN_SIM = Number(process.env.MIN_SIM || 0.85);
 const FORCE = process.argv.includes("--force");
 const SLIDES = JSON.parse(fs.readFileSync(path.join(HERE, "..", "slides.json"), "utf8")).filter((s) => s.section !== "부록");
 fs.mkdirSync(path.join(HERE, "audio"), { recursive: true });
@@ -59,7 +59,7 @@ async function narrate(s) {
     const sec = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", tmp]).toString());
     const j = await js(`window.__judge(${JSON.stringify(r.audio)}, "mp3", ${JSON.stringify(s.say)})`);
     const ok = j && !j.error && j.match === true && sec >= expectSec * 0.6;
-    const sim = j && j.heard ? similarity(s.say, j.heard) : 0;
+    const sim = j && j.heard ? similarity(text, j.heard) : 0; // against what the TTS was given
     const score = (ok ? 1 : 0) + sim; // prefer a judged match, then the closest transcript
     if (!best || score > best.score) best = { score, ok, sim, sec, audio: r.audio, text: j?.heard ?? j?.error, issues: j?.issues ?? [] };
     fs.rmSync(tmp, { force: true });

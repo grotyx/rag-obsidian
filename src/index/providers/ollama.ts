@@ -1,5 +1,5 @@
 import { requestUrl } from "obsidian";
-import { ScholarRagSettings } from "../../types";
+import { ScholarRagSettings, effective } from "../../types";
 import { EmbeddingProvider } from "../embedding";
 import { rec, arr, isNumberArray } from "../../util/json";
 
@@ -12,7 +12,7 @@ export class OllamaProvider implements EmbeddingProvider {
 
   constructor(settings: ScholarRagSettings) {
     this.model = settings.embeddingModel || "nomic-embed-text";
-    this.url = (settings.ollamaUrl || "http://localhost:11434").replace(/\/+$/, "");
+    this.url = effective(settings, "ollamaUrl").replace(/\/+$/, "");
     this.id = `ollama:${this.model}`;
   }
 

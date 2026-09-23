@@ -71,7 +71,7 @@ import {
   buildNote,
   localDate,
 } from "../src/data/reference";
-import { DEFAULT_SETTINGS } from "../src/types";
+import { DEFAULT_SETTINGS, effective } from "../src/types";
 import { applyScreening } from "../src/data/screening";
 import { prismaCounts, prismaMarkdown, PrismaRecord } from "../src/data/prisma";
 
@@ -595,6 +595,23 @@ AID - 10.1000/xyz123 [doi]
   check(codexWin[codexWin.length - 1] === "C:\\Users\\x\\AppData\\Roaming\\npm\\codex.exe", "cliCandidates: win32 appends .exe under %APPDATA%/npm");
 }
 
+// ---------- ingest/metadata.ts: title tag stripping keeps comparators, drops real markup ----------
+{
+  const title = (t: string) => esummaryToItem("1", { uid: "1", title: t })?.item.title;
+  check(title("Tumours of grade <II and >IV") === "Tumours of grade <II and >IV", "stripTags: a comparator before a letter is not a tag");
+  check(title("Patients aged <65 and >80 years") === "Patients aged <65 and >80 years", "stripTags: a comparator before a digit is not a tag");
+  check(title("<jats:title>Effect</jats:title> of <i>X</i> on <sup>2</sup>H") === "Effect of X on 2H", "stripTags: namespaced JATS tags and inline HTML tags are removed");
+  check(title("A &amp; B &lt;5") === "A & B <5", "stripTags: entities are decoded after stripping");
+}
+
+// ---------- types.ts: effective() — empty path/URL settings fall back to the shipped default ----------
+{
+  const s = { ...DEFAULT_SETTINGS, referencesFolder: "  ", openaiBaseUrl: "", ollamaUrl: " http://h:1 " };
+  check(effective(s, "referencesFolder") === "References", "effective: blank folder → References");
+  check(effective(s, "openaiBaseUrl") === DEFAULT_SETTINGS.openaiBaseUrl && /openrouter/.test(effective(s, "openaiBaseUrl")), "effective: blank base URL → the OpenRouter default, not api.openai.com");
+  check(effective(s, "ollamaUrl") === "http://h:1", "effective: a typed value is trimmed and kept");
+}
+
 // ---------- util/json.ts: text / numLike ----------
 {
   check(text(12345678) === "12345678", "text: an unquoted YAML PMID (a number) keeps its digits");
@@ -1106,10 +1123,9 @@ await windowsCliShimChecks();
 {
   const realFetch = globalThis.fetch;
   try {
-    // typeof NaN === "number", so the old inline check (`typeof x === "number"`) accepted it —
-    // isNumberArray additionally requires every value to be finite.
+    // JSON can't carry NaN, so test what a broken endpoint can actually send: a string entry.
     globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ embeddings: [[0.1, NaN, 0.3]] }), { status: 200 })) as typeof fetch;
+      new Response(JSON.stringify({ embeddings: [[0.1, "0.2", 0.3]] }), { status: 200 })) as typeof fetch;
     const provider = new OllamaProvider({ ...DEFAULT_SETTINGS, embeddingProvider: "ollama" });
     let threw = false;
     try {
@@ -1117,7 +1133,7 @@ await windowsCliShimChecks();
     } catch {
       threw = true;
     }
-    check(threw, "OllamaProvider.embed: a NaN embedding value is rejected, not silently accepted");
+    check(threw, "OllamaProvider.embed: a non-numeric embedding value is rejected, not silently accepted");
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -1158,24 +1174,41 @@ await windowsCliShimChecks();
   check(settings.ollamaUrl === "", "setControlValue: clearing ollamaUrl stores empty, not a default snap-back");
   await tab.setControlValue("openaiBaseUrl", "");
   check(settings.openaiBaseUrl === "", "setControlValue: clearing openaiBaseUrl stores empty, not a default snap-back");
+  // Mid-typing "My Refs" passes through "My " — a trim here would eat the space on a re-read.
+  await tab.setControlValue("referencesFolder", "My ");
+  check(settings.referencesFolder === "My ", "setControlValue: keeps a trailing space while the user is still typing");
   await tab.setControlValue("referencesFolder", "  Papers  ");
-  check(settings.referencesFolder === "Papers", "setControlValue: still trims surrounding whitespace");
+  check(effective(settings, "referencesFolder") === "Papers", "effective: the stored value is trimmed where it is used");
 
   // Every provider/summary-language/MCP-dependent row must be declared once (present in the
   // definitions array regardless of current settings) with a live `visible()` — not pushed
-  // conditionally — so the framework's one-time search indexing can still find it later.
+  // conditionally — so it appears (in the tab and in search) as soon as the setting it depends on changes.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const defs = (tab as any).buildDefinitions();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allRows = defs.flatMap((g: any) => g.items);
   const apiKeyRow = allRows.find((r: { name: string }) => r.name === "OpenAI API key");
   check(!!apiKeyRow, 'settings: "OpenAI API key" row exists in the definitions even while the provider is Ollama');
-  check(apiKeyRow.visible() === false, 'settings: "OpenAI API key" row is not visible while the provider is Ollama');
+  settings.llmProvider = "ollama"; // neither embeddings nor chat use the OpenAI endpoint
+  check(apiKeyRow.visible() === false, 'settings: "OpenAI API key" row is not visible while both providers are Ollama');
+  settings.llmProvider = "openai"; // chat alone needs the key — the row must show (review finding)
+  check(apiKeyRow.visible() === true, 'settings: "OpenAI API key" row shows when only the chat LLM uses OpenAI');
+  settings.llmProvider = "ollama";
   settings.embeddingProvider = "openai"; // live mutation of the SAME settings object, no rebuild
   check(
     apiKeyRow.visible() === true,
     "settings: the same row (array never rebuilt) becomes visible once live settings say OpenAI — visible() reads live state, not a frozen snapshot"
   );
+
+  // "Custom…" summary language: the field stays while the user types a value that happens to be a
+  // preset code (review finding — it used to hide itself mid-edit once the value became "en").
+  const customRow = allRows.find((r: { name: string }) => r.name === "Custom summary language");
+  await tab.setControlValue("summaryLanguagePreset", "custom");
+  await tab.setControlValue("summaryLanguage", "en");
+  check(customRow.visible() === true, "settings: the custom summary-language field stays visible while typing 'en'");
+  check(tab.getControlValue("summaryLanguagePreset") === "custom", "settings: the preset dropdown stays on Custom… while typing");
+  await tab.setControlValue("summaryLanguagePreset", "ko");
+  check(customRow.visible() === false && settings.summaryLanguage === "ko", "settings: picking a preset hides the custom field");
 
   // No row may set both a control and a custom renderer (mirrors the real API's mutual exclusion).
   const bothSet = allRows.filter((r: { control?: unknown; render?: unknown }) => r.control && r.render);

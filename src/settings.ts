@@ -95,17 +95,21 @@ function info(desc: string, visible?: () => boolean): Row {
  */
 export class ScholarRagSettingTab extends PluginSettingTab {
   private plugin: ScholarRagPlugin;
+  /** "Custom…" chosen in the summary-language dropdown. A UI flag, not derived from the typed
+   *  value, so typing "en" into the custom field doesn't hide the field mid-edit. */
+  private customLanguage = false;
 
   constructor(app: App, plugin: ScholarRagPlugin) {
     super(app, plugin);
     this.plugin = plugin;
+    this.customLanguage = !FIXED_SUMMARY_LANGS.includes(plugin.settings.summaryLanguage);
   }
 
   /** Structurally matches `SettingDefinitionItem[]` — checked at compile time by
    *  `_assertDefinitionsShape` above, so this is a plain return, not a property read.
-   *  Framework-called only on Obsidian 1.13+; every row is declared once here (visibility is
-   *  `visible: () => …`, not array membership), so the framework's one-time search indexing
-   *  sees every row regardless of current settings state. */
+   *  Framework-called only on Obsidian 1.13+. Every row is declared once and gated by
+   *  `visible: () => …`: Obsidian leaves a hidden row out of its search for that render, so a
+   *  row becomes searchable (and visible) as soon as the setting that gates it changes. */
   getSettingDefinitions(): SettingDefinitionItem[] {
     return this.buildDefinitions();
   }
@@ -167,7 +171,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
   getControlValue(key: string): unknown {
     const s = this.plugin.settings;
     if (key === "summaryLanguagePreset") {
-      return FIXED_SUMMARY_LANGS.includes(s.summaryLanguage) ? s.summaryLanguage : "custom";
+      return this.customLanguage ? "custom" : s.summaryLanguage;
     }
     if (key === "cslStyleIdPreset") {
       return s.cslStyleId in BUNDLED_STYLES || s.cslStyleId === "" ? s.cslStyleId : "";
@@ -185,7 +189,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         // Store what the user types, even empty mid-edit — the "References" fallback lives at
         // every consumer (Library.folder()), not here, so clearing the field to retype it
         // doesn't snap back to the default on a framework re-read (see Library.folder()).
-        s.referencesFolder = String(value).trim();
+        s.referencesFolder = String(value);
         break;
       case "citekeyStyle":
         s.citekeyStyle = value as "authoryeartitle" | "authoryear";
@@ -203,11 +207,11 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         break;
       case "ollamaUrl":
         // Fallback applied at consumption (llm/client.ts, index/providers/ollama.ts), not here.
-        s.ollamaUrl = String(value).trim();
+        s.ollamaUrl = String(value);
         break;
       case "openaiBaseUrl":
         // Fallback applied at consumption (llm/client.ts, index/providers/openai.ts), not here.
-        s.openaiBaseUrl = String(value).trim();
+        s.openaiBaseUrl = String(value);
         break;
       case "openaiApiKey":
         s.openaiApiKey = String(value).trim();
@@ -268,6 +272,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         break;
       case "summaryLanguagePreset": {
         const v = value as string;
+        this.customLanguage = v === "custom";
         if (v !== "custom") s.summaryLanguage = v;
         else if (FIXED_SUMMARY_LANGS.includes(s.summaryLanguage)) s.summaryLanguage = "";
         await this.plugin.saveSettings();
@@ -332,7 +337,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
             ? "API keys below are stored in the OS keychain, not in data.json."
             : "This app has no OS keychain access, so API keys below are stored in plain text in data.json (synced with your vault if sync is on)."
         ),
-        text("referencesFolder", "References folder", "Folder where reference notes are stored.", undefined, ["Zotero"]),
+        text("referencesFolder", "References folder", "Folder where reference notes are stored.", DEFAULT_SETTINGS.referencesFolder, ["Zotero"]),
         dropdown("citekeyStyle", "Citekey style", { authoryeartitle: "Smith2020deep", authoryear: "Smith2020" }, "How citekeys / filenames are generated."),
         {
           name: "PubMed API key (optional)",
@@ -351,9 +356,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     // "provider" below is a build-time snapshot, fine for the description text (which the real
     // 1.13 API has no way to re-evaluate live anyway). Row *presence* must not be decided from
     // it — every provider-dependent row is declared once and gated with `visible: () => …`,
-    // which reads `s.embeddingProvider` live each time it's called, so it stays correct even
-    // when the framework's one-time search indexing never rebuilds this array (see the class
-    // doc comment).
+    // which reads the live settings each time Obsidian renders or searches.
     const provider = s.embeddingProvider;
     const retrievalItems: Row[] = [
       info("Changing the provider or model invalidates the index — rebuild it from the search pane afterward."),
@@ -374,12 +377,13 @@ export class ScholarRagSettingTab extends PluginSettingTab {
             ? "On OpenRouter: openai/text-embedding-3-small (1536-d). Straight to OpenAI: the same id without the prefix."
             : "e.g. Xenova/multilingual-e5-small, Xenova/bge-small-en-v1.5"
       ),
-      text("ollamaUrl", "Ollama URL", undefined, undefined, undefined, () => s.embeddingProvider === "ollama"),
-      text("openaiBaseUrl", "OpenAI base URL", undefined, undefined, undefined, () => s.embeddingProvider === "openai"),
+      // The chat LLM reads these too, so show them when either provider uses them.
+      text("ollamaUrl", "Ollama URL", undefined, DEFAULT_SETTINGS.ollamaUrl, undefined, () => s.embeddingProvider === "ollama" || s.llmProvider === "ollama"),
+      text("openaiBaseUrl", "OpenAI base URL", undefined, DEFAULT_SETTINGS.openaiBaseUrl, undefined, () => s.embeddingProvider === "openai" || s.llmProvider === "openai"),
       {
         name: "OpenAI API key",
         aliases: ["API key"],
-        visible: () => s.embeddingProvider === "openai",
+        visible: () => s.embeddingProvider === "openai" || s.llmProvider === "openai",
         render: (setting) => {
           setting.addText((t) => {
             t.setValue(s.openaiApiKey).onChange((v) => void this.setControlValue("openaiApiKey", v));
@@ -511,7 +515,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         "Free-text language name, e.g. German.",
         "German",
         undefined,
-        () => !FIXED_SUMMARY_LANGS.includes(s.summaryLanguage)
+        () => this.customLanguage
       ),
     ];
     chatItems.push(

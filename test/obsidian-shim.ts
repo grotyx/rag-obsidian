@@ -82,7 +82,11 @@ export class WorkspaceLeaf {}
 export class TAbstractFile {}
 export class TFolder extends TAbstractFile {}
 export class FileSystemAdapter {}
-export class PluginSettingTab {}
+export class PluginSettingTab {
+  /** 1.13's re-render of the declarative definitions — a no-op here (tests read the rows directly). */
+  update(): void {}
+  display(): void {}
+}
 export class Setting {}
 /** Minimal stand-in for the real `SettingGroup` (obsidian.d.ts) — settings.ts's < 1.13 fallback
  *  renderer instantiates one per group; tests only need `addSetting` to run the callback. */
@@ -104,8 +108,8 @@ export class SettingGroup {
     return this;
   }
 }
-/** Real signature takes a semver string; tests that exercise settings.ts never call the 1.13+
- *  branch that needs `update()`, so a constant is enough. */
+/** Real signature takes a semver string. Tests run settings.ts as on 1.13+ (its `update()` is the
+ *  no-op in the PluginSettingTab stub above), so a constant is enough. */
 export function requireApiVersion(_version: string): boolean {
   return true;
 }

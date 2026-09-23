@@ -10,7 +10,7 @@ import { str, text, numLike } from "../util/json";
 
 /** Write a Dataview-powered dashboard note (live, sortable). Falls back to a static table. */
 export async function buildDashboard(plugin: ScholarRagPlugin): Promise<void> {
-  const folder = plugin.settings.referencesFolder || "References";
+  const folder = plugin.library.folder();
   const hasDataview = !!(plugin.app as unknown as { plugins?: { enabledPlugins?: Set<string> } }).plugins
     ?.enabledPlugins?.has?.("dataview");
   let out: string;

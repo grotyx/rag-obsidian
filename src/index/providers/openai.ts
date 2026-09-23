@@ -1,5 +1,5 @@
 import { requestUrl } from "obsidian";
-import { ScholarRagSettings } from "../../types";
+import { ScholarRagSettings, effective } from "../../types";
 import { EmbeddingProvider } from "../embedding";
 import { rec, arr, num, isNumberArray } from "../../util/json";
 
@@ -13,7 +13,7 @@ export class OpenAIProvider implements EmbeddingProvider {
 
   constructor(settings: ScholarRagSettings) {
     this.model = settings.embeddingModel || "text-embedding-3-small";
-    this.base = (settings.openaiBaseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+    this.base = effective(settings, "openaiBaseUrl").replace(/\/+$/, "");
     this.key = settings.openaiApiKey;
     this.id = `openai:${this.model}`;
   }

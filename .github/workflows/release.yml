@@ -1,9 +1,11 @@
 # Build the release assets from the tagged commit, attest their provenance, and publish the
 # GitHub release. Push an exact `X.Y.Z` tag (no `v`) that matches manifest.json to run it.
 #
-# Two jobs: `build` runs npm ci / lint / build / tests with a read-only token, so a compromised
-# dependency can't publish or sign anything; `publish` holds the write, OIDC and attestation
-# permissions and only attests and uploads the artifact `build` produced.
+# Two jobs: `build` runs npm ci / lint / build / tests with a read-only token, so code from a
+# dependency can't create releases, push, or request the signing (OIDC) token; `publish` holds
+# those permissions and only attests and uploads the artifact `build` produced. The attestation
+# proves the files came from this workflow at this commit — it does not vouch for what the
+# dependencies did during the build, so the lockfile still matters.
 name: Release
 
 on:

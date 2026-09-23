@@ -1,6 +1,6 @@
 import { App, TFile, normalizePath } from "obsidian";
 import { text } from "../util/json";
-import { CSLItem, ScholarRagSettings } from "../types";
+import { CSLItem, ScholarRagSettings, effective } from "../types";
 import { buildNote, generateCitekey, generateFilename, BuildNoteOpts } from "./reference";
 import { resolvePdfLink } from "../ingest/pdfStash";
 
@@ -48,7 +48,7 @@ export class Library {
   }
 
   folder(): string {
-    return normalizePath(this.settings.referencesFolder || "References");
+    return normalizePath(effective(this.settings, "referencesFolder"));
   }
 
   async ensureFolder(): Promise<void> {

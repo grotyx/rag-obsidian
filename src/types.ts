@@ -139,3 +139,10 @@ export interface CSLItem {
   number?: string;
   [key: string]: unknown;
 }
+
+/** A path/URL setting as it is used: trimmed, and the shipped default when left empty. The
+ *  settings tab stores whatever the user types (so clearing a field to retype it doesn't snap
+ *  back); every consumer reads the value through here. */
+export function effective(settings: ScholarRagSettings, key: "referencesFolder" | "ollamaUrl" | "openaiBaseUrl"): string {
+  return (settings[key] || "").trim() || DEFAULT_SETTINGS[key];
+}

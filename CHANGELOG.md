@@ -6,6 +6,38 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.7.7] — 2026-09-24
+
+### Fixed
+
+- **PDF highlights:** a highlight with a malformed quad point no longer drops its text; the
+  annotation's own rectangle is used as before.
+- **PubMed titles:** entities are decoded after tag stripping — "&amp;" stayed escaped.
+- **Settings text fields** keep what you type, spaces included: clearing "References folder",
+  "Ollama URL" or "OpenAI base URL" to retype it no longer snaps back to the default mid-edit, and
+  the empty field shows the default as its placeholder. One helper, `effective()`, trims the value
+  and applies the default (OpenRouter's base URL, not api.openai.com) wherever it is used.
+- **OpenAI base URL / API key and Ollama URL** show whenever either the embedding provider or the
+  chat LLM uses them — with embeddings on Ollama and chat on OpenRouter the key field was hidden.
+- **Custom summary language** no longer hides itself while you type (typing "en" made it vanish).
+- **Abstracts and titles:** tag stripping keeps comparators ("grade <II and >IV") and still removes
+  Crossref's namespaced JATS markup (`<jats:p>`, `<mml:math>`).
+- **Settings search on 1.13+:** every row is declared once with a `visible` rule, so a row shows
+  up in search as soon as it applies (e.g. "Ollama URL" right after switching the provider). The
+  definitions are now type-checked against Obsidian's own `SettingDefinitionItem` (no cast).
+- Ollama embeddings are validated with the same `isNumberArray` check as the OpenAI path.
+
+### Changed
+
+- **Release workflow split:** a read-only `build` job runs `npm ci`, lint, build and tests; only
+  the `publish` job holds write, OIDC and attestation permissions, and it signs the artifact the
+  build produced. Code from a dependency no longer runs with a token that can create releases or
+  request a signing token; the attestation still only proves which workflow and commit built the
+  files.
+- The 0.7 talk ships as a narrated video (`presentation/v07/video/`): MiniMax Speech 2.8 HD via
+  OpenRouter, every sentence transcribed back and checked against the script, deck frames
+  rendered exactly, captions and chapters for YouTube.
+
 ## [0.7.6] — 2026-09-24
 
 ### Changed
