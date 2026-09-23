@@ -13,6 +13,10 @@ import {
   type ProcessEnv,
 } from "../util/nodeTypes";
 
+// child_process is required directly (not through nodeRequire) so static scanners, including the
+// Community directory review, can see that this file runs external programs — it is disclosed.
+declare const require: (id: string) => unknown;
+
 const TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Build the argv for one CLI round-trip. `lastMsgPath` (codex) is where the answer is written;
@@ -139,7 +143,7 @@ export async function runCli(
 ): Promise<string> {
   if (!Platform.isDesktopApp) throw new Error("The codex/opencode provider needs Obsidian desktop");
   const provider = settings.llmProvider as "codex" | "opencode";
-  const cp = nodeRequire<ChildProcessModuleLike>("node:child_process");
+  const cp = require("node:child_process") as ChildProcessModuleLike;
   const fs = nodeRequire<FsSyncLike>("node:fs");
   const fsp = nodeRequire<FsPromisesLike>("node:fs/promises");
   const os = nodeRequire<OsModuleLike>("node:os");

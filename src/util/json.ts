@@ -39,3 +39,8 @@ export function numLike(v: unknown): number | undefined {
 export function optStr(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
+
+/** Type guard: a non-empty array of finite numbers (an embedding, a PDF rect). */
+export function isNumberArray(v: unknown): v is number[] {
+  return Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "number" && Number.isFinite(x));
+}

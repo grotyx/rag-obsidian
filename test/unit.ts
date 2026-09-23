@@ -43,7 +43,7 @@ import {
   MergeSourceNote,
 } from "../src/data/merge";
 import { extractSummaryBlock, renameCiteKeys } from "../src/cite/bibliography";
-import { numLike, text } from "../src/util/json";
+import { isNumberArray, numLike, text } from "../src/util/json";
 import {
   getYear,
   firstAuthorFamily,
@@ -501,6 +501,7 @@ AID - 10.1000/xyz123 [doi]
   check(text(12345678) === "12345678", "text: an unquoted YAML PMID (a number) keeps its digits");
   check(text("2024") === "2024" && text(null) === "" && text({}) === "" && text(NaN) === "", "text: strings pass, non-scalars and NaN become empty");
   check(numLike("57") === 57 && numLike(57) === 57, "numLike: a quoted count and a number both read as numbers");
+  check(isNumberArray([0.1, 2]) && !isNumberArray([]) && !isNumberArray(["1"]) && !isNumberArray("AAAA") && !isNumberArray([NaN]), "isNumberArray: non-empty finite numbers only (a base64 embedding string fails)");
   check(numLike("") === undefined && numLike("n/a") === undefined && numLike(null) === undefined, "numLike: empty, non-numeric and null are undefined");
 }
 

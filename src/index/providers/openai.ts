@@ -1,7 +1,7 @@
 import { requestUrl } from "obsidian";
 import { ScholarRagSettings } from "../../types";
 import { EmbeddingProvider } from "../embedding";
-import { rec, arr, num } from "../../util/json";
+import { rec, arr, num, isNumberArray } from "../../util/json";
 
 /** Embeddings via OpenAI or any OpenAI-compatible endpoint (set base URL + key).
  *  e.g. model `text-embedding-3-small` (1536-d) or `text-embedding-3-large` (3072-d). */
@@ -43,12 +43,12 @@ export class OpenAIProvider implements EmbeddingProvider {
     return data
       .map((d, i) => {
         const o = rec(d);
-        const embedding = arr(o.embedding);
+        const embedding = o.embedding;
         // A base64 `encoding_format` string or a missing field must not become an empty vector.
-        if (!embedding.length || !embedding.every((x) => typeof x === "number")) {
+        if (!isNumberArray(embedding)) {
           throw new Error("unexpected embedding payload (no numeric `embedding` array)");
         }
-        return { i: num(o.index) ?? i, embedding: embedding as number[] };
+        return { i: num(o.index) ?? i, embedding };
       })
       .sort((a, b) => a.i - b.i)
       .map((d) => d.embedding);

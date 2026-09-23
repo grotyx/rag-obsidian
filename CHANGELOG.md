@@ -6,6 +6,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.7.5] — 2026-09-24
+
+### Changed
+
+- `child_process` is required directly again in the Codex/OpenCode CLI provider and the Word
+  export. Routing it through the shared `nodeRequire` helper in 0.7.4 hid it from the Community
+  review's static scan, so the review stopped reporting that the plugin runs external programs.
+  It does (only when those features are used, and the README says so); the scan should see it.
+- Embedding vectors and PDF highlight rectangles are checked with an `isNumberArray` type guard
+  instead of a cast.
+
 ## [0.7.4] — 2026-09-24
 
 Answers the Community directory's automated review of 0.7.3.

@@ -11,6 +11,10 @@ import {
   type PathModuleLike,
 } from "../util/nodeTypes";
 
+// child_process is required directly (not through nodeRequire) so static scanners, including the
+// Community directory review, can see that this file runs external programs — it is disclosed.
+declare const require: (id: string) => unknown;
+
 /** Load Node built-ins only after the desktop guard, like `mcp/http.ts`'s `loadDesktopNode`. */
 function loadDesktopNode(): {
   cp: ChildProcessModuleLike;
@@ -20,7 +24,7 @@ function loadDesktopNode(): {
   pathApi: PathModuleLike;
 } {
   return {
-    cp: nodeRequire<ChildProcessModuleLike>("node:child_process"),
+      cp: require("node:child_process") as ChildProcessModuleLike,
     fs: nodeRequire<FsPromisesLike>("node:fs/promises"),
     fsSync: nodeRequire<FsSyncLike>("node:fs"),
     os: nodeRequire<OsModuleLike>("node:os"),

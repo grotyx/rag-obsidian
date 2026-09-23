@@ -9,7 +9,7 @@ import "pdfjs-dist/build/pdf.worker.mjs";
 
 import { cleanDoi } from "./metadata";
 import { STASH_MAX_CHARS } from "./pdfStash";
-import { arr, num, rec, str } from "../util/json";
+import { num, rec, str, isNumberArray } from "../util/json";
 
 /** The pdfjs types below describe only the fields this file actually reads off the library's
  *  (untyped) return values — not the full pdfjs API. */
@@ -112,8 +112,8 @@ function quadRects(ann: PdfAnnotation): number[][] {
     }
   }
   if (!rects.length) {
-    const rect = arr(ann.rect);
-    if (rect.length && rect.every((n) => typeof n === "number")) rects.push(rect as number[]);
+    const rect = ann.rect;
+    if (isNumberArray(rect)) rects.push(rect);
   }
   return rects;
 }
