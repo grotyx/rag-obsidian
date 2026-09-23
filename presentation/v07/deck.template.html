@@ -186,16 +186,16 @@
   .k-end .u { font: 400 2cqi/1 var(--mono); color: var(--cite); }
 
   /* Controls under the stage */
-  .bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font: 500 13px/1 var(--sans); }
-  .bar button {
+  .toolbar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font: 500 13px/1 var(--sans); }
+  .toolbar button {
     font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--rule);
     border-radius: 999px; padding: 8px 14px; cursor: pointer;
   }
-  .bar button:hover { border-color: var(--ink); }
-  .bar button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-  .bar button:focus-visible, .tile:focus-visible, .stage:focus-visible { outline: 2px solid var(--cite); outline-offset: 2px; }
-  .bar kbd { font: 400 11px/1 var(--mono); color: var(--muted); margin-left: 6px; }
-  .bar button[aria-pressed="true"] kbd { color: var(--faint); }
+  .toolbar button:hover { border-color: var(--ink); }
+  .toolbar button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .toolbar button:focus-visible, .tile:focus-visible, .stage:focus-visible { outline: 2px solid var(--cite); outline-offset: 2px; }
+  .toolbar kbd { font: 400 11px/1 var(--mono); color: var(--muted); margin-left: 6px; }
+  .toolbar button[aria-pressed="true"] kbd { color: var(--faint); }
 
   .script {
     min-width: 0; overflow: auto; border-left: 1px solid var(--rule); padding-inline: 20px 4px;
@@ -254,7 +254,7 @@
     <div class="caption" id="caption" hidden></div>
     <div class="foot" aria-hidden="true"><span id="where"></span><span class="n" id="count"></span></div>
   </div>
-  <div class="bar" role="toolbar" aria-label="발표 조작">
+  <div class="toolbar" role="toolbar" aria-label="발표 조작">
     <button type="button" id="prev">이전<kbd>←</kbd></button>
     <button type="button" id="next">다음<kbd>→</kbd></button>
     <button type="button" id="play" aria-pressed="false">자동 재생<kbd>P</kbd></button>

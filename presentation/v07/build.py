@@ -3,8 +3,9 @@
 
     python3 presentation/v07/build.py
 
-`sec` (seconds on screen) comes from the spoken line: Korean speech runs about 5 syllables a
-second, plus a beat to read the slide. Remotion uses the same number (sec × fps frames).
+`sec` (seconds on screen) is the recorded narration plus the video's lead/tail silence when
+video/narration-check.json has the clip, else an estimate (5 Korean syllables a second, 0.35 s an
+English word, plus a beat). Remotion and the deck's auto-play use the same number.
 """
 import json
 import os
@@ -17,9 +18,24 @@ SYLLABLES_PER_SEC = 5.0
 MIN_SEC, BEAT = 2.5, 0.8
 
 
-def seconds(say: str) -> float:
-    spoken = len(re.sub(r"[\s.,·!?—()\"']", "", say))
-    return round(max(MIN_SEC, spoken / SYLLABLES_PER_SEC + BEAT), 1)
+WORD_SEC = 0.35  # an English/Latin word (Biportal, PubMed, myocardial …) spoken in a Korean sentence
+NARRATION = os.path.join(HERE, "video", "narration-check.json")
+LEAD, TAIL = 0.35, 0.65  # silence around each clip in the video (video/render.mjs)
+
+
+def estimate(say: str) -> float:
+    latin = re.findall(r"[A-Za-z][A-Za-z0-9.+-]*", say)
+    rest = re.sub(r"[A-Za-z][A-Za-z0-9.+-]*", "", say)
+    syllables = len(re.sub(r"[\s.,·!?—()\"'~:;]", "", rest))
+    return syllables / SYLLABLES_PER_SEC + len(latin) * WORD_SEC
+
+
+def seconds(slide_id: int, say: str, narrated: dict) -> float:
+    """Seconds on screen: the real narration length when it exists (so the deck's auto-play and
+    Remotion match the video), otherwise an estimate from the text."""
+    if slide_id in narrated:
+        return round(LEAD + narrated[slide_id] + TAIL, 1)
+    return round(max(MIN_SEC, estimate(say) + BEAT), 1)
 
 
 def screen_text(s: dict) -> str:
@@ -53,9 +69,14 @@ def screen_text(s: dict) -> str:
 
 
 def main() -> None:
+    narrated = {}
+    if os.path.exists(NARRATION):
+        for c in json.load(open(NARRATION, encoding="utf-8")).get("clips", []):
+            if c.get("ok") and c.get("sec"):
+                narrated[c["id"]] = c["sec"]
     slides = []
     for i, s in enumerate(SLIDES, 1):
-        slides.append({"id": i, **s, "sec": seconds(s["say"])})
+        slides.append({"id": i, **s, "sec": seconds(i, s["say"], narrated)})
 
     with open(os.path.join(HERE, "slides.json"), "w", encoding="utf-8") as f:
         json.dump(slides, f, ensure_ascii=False, indent=1)
@@ -151,6 +172,19 @@ def main() -> None:
         "- 숫자 여섯 장(1,605 … 33)은 빠르게 넘긴다 — 쌓이는 느낌이 요점이다. 다음 장 깔때기에서 한 번에 다시 본다.",
         "- '근거가 없으면 없다고'는 채팅 프롬프트의 지시(출처에 답이 없으면 그렇다고 말하라, 인용을 지어내지 말라)를 "
         "설명하는 것 — 보장이라고 말하지 않는다.",
+        "",
+        "## 영상 (video/)",
+        "",
+        "- `video/narrate.mjs`: 본편 대본을 OpenRouter의 MiniMax Speech 2.8 HD(Korean_ReliableYouth)로 읽힌다. 요청은 "
+        "실행 중인 Obsidian 안에서 플러그인이 가진 키로 보내므로 키가 밖으로 나오지 않는다. 숫자는 한글로 풀어 읽히고"
+        "(1,139 → 천백삼십구), PubMed·OpenRouter는 띄어 써서 보낸다. 화면과 자막은 원래 표기 그대로.",
+        "- 장마다 Gemini로 받아써서 대본과 대조한다(판정: 빠짐·덧붙임·잘림·다른 단어로 들리는 발음). 통과할 때까지 최대 3번 다시 생성, "
+        "결과는 `video/narration-check.json`.",
+        "- `video/render.mjs`: deck.html을 headless Chrome에서 1920×1080으로 띄우고, CSS transition을 멈춘 채 1/30초씩 "
+        "옮기며 프레임을 캡처한다(형광펜·등장·깔때기 애니메이션 그대로). 장 길이 = 0.35초 + 음성 + 0.65초, 프레임 단위로 맞춤. "
+        "음성은 WAV로 이어 한 번에 인코딩하고 −14 LUFS로 맞춘다. 결과: `talk.mp4`, `captions.srt`, `chapters.txt`, 썸네일.",
+        "- 유튜브 업로드 자료(제목·설명·챕터·태그): `video/youtube.md`.",
+        "- 다시 만들 때: `node video/narrate.mjs`(바뀐 장만: `ONLY=12,34`) → `python3 build.py` → `node video/render.mjs`.",
         "",
         "## Remotion으로 옮길 때",
         "",
