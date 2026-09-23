@@ -773,6 +773,7 @@ AID - 10.1000/xyz123 [doi]
   check(plan1.fm.summary_model === "gpt-x", "planMerge: summary_model copied from that same donor");
   check(plan1.body.includes("summary text here"), "planMerge: the donor's summary text is moved into the keeper body");
   check(plan1.body.includes("## Summary"), "planMerge: the moved-in summary keeps its heading");
+  check(plan1.body.indexOf("## Summary") < plan1.body.indexOf("## Notes"), "planMerge: a moved summary lands above ## Notes, like a fresh note");
 
   const loserNoSummaryText: MergeSourceNote = {
     citekey: "loser2",

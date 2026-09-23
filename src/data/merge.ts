@@ -141,7 +141,16 @@ export function mergeBodies(keeperBody: string, others: OtherBody[], summaryDono
   if (summaryDonor) {
     const donor = others.find((o) => o.citekey === summaryDonor);
     const block = donor ? extractSummaryBlock(donor.body) : null;
-    if (block) prefix = replaceSummaryBlock(prefix, block.split("\n"));
+    if (block) {
+      // A fresh note keeps its Summary above `## Notes`; put a moved one there too.
+      const notesAt = prefix.search(/(^|\n)## Notes[ \t]*(\n|$)/);
+      if (notesAt >= 0) {
+        const at = prefix[notesAt] === "\n" ? notesAt + 1 : notesAt;
+        prefix = `${prefix.slice(0, at)}${block.replace(/\s*$/, "")}\n\n${prefix.slice(at)}`;
+      } else {
+        prefix = replaceSummaryBlock(prefix, block.split("\n"));
+      }
+    }
   }
 
   for (const { citekey, body } of others) {
