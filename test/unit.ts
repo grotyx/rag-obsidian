@@ -33,7 +33,15 @@ import {
 } from "../src/data/library";
 import { filterAndSort } from "../src/ui/libraryFilter";
 import { matchPdf, PdfCandidate } from "../src/data/pdfMatch";
-import { pickKeeper, mergeFrontmatter, mergeBodies, MergeNote } from "../src/data/merge";
+import {
+  pickKeeper,
+  mergeFrontmatter,
+  mergeBodies,
+  planMerge,
+  renameWikilinks,
+  MergeNote,
+  MergeSourceNote,
+} from "../src/data/merge";
 import { renameCiteKeys } from "../src/cite/bibliography";
 import {
   getYear,
@@ -739,6 +747,90 @@ AID - 10.1000/xyz123 [doi]
   const stashCount = (keptOwnStash.match(/## Full text \(extracted\)/g) || []).length;
   check(stashCount === 1, "mergeBodies: keeper's existing stash is not replaced by a loser's");
   check(keptOwnStash.includes("keeper's own full text."), "mergeBodies: keeper's own stash text survives");
+
+  const withHighlights = mergeBodies(keeperBody, [
+    { citekey: "loser6", body: "## Notes\n\n\n## Highlights\n\nsome highlight text.\n" },
+  ]);
+  check(withHighlights.includes("### Highlights"), "mergeBodies: a loser's Highlights section is nested under Merged from");
+  check(withHighlights.includes("some highlight text."), "mergeBodies: Highlights text is carried over");
+}
+
+// ---------- data/merge.ts: planMerge ----------
+{
+  const keeperNoSummary: MergeSourceNote = {
+    citekey: "k",
+    fm: { citekey: "k" },
+    body: "---\ncitekey: k\n---\n\n# T\n\n## Notes\n\n## Highlights\n",
+  };
+
+  const loserWithSummary: MergeSourceNote = {
+    citekey: "loser1",
+    fm: { citekey: "loser1", summary_source: "pubmed-abstract", summary_model: "gpt-x" },
+    body: "## Summary\n\n**Background / Objective**\nsummary text here\n\n## Notes\n\nloser notes.\n",
+  };
+  const plan1 = planMerge(keeperNoSummary, [loserWithSummary]);
+  check(plan1.fm.summary_source === "pubmed-abstract", "planMerge: summary_source copied from the donor whose text actually moved");
+  check(plan1.fm.summary_model === "gpt-x", "planMerge: summary_model copied from that same donor");
+  check(plan1.body.includes("summary text here"), "planMerge: the donor's summary text is moved into the keeper body");
+  check(plan1.body.includes("## Summary"), "planMerge: the moved-in summary keeps its heading");
+
+  const loserNoSummaryText: MergeSourceNote = {
+    citekey: "loser2",
+    fm: { citekey: "loser2", summary_source: "manual" },
+    body: "## Notes\n\nno summary section in this body.\n",
+  };
+  const plan2 = planMerge(keeperNoSummary, [loserNoSummaryText]);
+  check(
+    plan2.fm.summary_source === undefined,
+    "planMerge: no summary text moved anywhere -> summary_source is NOT copied, even though a loser sets it"
+  );
+  check(!plan2.body.includes("## Summary"), "planMerge: no Summary heading is added when nothing moved");
+
+  const keeperWithOwnStash: MergeSourceNote = {
+    citekey: "k2",
+    fm: { citekey: "k2" },
+    body:
+      "---\ncitekey: k2\n---\n\n# T\n\n## Notes\n\nkeeper notes.\n\n## Highlights\n\n\n" +
+      "## Full text (extracted)\n\nkeeper full text.",
+  };
+  const loser3: MergeSourceNote = { citekey: "loser3", fm: { citekey: "loser3" }, body: "## Notes\n\nloser3 notes.\n" };
+  const plan3 = planMerge(keeperWithOwnStash, [loser3]);
+  check(
+    plan3.body.indexOf("## Merged from loser3") < plan3.body.indexOf(STASH_MARKER),
+    "planMerge: merged-in sections land before an existing stash, never inside it"
+  );
+  check(
+    stashedText(plan3.body) === stashedText(keeperWithOwnStash.body),
+    "planMerge: the keeper's own stash text survives unchanged"
+  );
+}
+
+// ---------- data/merge.ts: renameWikilinks ----------
+{
+  const renames = [{ path: "References/smith2020", keeperBasename: "jones2021" }];
+  check(renameWikilinks("[[smith2020]]", renames) === "[[jones2021]]", "renameWikilinks: bare basename form");
+  check(
+    renameWikilinks("[[References/smith2020]]", renames) === "[[jones2021]]",
+    "renameWikilinks: full vault path (no .md) form"
+  );
+  check(
+    renameWikilinks("[[smith2020|Smith's paper]]", renames) === "[[jones2021|Smith's paper]]",
+    "renameWikilinks: alias suffix preserved"
+  );
+  check(
+    renameWikilinks("[[smith2020#Results]]", renames) === "[[jones2021#Results]]",
+    "renameWikilinks: heading suffix preserved"
+  );
+  check(
+    renameWikilinks("[[smith2020#Results|see here]]", renames) === "[[jones2021#Results|see here]]",
+    "renameWikilinks: heading + alias suffix preserved together"
+  );
+  check(renameWikilinks("![[smith2020]]", renames) === "![[jones2021]]", "renameWikilinks: leading ! embed marker preserved");
+  check(
+    renameWikilinks("[[smith2020b]]", renames) === "[[smith2020b]]",
+    "renameWikilinks: a different note whose name only starts with the loser's name is untouched"
+  );
+  check(renameWikilinks("no links here", []) === "no links here", "renameWikilinks: no-op with an empty rename list");
 }
 
 // ---------- cite/bibliography.ts: renameCiteKeys ----------
