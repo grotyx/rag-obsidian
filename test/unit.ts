@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { parseLibrary } from "../src/ingest/import";
 import { cleanDoi, detectId, splitName, parsePubDate, esummaryToItem } from "../src/ingest/metadata";
 import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
-import { findIdentifier, isPdfMagic } from "../src/ingest/pdf";
+import { findIdentifier, isPdfMagic, extractPdfHighlights, setPdfjsLoader } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, stashedText, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
 import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summarize";
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
@@ -39,7 +39,10 @@ import {
   normDoi,
   normTitle,
   RefEntry,
+  Library,
 } from "../src/data/library";
+import { OllamaProvider } from "../src/index/providers/ollama";
+import { ScholarRagSettingTab } from "../src/settings";
 import { filterAndSort } from "../src/ui/libraryFilter";
 import { matchPdf, PdfCandidate } from "../src/data/pdfMatch";
 import {
@@ -201,6 +204,21 @@ AID - 10.1000/xyz123 [doi]
   check(parsed?.item.issued?.["date-parts"]?.[0]?.join(",") === "2021,6", "esummaryToItem: issued parsed from pubdate");
   check(parsed?.item.PMID === "99999999", "esummaryToItem: PMID set to the uid argument");
 
+  // stripTags used to be `<[^>]+>`, which matched from the first "<" to the next ">" regardless
+  // of what was between them — a literal comparator pair like "<65 and >80" ate everything in
+  // the middle. The real tag-matching regex must leave a bare "<"/">" alone.
+  const comparators = esummaryToItem("2", { title: "Outcomes in patients aged <65 and >80 years", articleids: [] });
+  check(
+    comparators?.item.title === "Outcomes in patients aged <65 and >80 years",
+    `esummaryToItem: a literal comparator pair survives title cleanup, not just a real tag: "${comparators?.item.title}"`
+  );
+  // An entity-escaped title ("&lt;65") must decode to the same literal text, not keep the entity.
+  const escaped = esummaryToItem("3", { title: "Effect of &lt;i&gt;X&lt;/i&gt; on outcomes &amp; survival", articleids: [] });
+  check(
+    escaped?.item.title === "Effect of <i>X</i> on outcomes & survival",
+    `esummaryToItem: entity-escaped text decodes (not left as "&lt;"/"&amp;"): "${escaped?.item.title}"`
+  );
+
   const numericVolume = esummaryToItem("1", { title: "T", volume: 42, articleids: [] });
   check(numericVolume?.item.volume === "42", "esummaryToItem: numeric volume stringified (unquoted YAML/JSON)");
 
@@ -238,6 +256,39 @@ AID - 10.1000/xyz123 [doi]
   const htmlBytes = new TextEncoder().encode("<!DOCTYPE html><html>landing page</html>").buffer;
   check(!isPdfMagic(htmlBytes), "isPdfMagic: false on an HTML landing page");
   check(!isPdfMagic(new ArrayBuffer(0)), "isPdfMagic: false on an empty buffer");
+}
+
+// ---------- ingest/pdf.ts: extractPdfHighlights — malformed quad point must not lose the highlight ----------
+{
+  // One quad point is missing x/y (→ NaN), so its bbox is non-finite. Before the fix, that NaN
+  // rect was still pushed (rects.length > 0), which skipped the `ann.rect` fallback below and
+  // silently dropped the highlight text. It must fall back to `ann.rect` instead.
+  setPdfjsLoader(async () => ({
+    GlobalWorkerOptions: { workerSrc: "" },
+    getDocument: () => ({
+      promise: Promise.resolve({
+        numPages: 1,
+        getPage: async () => ({
+          getTextContent: async () => ({
+            items: [{ str: "highlighted text", transform: [1, 0, 0, 1, 10, 10], width: 20, height: 10 }],
+          }),
+          getAnnotations: async () => [
+            {
+              subtype: "Highlight",
+              quadPoints: [{ x: 1, y: 1 }, {}, { x: 2, y: 1 }, { x: 2, y: 2 }], // 2nd point malformed
+              rect: [0, 0, 100, 100], // fallback rect — must still be used
+              contents: "",
+            },
+          ],
+        }),
+      }),
+    }),
+  }));
+  const highlights = await extractPdfHighlights(new ArrayBuffer(8));
+  check(
+    highlights.length === 1 && highlights[0].text === "highlighted text",
+    `extractPdfHighlights: a malformed quad point falls back to ann.rect instead of losing the highlight: ${JSON.stringify(highlights)}`
+  );
 }
 
 // ---------- ingest/pdfStash.ts ----------
@@ -1049,6 +1100,86 @@ await windowsCliShimChecks();
   const brokenDupGroups: string[][] = [];
   const brokenCounts = prismaCounts(records, brokenDupGroups, (r) => fullText.has(r.citekey));
   check(brokenCounts.recordsScreened === 7, "prismaCounts mutation check: no dup groups -> nothing removed");
+}
+
+// ---------- index/providers/ollama.ts: embed() rejects a non-finite value in the payload ----------
+{
+  const realFetch = globalThis.fetch;
+  try {
+    // typeof NaN === "number", so the old inline check (`typeof x === "number"`) accepted it —
+    // isNumberArray additionally requires every value to be finite.
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ embeddings: [[0.1, NaN, 0.3]] }), { status: 200 })) as typeof fetch;
+    const provider = new OllamaProvider({ ...DEFAULT_SETTINGS, embeddingProvider: "ollama" });
+    let threw = false;
+    try {
+      await provider.embed(["x"]);
+    } catch {
+      threw = true;
+    }
+    check(threw, "OllamaProvider.embed: a NaN embedding value is rejected, not silently accepted");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+// ---------- data/library.ts: Library.folder() — the one referencesFolder fallback ----------
+{
+  const settings = { ...DEFAULT_SETTINGS, referencesFolder: "" };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const library = new Library({} as any, settings);
+  check(library.folder() === "References", 'Library.folder(): empty referencesFolder falls back to "References" at the one consumption point');
+  settings.referencesFolder = "MyRefs";
+  check(library.folder() === "MyRefs", "Library.folder(): a set referencesFolder passes through");
+}
+
+// ---------- settings.ts: declarative definitions (searchable rows, no snap-back, visible()) ----------
+{
+  const settings = { ...DEFAULT_SETTINGS, embeddingProvider: "ollama" as const };
+  const fakePlugin = {
+    settings,
+    saveSettings: async () => {},
+    hasSecretStorage: () => true,
+    mcpStatus: () => ({ running: false, port: 0 }),
+    mcpSetupSnippets: () => null,
+    restartMcp: async () => {},
+    stopMcp: async () => {},
+    setMcpEnabled: async () => {},
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tab = new ScholarRagSettingTab({} as any, fakePlugin);
+
+  // A text control's change handler must not snap an emptied field back to a default — the
+  // fallback belongs at the point of consumption (Library.folder(), llm/client.ts), not here.
+  await tab.setControlValue("referencesFolder", "");
+  check(settings.referencesFolder === "", "setControlValue: clearing referencesFolder stores empty, not a default snap-back");
+  await tab.setControlValue("ollamaUrl", "");
+  check(settings.ollamaUrl === "", "setControlValue: clearing ollamaUrl stores empty, not a default snap-back");
+  await tab.setControlValue("openaiBaseUrl", "");
+  check(settings.openaiBaseUrl === "", "setControlValue: clearing openaiBaseUrl stores empty, not a default snap-back");
+  await tab.setControlValue("referencesFolder", "  Papers  ");
+  check(settings.referencesFolder === "Papers", "setControlValue: still trims surrounding whitespace");
+
+  // Every provider/summary-language/MCP-dependent row must be declared once (present in the
+  // definitions array regardless of current settings) with a live `visible()` — not pushed
+  // conditionally — so the framework's one-time search indexing can still find it later.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const defs = (tab as any).buildDefinitions();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allRows = defs.flatMap((g: any) => g.items);
+  const apiKeyRow = allRows.find((r: { name: string }) => r.name === "OpenAI API key");
+  check(!!apiKeyRow, 'settings: "OpenAI API key" row exists in the definitions even while the provider is Ollama');
+  check(apiKeyRow.visible() === false, 'settings: "OpenAI API key" row is not visible while the provider is Ollama');
+  settings.embeddingProvider = "openai"; // live mutation of the SAME settings object, no rebuild
+  check(
+    apiKeyRow.visible() === true,
+    "settings: the same row (array never rebuilt) becomes visible once live settings say OpenAI — visible() reads live state, not a frozen snapshot"
+  );
+
+  // No row may set both a control and a custom renderer (mirrors the real API's mutual exclusion).
+  const bothSet = allRows.filter((r: { control?: unknown; render?: unknown }) => r.control && r.render);
+  check(bothSet.length === 0, "settings: no row sets both control and render");
 }
 
 console.log(`unit: all ${passed} assertions passed`);

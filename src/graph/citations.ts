@@ -159,7 +159,7 @@ export class CitationGraph {
    *  it already carry its id in their `refs`. */
   enqueue(file: TFile): void {
     if (!this.size) return; // never built — don't start network traffic the user didn't ask for
-    const prefix = normalizePath(this.settings.referencesFolder) + "/";
+    const prefix = this.library.folder() + "/";
     if (!file.path.startsWith(prefix)) return;
     this.addQueue.add(file.path);
     this.flush();
