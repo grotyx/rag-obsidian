@@ -120,6 +120,21 @@ export function winQuote(arg: string): string {
   return `"${arg.replace(/"/g, '""')}"`;
 }
 
+/** Node refuses to spawn a `.cmd`/`.bat` without a shell (EINVAL since the CVE-2024-27980 fix),
+ *  and npm installs codex/opencode as `.cmd` shims on Windows — everywhere else `bin` is run
+ *  directly, no shell involved. Pure so it's unit-testable on every platform. */
+export function shouldUseShell(platform: string, bin: string): boolean {
+  return platform === "win32" && /\.(cmd|bat)$/i.test(bin);
+}
+
+/** The `[command, args]` `cp.spawn` receives for one CLI invocation. With a shell, cmd.exe
+ *  re-parses the line, so both the binary and every argument need cmd.exe-safe quoting
+ *  (`winQuote`); without one, argv reaches the child process untouched. Pure so the quoting
+ *  itself is unit-testable without spawning anything. */
+export function spawnInvocation(bin: string, args: string[], shell: boolean): { command: string; args: string[] } {
+  return shell ? { command: winQuote(bin), args: args.map(winQuote) } : { command: bin, args };
+}
+
 function firstExisting(paths: string[], fs: FsSyncLike): string | undefined {
   for (const p of paths) {
     try {
@@ -183,13 +198,14 @@ export async function runCli(
     const stdout = await new Promise<string>((resolve, reject) => {
       let child: ChildProcessLike;
       try {
-        // Node refuses to spawn a .cmd/.bat without a shell (EINVAL since the CVE-2024-27980
-        // fix), and npm installs these CLIs as .cmd shims on Windows. With a shell, cmd.exe
-        // re-parses the line, so every argument is quoted. ponytail: untested on Windows.
-        const shim = process.platform === "win32" && /\.(cmd|bat)$/i.test(bin);
-        child = shim
-          ? cp.spawn(`"${bin}"`, args.map(winQuote), { cwd: tmp, env, shell: true, stdio: ["pipe", "pipe", "pipe"] })
-          : cp.spawn(bin, args, { cwd: tmp, env, stdio: ["pipe", "pipe", "pipe"] });
+        const shell = shouldUseShell(process.platform, bin);
+        const invocation = spawnInvocation(bin, args, shell);
+        child = cp.spawn(invocation.command, invocation.args, {
+          cwd: tmp,
+          env,
+          shell,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
       } catch (e) {
         reject(e instanceof Error ? e : new Error(String(e)));
         return;
