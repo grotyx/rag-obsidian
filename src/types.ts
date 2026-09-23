@@ -1,6 +1,8 @@
 // Plugin settings
 export type EmbeddingProviderId = "ollama" | "openai";
-export type LLMProviderId = "anthropic" | "openai" | "ollama";
+/** `codex` / `opencode` run the locally installed, logged-in CLI instead of calling an API
+ *  (desktop only, see `llm/cli.ts`). */
+export type LLMProviderId = "anthropic" | "openai" | "ollama" | "codex" | "opencode";
 export type CiteStyle = "apa" | "vancouver" | "plain";
 
 export interface ScholarRagSettings {
@@ -16,6 +18,9 @@ export interface ScholarRagSettings {
   openaiApiKey: string;
   chunkChars: number;
   topK: number;
+  /** Keep the search index in the OS cache folder instead of the plugin folder, so a synced
+   *  vault (OneDrive, iCloud, Obsidian Sync) doesn't re-upload it on every reindex. */
+  indexLocal: boolean;
   /** Ask the LLM to re-rank retrieved passages before the chat answers (one extra request). */
   llmRerank: boolean;
 
@@ -25,6 +30,8 @@ export interface ScholarRagSettings {
   /** Model for "Chat with library" only; "" = use `llmModel`. Answering over retrieved
    *  passages rewards a stronger model than the summarize / metadata-extract calls. */
   chatModel: string;
+  /** Executable for the `codex` / `opencode` providers; "" = look in the usual install folders. */
+  cliPath: string;
   anthropicApiKey: string;
   llmMaxTokens: number;
   citeStyle: CiteStyle; // lightweight fallback formatter (APA / Vancouver / Plain)
@@ -63,11 +70,13 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   openaiApiKey: "",
   chunkChars: 1200,
   topK: 20,
+  indexLocal: false,
   llmRerank: false,
 
   llmProvider: "openai",
   llmModel: "deepseek/deepseek-v4-flash-0731",
   chatModel: "deepseek/deepseek-v4-pro-0813",
+  cliPath: "",
   anthropicApiKey: "",
   llmMaxTokens: 8192,
   citeStyle: "apa",
