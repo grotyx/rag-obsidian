@@ -225,13 +225,44 @@ async function main() {
 
   // ---- 5. persist -> restore round-trip ----
   log("\n[5] Persist → restore");
-  const { data, meta } = await store.serialize();
-  ok(typeof data === "string" && data.length > 0, `serialized ${data.length} bytes`);
+  const hitsBeforeSerialize = await store.search(qv, "deep learning neural network", settings.topK, {});
+  const { docs, vectors: serializedVectors, meta } = await store.serialize();
+  ok(typeof docs === "string" && docs.length > 0, `serialized ${docs.length} bytes of docs`);
+  ok(
+    serializedVectors.byteLength === meta.count * meta.dim * 4,
+    `vectors buffer ${serializedVectors.byteLength} bytes = count × dim × 4`
+  );
   const store2 = new VectorStore();
-  await store2.load(data, meta);
+  await store2.load(docs, serializedVectors, meta);
   ok(store2.count === store.count, `restored count = ${store2.count}`);
-  const hits2 = await store2.search(qv, "deep learning", settings.topK, {});
+  const hits2 = await store2.search(qv, "deep learning neural network", settings.topK, {});
   ok(hits2.length > 0, "search works on restored index");
+  ok(
+    hits2[0]?.id === hitsBeforeSerialize[0]?.id,
+    `round-trip search returns the same top hit (${hits2[0]?.id})`
+  );
+
+  // a truncated vectors buffer must be rejected, not silently mis-read
+  let truncatedRejected = false;
+  try {
+    await new VectorStore().load(docs, serializedVectors.slice(0, serializedVectors.byteLength - 4), meta);
+  } catch {
+    truncatedRejected = true;
+  }
+  ok(truncatedRejected, "load() rejects a truncated vectors buffer");
+
+  // an oversized buffer (one whole extra vector's worth of bytes) leaves every individual
+  // doc's slice the right length — only the explicit byteLength check (not Orama's own
+  // per-vector length validation) can catch this one, so this is the mutation-sensitive case.
+  const oversized = new Uint8Array(serializedVectors.byteLength + meta.dim * 4);
+  oversized.set(new Uint8Array(serializedVectors));
+  let oversizedRejected = false;
+  try {
+    await new VectorStore().load(docs, oversized.buffer, meta);
+  } catch {
+    oversizedRejected = true;
+  }
+  ok(oversizedRejected, "load() rejects an oversized vectors buffer");
 
   // ---- 6. citation formatting (real CSL-JSON from fetched items) ----
   log("\n[6] Citation formatting");
@@ -950,7 +981,7 @@ async function main() {
     const fser = await fstore.serialize();
     ok(fser.meta.schema === INDEX_SCHEMA, `meta carries schema ${fser.meta.schema}`);
     const fstore2 = new VectorStore();
-    await fstore2.load(fser.data, fser.meta);
+    await fstore2.load(fser.docs, fser.vectors, fser.meta);
     ok(
       (await keys({ tags: ["Spinal Fusion", "Outcome"], yearFrom: 2010 }, fstore2)) === "new2022",
       "filters still work on a restored index"

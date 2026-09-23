@@ -4,16 +4,18 @@ import {
   remove,
   removeMultiple,
   getByID,
-  count,
   search,
   MODE_HYBRID_SEARCH,
 } from "@orama/orama";
-import { persist, restore } from "@orama/plugin-data-persistence";
 import { Chunk } from "./chunker";
 
-/** Bump on any Orama schema change: an index written under an older number cannot be
- *  restored into the new schema, so `IndexManager.restore` drops it and asks for a rebuild. */
-export const INDEX_SCHEMA = 3;
+/** Bump on any Orama schema change (or the on-disk persistence format): an index written
+ *  under an older number cannot be restored into the new schema, so `IndexManager.restore`
+ *  drops it and asks for a rebuild.
+ *  Schema 4: stopped persisting the whole Orama DB (`@orama/plugin-data-persistence`, which
+ *  wrote every vector twice as JSON text) in favor of `docs.json` (documents, no embedding
+ *  field) + `vectors.f32` (one packed Float32Array) — see `serialize`/`load`. */
+export const INDEX_SCHEMA = 4;
 
 export interface StoredMeta {
   modelId: string;
@@ -185,7 +187,11 @@ export class VectorStore {
       mode: MODE_HYBRID_SEARCH,
       vector: { value: queryVec, property: "embedding" },
       similarity: 0,
-      includeVectors: false,
+      // NOT false: @orama/orama's `includeVectors: false` path (removeVectorsFromHits)
+      // mutates the *stored* document in place, permanently nulling its embedding — a real
+      // corruption a later persist would silently write out. We never read `h.document.embedding`
+      // below anyway (the mapped SearchHit doesn't carry it), so just leave it in the hit.
+      includeVectors: true,
       limit: k,
       // A term hitting a paper's own mesh_terms/tags is a strong topical signal even when the
       // vector side is lukewarm — moderate boost, not a filter (an unrelated query still ranks
@@ -208,8 +214,30 @@ export class VectorStore {
     return Object.values(this.chunkIds).reduce((a, b) => a + b.length, 0);
   }
 
-  async serialize(): Promise<{ data: string; meta: StoredMeta }> {
-    const data = (await persist(this.db, "json")) as string;
+  /** Documents (without their embedding — `docs`) + one packed Float32Array of every
+   *  embedding in the same order (`vectors`), instead of persisting the whole Orama DB
+   *  (which wrote each vector twice, as JSON text). Order follows `this.chunkIds`. */
+  async serialize(): Promise<{ docs: string; vectors: ArrayBuffer; meta: StoredMeta }> {
+    if (!this.db) throw new Error("store not initialized");
+    const ids: string[] = [];
+    for (const arr of Object.values(this.chunkIds)) ids.push(...arr);
+    const docs: Array<Record<string, unknown>> = [];
+    const vectors = new Float32Array(ids.length * this.dim);
+    ids.forEach((id, i) => {
+      const doc = getByID(this.db, id);
+      if (!doc) throw new Error(`index/meta desync — rebuild required (missing doc ${id})`);
+      docs.push({
+        id: doc.id,
+        citekey: doc.citekey,
+        title: doc.title,
+        section: doc.section,
+        year: doc.year,
+        tags: doc.tags,
+        author: doc.author,
+        text: doc.text,
+      });
+      vectors.set(doc.embedding as number[], i * this.dim);
+    });
     const meta: StoredMeta = {
       modelId: this.modelId,
       dim: this.dim,
@@ -219,19 +247,46 @@ export class VectorStore {
       hashes: this.hashes,
       schema: INDEX_SCHEMA,
     };
-    return { data, meta };
+    return { docs: JSON.stringify(docs), vectors: vectors.buffer, meta };
   }
 
-  async load(data: string, meta: StoredMeta): Promise<void> {
-    const db: any = await restore("json", data);
-    // DB/meta written separately — a crash between writes can desync them; treat as absent.
+  async load(docsJson: string, vectors: ArrayBuffer, meta: StoredMeta): Promise<void> {
+    // docs/vectors/meta written separately — a crash between writes can desync them; treat as absent.
     const tracked = Object.values(meta.chunkIds || {}).reduce((a, b) => a + b.length, 0);
-    if (count(db) !== tracked) {
-      throw new Error(`index/meta desync (${count(db)} docs vs ${tracked} tracked) — rebuild required`);
+    const docs = JSON.parse(docsJson) as Array<{
+      id: string;
+      citekey: string;
+      title: string;
+      section: string;
+      year: number;
+      tags: string[];
+      author: string[];
+      text: string;
+    }>;
+    if (docs.length !== tracked) {
+      throw new Error(`index/meta desync (${docs.length} docs vs ${tracked} tracked) — rebuild required`);
     }
-    this.db = db;
-    this.dim = meta.dim;
-    this.modelId = meta.modelId;
+    const expectedBytes = docs.length * meta.dim * 4;
+    if (vectors.byteLength !== expectedBytes) {
+      throw new Error(
+        `index/meta desync (vectors ${vectors.byteLength} bytes vs ${expectedBytes} expected) — rebuild required`
+      );
+    }
+    this.init(meta.dim, meta.modelId);
+    const view = new Float32Array(vectors);
+    const insertDocs = docs.map((d, i) => ({
+      id: d.id,
+      citekey: d.citekey,
+      title: d.title,
+      section: d.section,
+      year: d.year,
+      tags: d.tags,
+      tagText: d.tags.join(" "),
+      author: d.author,
+      text: d.text,
+      embedding: Array.from(view.subarray(i * meta.dim, i * meta.dim + meta.dim)),
+    }));
+    if (insertDocs.length) await insertMultiple(this.db, insertDocs);
     this.chunkIds = meta.chunkIds || {};
     this.paths = meta.paths || {};
     this.hashes = meta.hashes || {};

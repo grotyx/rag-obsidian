@@ -1,9 +1,10 @@
-import { App, TFile, normalizePath, debounce } from "obsidian";
+import { App, TFile, normalizePath, debounce, Platform } from "obsidian";
 import { ScholarRagSettings } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
 import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA } from "./store";
 import { capPerReference } from "./rerank";
+import { FileIO, NodeFileIO, localIndexDir } from "./localFiles";
 
 import {
   chunkReference,
@@ -21,13 +22,23 @@ const OVERFETCH = 3;
 /** Orchestrates the embedding index: build, incremental update, persistence, search. */
 export class IndexManager {
   private store = new VectorStore();
+  // Default (vault-relative) location; still used whenever `indexLocal` is off or unsupported.
+  private vaultDir: string;
+  // Active location — vault-relative (via `app.vault.adapter`) or an absolute OS-cache path
+  // (via `NodeFileIO`), resolved lazily on first use and only changed again by `relocate()`.
+  private io: FileIO;
   private dir: string;
-  private oramaPath: string;
-  private metaPath: string;
+  private docsPath = "";
+  private vectorsPath = "";
+  private metaPath = "";
+  // Pre-0.7 format, persisted whole-DB-as-JSON via @orama/plugin-data-persistence — only ever
+  // written to the vault-relative location; cleaned up opportunistically after a persist there.
+  private legacyOramaPath = "";
+  private locationResolved = false;
   private reindexQueue = new Set<string>();
   private flush: () => void;
-  // Every index mutation (rebuild / debounced reindex / remove) is chained here, so two of
-  // them can never interleave persist()'s write-tmp → remove → rename steps on the same files.
+  // Every index mutation (rebuild / debounced reindex / remove / relocate) is chained here, so
+  // two of them can never interleave persist()'s write-tmp → remove → rename steps on the same files.
   private chain: Promise<unknown> = Promise.resolve();
   private provider: EmbeddingProvider | null = null;
   private providerKey = "";
@@ -38,10 +49,64 @@ export class IndexManager {
     public settings: ScholarRagSettings,
     pluginDir: string
   ) {
-    this.dir = normalizePath(`${pluginDir}/index`);
-    this.oramaPath = `${this.dir}/orama.json`;
-    this.metaPath = `${this.dir}/meta.json`;
+    this.vaultDir = normalizePath(`${pluginDir}/index`);
+    this.io = this.app.vault.adapter;
+    this.dir = this.vaultDir;
+    this.setPaths();
     this.flush = debounce(() => void this.flushReindex(), 1500, true);
+  }
+
+  private setPaths(): void {
+    this.docsPath = `${this.dir}/docs.json`;
+    this.vectorsPath = `${this.dir}/vectors.f32`;
+    this.metaPath = `${this.dir}/meta.json`;
+    this.legacyOramaPath = `${this.dir}/orama.json`;
+  }
+
+  /** Where the index currently lives, based on `settings.indexLocal` (desktop only). */
+  private async resolveLocation(): Promise<{ io: FileIO; dir: string }> {
+    if (this.settings.indexLocal && Platform.isDesktopApp) {
+      try {
+        const base = (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
+        if (typeof base === "string") return { io: new NodeFileIO(), dir: await localIndexDir(base) };
+      } catch (e) {
+        console.error("[RAG Obsidian] could not resolve local index dir — using vault storage", e);
+      }
+    }
+    return { io: this.app.vault.adapter, dir: this.vaultDir };
+  }
+
+  /** Resolve the active location once per session; `relocate()` is the only thing allowed to
+   *  change it afterward (it needs the *previous* location to clean up from). */
+  private async ensureLocation(): Promise<void> {
+    if (this.locationResolved) return;
+    const { io, dir } = await this.resolveLocation();
+    this.io = io;
+    this.dir = dir;
+    this.setPaths();
+    this.locationResolved = true;
+  }
+
+  /** Called when the `indexLocal` setting flips. Moves the index to wherever
+   *  `settings.indexLocal` now points: persists into the new location (if a store is loaded)
+   *  and clears the old one; with nothing built yet, just switches location. */
+  relocate(): Promise<void> {
+    return this.serialized(() => this.relocateNow());
+  }
+
+  private async relocateNow(): Promise<void> {
+    await this.ensureLocation(); // make sure "old" below really is the location in use
+    const oldIO = this.io;
+    const oldDir = this.dir;
+    const next = await this.resolveLocation();
+    this.io = next.io;
+    this.dir = next.dir;
+    this.setPaths();
+    if (oldDir === this.dir) return;
+    if (this.store.ready) {
+      await this.persistNow();
+      await this.clearPersistedAt(oldIO, oldDir);
+    }
   }
 
   get ready(): boolean {
@@ -82,19 +147,20 @@ export class IndexManager {
   async restore(): Promise<void> {
     this.restoreError = null;
     try {
-      const adapter = this.app.vault.adapter;
-      if (!(await adapter.exists(this.metaPath))) return;
-      const meta = JSON.parse(await adapter.read(this.metaPath)) as StoredMeta;
+      await this.ensureLocation();
+      if (!(await this.io.exists(this.metaPath))) return;
+      const meta = JSON.parse(await this.io.read(this.metaPath)) as StoredMeta;
       if (meta.modelId !== this.modelId) {
         console.debug("[RAG Obsidian] embedding model changed since last build — rebuild required");
         return;
       }
       if ((meta.schema ?? 1) !== INDEX_SCHEMA) {
-        console.debug("[RAG Obsidian] index schema changed since last build — rebuild required");
+        this.restoreError = "The search index format changed — run “Rebuild search index” once.";
         return;
       }
-      const data = await adapter.read(this.oramaPath);
-      await this.store.load(data, meta);
+      const docs = await this.io.read(this.docsPath);
+      const vectors = await this.io.readBinary(this.vectorsPath);
+      await this.store.load(docs, vectors, meta);
       console.debug(`[RAG Obsidian] index restored: ${this.store.count} chunks`);
     } catch (e) {
       console.error("[RAG Obsidian] failed to restore index", e);
@@ -260,31 +326,54 @@ export class IndexManager {
   }
 
   private async persist(): Promise<void> {
-    const adapter = this.app.vault.adapter;
-    if (!(await adapter.exists(this.dir))) await adapter.mkdir(this.dir);
-    const { data, meta } = await this.store.serialize();
-    // orama first, meta last: meta is the commit marker (restore bails if it's missing,
-    // and store.load rejects a count desync from a crash between the two writes)
-    await this.writeAtomic(this.oramaPath, data);
-    await this.writeAtomic(this.metaPath, JSON.stringify(meta));
+    await this.ensureLocation();
+    await this.persistNow();
+  }
+
+  private async persistNow(): Promise<void> {
+    if (!(await this.io.exists(this.dir))) await this.io.mkdir(this.dir);
+    const { docs, vectors, meta } = await this.store.serialize();
+    // docs, then vectors, then meta last: meta is the commit marker (restore bails if it's
+    // missing, and store.load rejects a count/size desync from a crash between the writes)
+    await this.writeAtomicText(this.docsPath, docs);
+    await this.writeAtomicBinary(this.vectorsPath, vectors);
+    await this.writeAtomicText(this.metaPath, JSON.stringify(meta));
+    // a pre-0.7 whole-DB dump left behind at this same location is now dead weight
+    for (const p of [this.legacyOramaPath, `${this.legacyOramaPath}.tmp`]) {
+      if (await this.io.exists(p)) await this.io.remove(p);
+    }
   }
 
   /** Crash-safe write: stage to `<path>.tmp`, then rename into place so the target
    *  file is never observed truncated/half-written. A stale .tmp from a crash is
    *  harmless — it's simply overwritten on the next persist. */
-  private async writeAtomic(path: string, content: string): Promise<void> {
-    const adapter = this.app.vault.adapter;
+  private async writeAtomicText(path: string, content: string): Promise<void> {
     const tmp = `${path}.tmp`;
-    await adapter.write(tmp, content);
+    await this.io.write(tmp, content);
     // DataAdapter.rename doesn't document overwrite-on-existing semantics — clear the target first
-    if (await adapter.exists(path)) await adapter.remove(path);
-    await adapter.rename(tmp, path);
+    if (await this.io.exists(path)) await this.io.remove(path);
+    await this.io.rename(tmp, path);
+  }
+
+  private async writeAtomicBinary(path: string, content: ArrayBuffer): Promise<void> {
+    const tmp = `${path}.tmp`;
+    await this.io.writeBinary(tmp, content);
+    if (await this.io.exists(path)) await this.io.remove(path);
+    await this.io.rename(tmp, path);
   }
 
   private async clearPersisted(): Promise<void> {
-    const adapter = this.app.vault.adapter;
-    // meta first: without it, a leftover orama.json is ignored on restore
-    const paths = [this.metaPath, this.oramaPath, `${this.metaPath}.tmp`, `${this.oramaPath}.tmp`];
-    for (const p of paths) if (await adapter.exists(p)) await adapter.remove(p);
+    await this.ensureLocation();
+    await this.clearPersistedAt(this.io, this.dir);
+  }
+
+  private async clearPersistedAt(io: FileIO, dir: string): Promise<void> {
+    const meta = `${dir}/meta.json`;
+    const docs = `${dir}/docs.json`;
+    const vectors = `${dir}/vectors.f32`;
+    const orama = `${dir}/orama.json`;
+    // meta first: without it, leftover data files are ignored on restore
+    const paths = [meta, docs, vectors, orama, `${meta}.tmp`, `${docs}.tmp`, `${vectors}.tmp`, `${orama}.tmp`];
+    for (const p of paths) if (await io.exists(p)) await io.remove(p);
   }
 }
