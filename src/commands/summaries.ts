@@ -40,7 +40,7 @@ async function rewriteSummary(
   const model = plugin.settings.llmModel;
   // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
   // written before it is silently dropped.
-  await plugin.app.fileManager.processFrontMatter(file, (fm) => {
+  await plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
     fm.summary_source = tag;
     fm.summary_model = model;
   });

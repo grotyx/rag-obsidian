@@ -9,7 +9,7 @@ type Item = { kind: "all" } | { kind: "tag"; tag: string };
 export class PrismaScopeModal extends FuzzySuggestModal<Item> {
   constructor(app: App, private plugin: ScholarRagPlugin) {
     super(app);
-    this.setPlaceholder("Prisma flow for all references, or a tag…");
+    this.setPlaceholder("PRISMA flow for all references, or a tag…");
   }
 
   getItems(): Item[] {

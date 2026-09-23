@@ -5,6 +5,7 @@ import { anchorsToCitekeys } from "../cite/bibliography";
 import { describeFilters } from "../index/store";
 import { FilterRow } from "./FilterRow";
 import { formatCitation } from "../cite/format";
+import { rec, arr } from "../util/json";
 
 export const VIEW_TYPE_CHAT = "rag-obsidian-chat";
 
@@ -86,16 +87,16 @@ export class ChatView extends ItemView {
       const path = this.historyPath();
       if (!(await adapter.exists(path))) return;
       const raw: unknown = JSON.parse(await adapter.read(path));
-      if (!Array.isArray(raw)) return;
-      this.history = raw
-        .filter(
-          (t): t is ChatTurn =>
-            !!t &&
-            typeof t.content === "string" &&
-            (t.role === "user" || t.role === "assistant") &&
-            (t.sources === undefined || Array.isArray(t.sources)) &&
-            (t.filterSummary === undefined || typeof t.filterSummary === "string")
-        )
+      this.history = arr(raw)
+        .filter((t): t is ChatTurn => {
+          const r = rec(t);
+          return (
+            typeof r.content === "string" &&
+            (r.role === "user" || r.role === "assistant") &&
+            (r.sources === undefined || Array.isArray(r.sources)) &&
+            (r.filterSummary === undefined || typeof r.filterSummary === "string")
+          );
+        })
         .slice(-MAX_TURNS);
     } catch {
       this.history = []; // a truncated/corrupt log just starts the conversation over

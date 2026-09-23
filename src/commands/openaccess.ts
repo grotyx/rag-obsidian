@@ -9,6 +9,7 @@ import { appendStash, hasStashedText } from "../ingest/pdfStash";
 import { mapPool } from "../util/pool";
 import { startBatch } from "../ui/progress";
 import { findPdfFile } from "./pdfs";
+import { str, rec } from "../util/json";
 
 /** One row of `Library.entries()` — the shape the batch commands iterate and the single-note
  *  commands adapt `plugin.activeRef()` into, so both feed the same per-note core. */
@@ -23,15 +24,15 @@ const OA_DOWNLOAD_POOL_WIDTH = 4;
 /** Look up an open-access PDF for the active reference note (Unpaywall) and store it. */
 export async function findOpenAccessForActive(plugin: ScholarRagPlugin): Promise<void> {
   const file = plugin.app.workspace.getActiveFile();
-  const fm = file ? plugin.app.metadataCache.getFileCache(file)?.frontmatter : null;
-  const doi = fm?.DOI;
+  const fm = file ? rec(plugin.app.metadataCache.getFileCache(file)?.frontmatter) : {};
+  const doi = str(fm.DOI);
   if (!file || !doi) {
     new Notice("Open a reference note that has a DOI");
     return;
   }
   let oa: Awaited<ReturnType<typeof findOpenAccess>>;
   try {
-    oa = await findOpenAccess(String(doi), plugin.settings.openalexMailto);
+    oa = await findOpenAccess(doi, plugin.settings.openalexMailto);
   } catch (e) {
     new Notice(`Unpaywall lookup failed: ${e instanceof Error ? e.message : e}`);
     return;
@@ -45,7 +46,7 @@ export async function findOpenAccessForActive(plugin: ScholarRagPlugin): Promise
   const pdfUrl = oa.pdfUrl || "";
   const landing = oa.landingUrl || "";
   const version = oa.version;
-  await plugin.app.fileManager.processFrontMatter(file, (f) => {
+  await plugin.app.fileManager.processFrontMatter(file, (f: Record<string, unknown>) => {
     // Overwrite unconditionally: a re-run that no longer finds a PDF must drop the stale one.
     if (landing) f.oa_url = landing;
     else delete f.oa_url;
@@ -73,14 +74,14 @@ export type OaCoreResult =
  *  logic so a batch that has never run either command still gets the same result. */
 export async function findAndDownloadOaPdf(plugin: ScholarRagPlugin, entry: Entry): Promise<OaCoreResult> {
   const { citekey, file, item } = entry;
-  let url = String(item.oa_pdf || item.oa_url || "");
-  let oaUrl = item.oa_url ? String(item.oa_url) : undefined;
-  let oaPdf = item.oa_pdf ? String(item.oa_pdf) : undefined;
-  let oaVersion = item.oa_version ? String(item.oa_version) : undefined;
+  let url = str(item.oa_pdf) || str(item.oa_url);
+  let oaUrl = str(item.oa_url) || undefined;
+  let oaPdf = str(item.oa_pdf) || undefined;
+  let oaVersion = str(item.oa_version) || undefined;
   if (!url && item.DOI) {
     let oa: Awaited<ReturnType<typeof findOpenAccess>>;
     try {
-      oa = await findOpenAccess(String(item.DOI), plugin.settings.openalexMailto);
+      oa = await findOpenAccess(str(item.DOI), plugin.settings.openalexMailto);
     } catch (e) {
       return { status: "error", citekey, file, stage: "unpaywall", message: e instanceof Error ? e.message : String(e) };
     }
@@ -103,7 +104,8 @@ export async function findAndDownloadOaPdf(plugin: ScholarRagPlugin, entry: Entr
   }
   if (res.status >= 400 || !res.arrayBuffer) {
     // Repositories often block non-browser requests (403) — point at the page that works.
-    const landing = item.oa_url ? ` — open ${String(item.oa_url)} instead` : "";
+    const oaUrlStr = str(item.oa_url);
+    const landing = oaUrlStr ? ` — open ${oaUrlStr} instead` : "";
     return { status: "error", citekey, file, stage: "bad-status", message: `Download failed (${res.status})${landing}` };
   }
   // `oa_url` may be a landing page (Unpaywall had no url_for_pdf) — don't save HTML as .pdf.
@@ -138,7 +140,7 @@ export async function downloadOaPdf(plugin: ScholarRagPlugin): Promise<void> {
     notice.hide();
   }
   if (res.status === "not-oa") {
-    new Notice("No open-access PDF found (try 'Find open-access PDF' first)");
+    new Notice("No open-access PDF found (try 'find open-access PDF' first)");
     return;
   }
   if (res.status === "error") {
@@ -163,7 +165,7 @@ export async function downloadOaPdf(plugin: ScholarRagPlugin): Promise<void> {
   const existing = plugin.app.vault.getAbstractFileByPath(path);
   if (existing instanceof TFile) await plugin.app.vault.modifyBinary(existing, res.buffer);
   else await plugin.app.vault.createBinary(path, res.buffer);
-  await plugin.app.fileManager.processFrontMatter(r.file, (fm) => (fm.pdf = `[[${safe}.pdf]]`));
+  await plugin.app.fileManager.processFrontMatter(r.file, (fm: Record<string, unknown>) => (fm.pdf = `[[${safe}.pdf]]`));
   new Notice(`Saved PDFs/${safe}.pdf`);
   // Stash the text right away so the paper is searchable without a second command. Extraction
   // can still fail on malformed/scanned PDFs; the download stands either way, and "Index linked
@@ -183,7 +185,7 @@ export async function downloadOaPdf(plugin: ScholarRagPlugin): Promise<void> {
 export async function downloadOaPdfsAll(plugin: ScholarRagPlugin): Promise<void> {
   const mailto = plugin.settings.openalexMailto?.trim();
   if (!mailto) {
-    new Notice('Set "Contact e-mail" in Settings → Retrieval first — Unpaywall requires it');
+    new Notice('Set "contact e-mail" in settings → retrieval first — Unpaywall requires it');
     return;
   }
   const todo: Entry[] = [];
@@ -242,7 +244,7 @@ export async function downloadOaPdfsAll(plugin: ScholarRagPlugin): Promise<void>
               const dir = normalizePath("PDFs");
               if (!plugin.app.vault.getAbstractFileByPath(dir)) await plugin.app.vault.createFolder(dir).catch(() => {});
               await plugin.app.vault.createBinary(path, res.buffer);
-              await plugin.app.fileManager.processFrontMatter(e.file, (fm) => {
+              await plugin.app.fileManager.processFrontMatter(e.file, (fm: Record<string, unknown>) => {
                 fm.pdf = `[[${safe}.pdf]]`;
                 if (res.oaUrl) fm.oa_url = res.oaUrl;
                 if (res.oaPdf) fm.oa_pdf = res.oaPdf;
@@ -317,7 +319,7 @@ export async function checkRetractionForActive(plugin: ScholarRagPlugin): Promis
     );
     return;
   }
-  await plugin.app.fileManager.processFrontMatter(r.file, (fm) => (fm.retracted = res.retracted));
+  await plugin.app.fileManager.processFrontMatter(r.file, (fm: Record<string, unknown>) => (fm.retracted = res.retracted));
   new Notice(res.retracted ? "⚠ RETRACTED — flagged in frontmatter" : "No retraction found");
 }
 
@@ -366,7 +368,7 @@ export async function checkRetractionAll(plugin: ScholarRagPlugin, recheck = fal
                 console.error("[RAG Obsidian] Retraction check failed", e.file.path, res.reason);
                 return;
               }
-              await plugin.app.fileManager.processFrontMatter(e.file, (fm) => (fm.retracted = res.retracted));
+              await plugin.app.fileManager.processFrontMatter(e.file, (fm: Record<string, unknown>) => (fm.retracted = res.retracted));
               if (res.retracted) {
                 retracted++;
                 retractedEntries.push(e);

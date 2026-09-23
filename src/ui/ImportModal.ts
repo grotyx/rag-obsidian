@@ -16,7 +16,7 @@ export class ImportModal extends Modal {
     const { contentEl } = this;
     contentEl.createEl("h2", { text: "Import references" });
     contentEl.createEl("p", {
-      text: "Paste a BibTeX (.bib), RIS (.ris), PubMed NBIB/MEDLINE (.nbib), or CSL-JSON export — or load a file. Duplicates (same DOI / PMID / title) are skipped.",
+      text: "Paste a BibTeX (.bib), RIS (.RIS), PubMed nbib/medline (.nbib), or CSL-JSON export — or load a file. Duplicates (same DOI / PMID / title) are skipped.",
       cls: "setting-item-description",
     });
 

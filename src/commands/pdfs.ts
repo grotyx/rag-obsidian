@@ -157,7 +157,7 @@ export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: str
     candidates = candidates.filter((c) => c.citekey !== m.citekey);
     const note = citekeyToFile.get(m.citekey);
     if (!note) return;
-    await plugin.app.fileManager.processFrontMatter(note, (fm) => {
+    await plugin.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
       fm.pdf = `[[${pdf.path}]]`;
     });
     if (text != null && !hasStashedText(await plugin.app.vault.cachedRead(note))) {

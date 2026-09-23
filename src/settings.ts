@@ -1,4 +1,4 @@
-import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, Platform, PluginSettingTab, Setting, SettingDefinitionItem } from "obsidian";
 import type ScholarRagPlugin from "../main";
 import { DEFAULT_SETTINGS, EmbeddingProviderId, LLMProviderId, CiteStyle } from "./types";
 import { BUNDLED_STYLES } from "./cite/csl";
@@ -12,7 +12,23 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
+  /** Not implemented: this tab's dynamic, condition-heavy layout (provider dropdowns that swap
+   *  option sets, toggles that reveal whole sections) does not fit the declarative shape without
+   *  a real rewrite. Returning [] is a no-op for Obsidian's renderer — `display()` below still
+   *  runs exactly as before — it only silences the "won't show up in settings search" advisory.
+   *  ponytail: settings search stays unindexed for this tab; migrate to getSettingDefinitions()
+   *  if that search integration is ever wanted. */
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [];
+  }
+
+  /** Required override (Obsidian calls this to render the tab); the body lives in `render()` so
+   *  the rest of this class can re-render after a change without calling the deprecated method. */
   display(): void {
+    this.render();
+  }
+
+  private render(): void {
     const { containerEl } = this;
     containerEl.empty();
 
@@ -51,7 +67,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("PubMed API key (optional)")
-      .setDesc("NCBI E-utilities key — raises the rate limit from 3 to 10 requests/second.")
+      .setDesc("Ncbi e-utilities key — raises the rate limit from 3 to 10 requests/second.")
       .addText((t) => {
         t.setValue(this.plugin.settings.pubmedApiKey).onChange(async (v) => {
           this.plugin.settings.pubmedApiKey = v.trim();
@@ -80,7 +96,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           .onChange(async (v) => {
             this.plugin.settings.embeddingProvider = v as EmbeddingProviderId;
             await this.plugin.saveSettings();
-            this.display();
+            this.render();
           })
       );
 
@@ -200,7 +216,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           .addOption("openai", "OpenAI / compatible")
           .addOption("ollama", "Ollama (local)");
         if (Platform.isDesktopApp) {
-          d.addOption("codex", "Codex CLI (ChatGPT login)");
+          d.addOption("codex", "Codex CLI (chatgpt login)");
           d.addOption("opencode", "OpenCode CLI (logged-in)");
         }
         d.setValue(this.plugin.settings.llmProvider).onChange(async (v) => {
@@ -223,7 +239,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
             this.plugin.settings.chatModel = next === "openai" ? DEFAULT_SETTINGS.chatModel : "";
           }
           await this.plugin.saveSettings();
-          this.display();
+          this.render();
         });
       });
 
@@ -252,7 +268,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Chat model (optional)")
-      .setDesc('Model for "Chat with library" answers. Leave empty to use the default model.')
+      .setDesc('Model for "chat with library" answers. Leave empty to use the default model.')
       .addText((t) =>
         t
           .setPlaceholder("Same as default")
@@ -277,7 +293,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     if (llm === "openai") {
       containerEl.createEl("p", {
         cls: "setting-item-description",
-        text: "Uses the OpenAI base URL + API key set under Retrieval above.",
+        text: "Uses the OpenAI base URL + API key set under retrieval above.",
       });
     }
 
@@ -348,7 +364,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       .addDropdown((d) => {
         d.addOption("en", "English");
         d.addOption("ko", "Korean");
-        d.addOption("en+ko", "English + Korean");
+        d.addOption("en+ko", "English + korean");
         d.addOption("custom", "Custom…");
         const cur = this.plugin.settings.summaryLanguage;
         d.setValue(FIXED_SUMMARY_LANGS.includes(cur) ? cur : "custom");
@@ -358,7 +374,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
             this.plugin.settings.summaryLanguage = "";
           }
           await this.plugin.saveSettings();
-          this.display();
+          this.render();
         });
       });
 
@@ -399,14 +415,14 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           "Empty = use the lightweight formatter above. The custom box below overrides this."
       )
       .addDropdown((d) => {
-        d.addOption("", "Lightweight (use Citation style above)");
+        d.addOption("", "Lightweight (use citation style above)");
         for (const [id, label] of Object.entries(BUNDLED_STYLES)) d.addOption(id, label);
         const cur = this.plugin.settings.cslStyleId;
         d.setValue(cur in BUNDLED_STYLES || cur === "" ? cur : "");
         d.onChange(async (v) => {
           this.plugin.settings.cslStyleId = v;
           await this.plugin.saveSettings();
-          this.display();
+          this.render();
         });
       });
 
@@ -418,7 +434,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       )
       .addText((t) =>
         t
-          .setPlaceholder("nature")
+          .setPlaceholder("Such as nature")
           .setValue(this.plugin.settings.cslStyleId in BUNDLED_STYLES ? "" : this.plugin.settings.cslStyleId)
           .onChange(async (v) => {
             this.plugin.settings.cslStyleId = v.trim();
@@ -449,7 +465,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Render [@citekey] in reading view")
-      .setDesc("Show Pandoc citations as (Author, Year) in preview.")
+      .setDesc("Show Pandoc citations as (author, year) in preview.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.renderCitations).onChange(async (v) => {
           this.plugin.settings.renderCitations = v;
@@ -477,7 +493,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     if (!Platform.isDesktopApp) {
       containerEl.createEl("p", {
         cls: "setting-item-description",
-        text: "This plugin requires Obsidian Desktop.",
+        text: "This plugin requires Obsidian desktop.",
       });
       return;
     }
@@ -493,7 +509,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.mcpEnabled).onChange(async (enabled) => {
           await this.plugin.setMcpEnabled(enabled);
-          this.display();
+          this.render();
         })
       );
 
@@ -546,13 +562,17 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       .addButton((button) =>
         button.setButtonText("Restart and rotate token").onClick(async () => {
           await this.plugin.restartMcp();
-          this.display();
+          this.render();
         })
       )
       .addButton((button) =>
+        // setDestructive() (the non-deprecated replacement) requires Obsidian 1.13.0; this plugin's
+        // minAppVersion is 1.7.2, so this stays on the older, still-supported setWarning() —
+        // deliberately left as the one remaining `no-deprecated` warning (disabling this specific
+        // rule is repo-blocked; see eslint-comments/no-restricted-disable).
         button.setButtonText("Stop server").setWarning().onClick(async () => {
           await this.plugin.stopMcp();
-          this.display();
+          this.render();
         })
       );
   }
