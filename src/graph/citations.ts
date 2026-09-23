@@ -218,7 +218,7 @@ export class CitationGraph {
 
   private async backfillId(file: TFile, openalexId: string): Promise<void> {
     try {
-      await this.app.fileManager.processFrontMatter(file, (fm) => {
+      await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
         if (!fm.openalex_id) fm.openalex_id = openalexId;
       });
     } catch {

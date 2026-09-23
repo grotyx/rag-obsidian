@@ -1,5 +1,6 @@
 import { requestUrl } from "obsidian";
 import { CSLItem } from "../types";
+import { str, num, rec, arr } from "../util/json";
 
 const BASE = "https://api.openalex.org";
 
@@ -36,7 +37,7 @@ function normalizeTitle(title: string): string {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 /** requestUrl with a single retry after ~1s on 429 (rate limit). */
@@ -49,14 +50,16 @@ async function requestRetry429(url: string) {
   return res;
 }
 
-function toWork(w: any): OAWork {
+function toWork(w: unknown): OAWork {
+  const rw = rec(w);
+  const ids = rec(rw.ids);
   return {
-    openalexId: shortId(w.id),
-    doi: w.ids?.doi ? String(w.ids.doi).replace(/^https?:\/\/doi\.org\//, "") : undefined,
-    pmid: w.ids?.pmid ? String(w.ids.pmid).replace(/^https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//, "") : undefined,
-    title: w.title || w.display_name || "",
-    citedByCount: w.cited_by_count || 0,
-    referencedWorks: (w.referenced_works || []).map(shortId),
+    openalexId: shortId(str(rw.id)),
+    doi: ids.doi ? str(ids.doi).replace(/^https?:\/\/doi\.org\//, "") : undefined,
+    pmid: ids.pmid ? str(ids.pmid).replace(/^https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//, "") : undefined,
+    title: str(rw.title) || str(rw.display_name) || "",
+    citedByCount: num(rw.cited_by_count) || 0,
+    referencedWorks: arr(rw.referenced_works).map((v) => shortId(str(v))),
   };
 }
 
@@ -74,12 +77,14 @@ export async function resolveWork(item: CSLItem, mailto = ""): Promise<OAWork | 
         mailto
       )
     );
-    if (r.status >= 400 || !r.json) return null;
-    const w = r.json?.results?.[0];
-    if (!w) return null;
+    const rJson: unknown = r.json;
+    if (r.status >= 400 || !rJson) return null;
+    const w = arr(rec(rJson).results)[0];
+    if (w === undefined) return null;
     // Guard against a wrong top hit being persisted: titles must match.
     const want = normalizeTitle(String(item.title));
-    const got = normalizeTitle(String(w.title || w.display_name || ""));
+    const wRec = rec(w);
+    const got = normalizeTitle(str(wRec.title) || str(wRec.display_name));
     if (!want || !got || (want !== got && !want.includes(got) && !got.includes(want))) return null;
     return toWork(w);
   } else {
@@ -87,8 +92,9 @@ export async function resolveWork(item: CSLItem, mailto = ""): Promise<OAWork | 
   }
 
   const res = await requestRetry429(withMailto(url, mailto));
-  if (res.status >= 400 || !res.json) return null;
-  return toWork(res.json);
+  const resJson: unknown = res.json;
+  if (res.status >= 400 || !resJson) return null;
+  return toWork(resJson);
 }
 
 /** OpenAlex "related_works" for an item → [{id, title, citedByCount}] (best-effort). */
@@ -104,7 +110,8 @@ export async function relatedWorks(
   else return [];
   url += "?select=related_works";
   const res = await requestUrl({ url: withMailto(url, mailto), throw: false });
-  const ids: string[] = (res.json?.related_works || []).map(shortId);
+  const resJson: unknown = res.json;
+  const ids = arr(rec(resJson).related_works).map((v) => shortId(str(v)));
   if (!ids.length) return [];
   const titles = await fetchTitles(ids, mailto);
   return ids.map((id) => ({ id, title: titles.get(id)?.title || "", citedByCount: titles.get(id)?.citedByCount || 0 }));
@@ -125,8 +132,10 @@ export async function fetchTitles(
       ),
       throw: false,
     });
-    for (const w of (r.json?.results || []) as any[]) {
-      out.set(shortId(w.id), { title: w.title || "", citedByCount: w.cited_by_count || 0 });
+    const rJson: unknown = r.json;
+    for (const w of arr(rec(rJson).results)) {
+      const wRec = rec(w);
+      out.set(shortId(str(wRec.id)), { title: str(wRec.title), citedByCount: num(wRec.cited_by_count) || 0 });
     }
   }
   return out;

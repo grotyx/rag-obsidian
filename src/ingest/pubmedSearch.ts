@@ -4,6 +4,7 @@ import { splitName, parsePubDate } from "./metadata";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
 import { parseMeshList } from "./summarize";
+import { str, rec, arr } from "../util/json";
 
 /** One PubMed search hit: parsed CSL metadata plus identifiers for follow-up fetches. */
 export interface PubmedHit {
@@ -42,39 +43,48 @@ export async function searchPubmedPage(query: string, opts: PubmedSearchOpts = {
 
   await ncbiGate(!!opts.apiKey);
   const sr = await requestUrl({ url });
-  const pmids: string[] = sr.json?.esearchresult?.idlist ?? [];
-  const total = Number(sr.json?.esearchresult?.count) || 0;
+  const srJson: unknown = sr.json;
+  const esearchresult = rec(srJson).esearchresult;
+  const pmids = arr(rec(esearchresult).idlist).map((v) => str(v));
+  const total = Number(str(rec(esearchresult).count)) || 0;
   if (!pmids.length) return { hits: [], total };
 
   await ncbiGate(!!opts.apiKey);
   const sum = await requestUrl({
     url: `${EUTILS}/esummary.fcgi?db=pubmed&retmode=json&id=${pmids.join(",")}${a}`,
   });
-  const result = sum.json?.result ?? {};
-  const uids: string[] = result.uids ?? pmids;
+  const sumJson: unknown = sum.json;
+  const result = rec(rec(sumJson).result);
+  const uidsField = result.uids;
+  const uids = uidsField === undefined || uidsField === null ? pmids : arr(uidsField).map((v) => str(v));
 
   const hits: PubmedHit[] = [];
   for (const uid of uids) {
-    const d = result[uid];
-    if (!d || d.error) continue;
-    const ids: { idtype: string; value: string }[] = d.articleids ?? [];
-    const doi = ids.find((x) => x.idtype === "doi")?.value || "";
-    const pmc = ids.find((x) => x.idtype === "pmc")?.value || "";
-    const authors = (d.authors ?? [])
-      .filter((au: { authtype?: string }) => !au.authtype || au.authtype === "Author")
-      .map((au: { name: string }) => splitName(au.name));
+    const dRaw = result[uid];
+    if (dRaw === undefined || dRaw === null) continue;
+    const d = rec(dRaw);
+    if (d.error) continue;
+    const ids = arr(d.articleids).map((x) => rec(x));
+    const doi = str(ids.find((x) => x.idtype === "doi")?.value);
+    const pmc = str(ids.find((x) => x.idtype === "pmc")?.value);
+    const authors = arr(d.authors)
+      .filter((au) => {
+        const a2 = rec(au);
+        return !a2.authtype || a2.authtype === "Author";
+      })
+      .map((au) => splitName(str(rec(au).name)));
     const item: CSLItem = {
       type: "article-journal",
-      title: (d.title || "").replace(/\s+/g, " ").trim(),
+      title: str(d.title).replace(/\s+/g, " ").trim(),
       author: authors,
-      "container-title": d.fulljournalname || d.source || "",
-      "container-title-short": d.source || undefined,
-      volume: d.volume || undefined,
-      issue: d.issue || undefined,
-      page: d.pages || undefined,
+      "container-title": str(d.fulljournalname) || str(d.source) || "",
+      "container-title-short": str(d.source) || undefined,
+      volume: str(d.volume) || undefined,
+      issue: str(d.issue) || undefined,
+      page: str(d.pages) || undefined,
       DOI: doi || undefined,
       PMID: uid,
-      issued: parsePubDate(d.pubdate),
+      issued: parsePubDate(typeof d.pubdate === "string" ? d.pubdate : undefined),
     };
     hits.push({ pmid: uid, pmc, item });
   }
@@ -147,12 +157,15 @@ async function meshLookup(term: string, a: string, hasKey: boolean): Promise<str
   });
   // A 429 must surface as an error, not as "no such heading": the caller only caches verdicts.
   if (sr.status >= 400) throw new Error(`MeSH lookup failed (HTTP ${sr.status})`);
-  const id = sr.json?.esearchresult?.idlist?.[0];
+  const srJson: unknown = sr.json;
+  const id = str(arr(rec(rec(srJson).esearchresult).idlist)[0]);
   if (!id) return null;
   await ncbiGate(hasKey);
   const su = await requestUrl({ url: `${EUTILS}/esummary.fcgi?db=mesh&id=${id}&retmode=json${a}` });
   if (su.status >= 400) throw new Error(`MeSH lookup failed (HTTP ${su.status})`);
-  return su.json?.result?.[id]?.ds_meshterms?.[0] || null;
+  const suJson: unknown = su.json;
+  const entry = rec(rec(rec(suJson).result)[id]);
+  return str(arr(entry.ds_meshterms)[0]) || null;
 }
 
 /** Snap LLM-suggested terms to official NLM MeSH Descriptor names; keep non-MeSH terms as-is. */

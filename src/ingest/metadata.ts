@@ -2,6 +2,13 @@ import { requestUrl } from "obsidian";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
 import { resolveWork } from "../graph/openalex";
+import { str, rec, arr } from "../util/json";
+
+/** Like `str`, but keeps a missing/non-string field as `undefined` rather than "" — for nested
+ *  CSL fields (author names, dates) that must not gain a spurious empty-string property. */
+function optStr(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
 
 export type SourceId =
   | { kind: "doi"; value: string }
@@ -103,30 +110,33 @@ async function fetchCrossref(doi: string): Promise<CSLItem> {
     url: `https://api.crossref.org/works/${encodeURIComponent(doi)}`,
     headers: { Accept: "application/json" },
   });
-  const m = res.json?.message;
-  if (!m) throw new Error("Crossref returned no data");
+  const json: unknown = res.json;
+  const msgRaw = rec(json).message;
+  if (msgRaw === undefined || msgRaw === null) throw new Error("Crossref returned no data");
+  const m = rec(msgRaw);
+
+  const titleRaw = m.title;
+  const ctRaw = m["container-title"];
+  const sctRaw = m["short-container-title"];
+  const issuedDateParts = rec(m.issued)["date-parts"];
+
   const item: CSLItem = {
-    type: CROSSREF_TYPE[m.type as string] || "article-journal",
-    title: Array.isArray(m.title) ? m.title[0] : m.title,
-    author: (m.author || []).map((a: Record<string, string>) => ({
-      family: a.family,
-      given: a.given,
-      literal: a.name,
-    })),
-    "container-title": Array.isArray(m["container-title"])
-      ? m["container-title"][0]
-      : m["container-title"],
-    "container-title-short": Array.isArray(m["short-container-title"])
-      ? m["short-container-title"][0]
-      : m["short-container-title"],
-    volume: m.volume,
-    issue: m.issue,
-    page: m.page,
-    DOI: m.DOI,
-    URL: m.URL,
-    publisher: m.publisher,
-    issued: m.issued?.["date-parts"] ? { "date-parts": m.issued["date-parts"] } : undefined,
-    abstract: stripTags(m.abstract),
+    type: (typeof m.type === "string" ? CROSSREF_TYPE[m.type] : undefined) || "article-journal",
+    title: str(Array.isArray(titleRaw) ? titleRaw[0] : titleRaw),
+    author: arr(m.author).map((a) => {
+      const ar = rec(a);
+      return { family: optStr(ar.family), given: optStr(ar.given), literal: optStr(ar.name) };
+    }),
+    "container-title": str(Array.isArray(ctRaw) ? ctRaw[0] : ctRaw),
+    "container-title-short": str(Array.isArray(sctRaw) ? sctRaw[0] : sctRaw),
+    volume: str(m.volume),
+    issue: str(m.issue),
+    page: str(m.page),
+    DOI: str(m.DOI),
+    URL: str(m.URL),
+    publisher: str(m.publisher),
+    issued: Array.isArray(issuedDateParts) ? { "date-parts": issuedDateParts as number[][] } : undefined,
+    abstract: stripTags(optStr(m.abstract)),
   };
   return clean(item);
 }
@@ -139,33 +149,40 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
     throw: false,
   });
   if (sum.status >= 400) throw new Error(`PubMed request failed (HTTP ${sum.status})`);
-  const r = sum.json?.result?.[pmid];
-  if (!r || r.error) throw new Error(`PubMed returned no data for ${pmid}`);
+  const sumJson: unknown = sum.json;
+  const rRaw = rec(rec(sumJson).result)[pmid];
+  if (rRaw === undefined || rRaw === null) throw new Error(`PubMed returned no data for ${pmid}`);
+  const r = rec(rRaw);
+  if (r.error) throw new Error(`PubMed returned no data for ${pmid}`);
 
-  const authors = (r.authors || [])
-    .filter((a: { authtype?: string }) => !a.authtype || a.authtype === "Author")
-    .map((a: { name: string }) => splitName(a.name));
+  const authors = arr(r.authors)
+    .filter((a) => {
+      const ar = rec(a);
+      return !ar.authtype || ar.authtype === "Author";
+    })
+    .map((a) => splitName(str(rec(a).name)));
 
   let doi = "";
   let pmc = "";
-  for (const aid of r.articleids || []) {
-    if (aid.idtype === "doi") doi = aid.value;
-    if (aid.idtype === "pmc") pmc = aid.value;
+  for (const aidRaw of arr(r.articleids)) {
+    const aid = rec(aidRaw);
+    if (aid.idtype === "doi") doi = str(aid.value);
+    if (aid.idtype === "pmc") pmc = str(aid.value);
   }
 
   const item: CSLItem = {
     type: "article-journal",
-    title: stripTags(r.title),
+    title: stripTags(optStr(r.title)),
     author: authors,
-    "container-title": r.fulljournalname || r.source,
-    "container-title-short": r.source || undefined,
-    volume: r.volume,
-    issue: r.issue,
-    page: r.pages,
+    "container-title": str(r.fulljournalname) || str(r.source),
+    "container-title-short": str(r.source) || undefined,
+    volume: str(r.volume),
+    issue: str(r.issue),
+    page: str(r.pages),
     PMID: pmid,
     PMCID: pmc || undefined,
     DOI: doi || undefined,
-    issued: parsePubDate(r.pubdate),
+    issued: parsePubDate(optStr(r.pubdate)),
   };
 
   // abstract via efetch (best-effort) — retmode=xml so we get the real abstract,
