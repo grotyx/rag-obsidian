@@ -69,6 +69,31 @@ args = ["/absolute/path/to/mcp-bridge.cjs", "--vault", "/absolute/path/to/vault"
 한 클라이언트에 여러 vault를 연결하려면 이름을 `research-vault`, `teaching-vault`처럼 서로
 다르게 하고 각 vault에서 복사한 bridge/vault 경로를 사용합니다.
 
+### OpenCode
+
+설정 화면에서 **Copy OpenCode config** 버튼을 누른 뒤, 복사한 내용을
+`~/.config/opencode/opencode.json` 파일의 `mcp` 객체 안에 붙여넣습니다. 실제 경로는 설정
+화면에서 복사하십시오. Obsidian이 열려 있고 MCP가 켜져 있어야 합니다.
+
+```json
+{
+  "rag-obsidian": {
+    "type": "local",
+    "command": ["node", "/absolute/path/to/mcp-bridge.cjs", "--vault", "/absolute/path/to/vault"],
+    "enabled": true
+  }
+}
+```
+
+### Antigravity (agy)
+
+설정 화면에서 **Copy Antigravity command** 버튼을 누른 뒤, 복사한 명령을 터미널에서
+실행합니다. Obsidian이 열려 있고 MCP가 켜져 있어야 합니다.
+
+```bash
+agy mcp add rag-obsidian node '/absolute/path/to/mcp-bridge.cjs' --vault '/absolute/path/to/vault'
+```
+
 ## 권장 사용 흐름
 
 ### 기존 논문을 근거로 답변 받기

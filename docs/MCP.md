@@ -62,6 +62,30 @@ args = ["/absolute/path/to/mcp-bridge.cjs", "--vault", "/absolute/path/to/vault"
 To connect several vaults, give each server a distinct name and use the bridge/vault paths copied
 from that vault's settings.
 
+### OpenCode
+
+Press **Copy OpenCode config** in settings, then paste the copied fragment inside the `mcp`
+object of `~/.config/opencode/opencode.json`. Obsidian must be open with MCP enabled.
+
+```json
+{
+  "rag-obsidian": {
+    "type": "local",
+    "command": ["node", "/absolute/path/to/mcp-bridge.cjs", "--vault", "/absolute/path/to/vault"],
+    "enabled": true
+  }
+}
+```
+
+### Antigravity (agy)
+
+Press **Copy Antigravity command** in settings, then run the copied command in a terminal.
+Obsidian must be open with MCP enabled.
+
+```bash
+agy mcp add rag-obsidian node '/absolute/path/to/mcp-bridge.cjs' --vault '/absolute/path/to/vault'
+```
+
 ## Recommended prompts
 
 Search existing evidence:

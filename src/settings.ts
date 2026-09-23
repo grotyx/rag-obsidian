@@ -415,6 +415,18 @@ export class ScholarRagSettingTab extends PluginSettingTab {
             await navigator.clipboard.writeText(snippets.codex);
             new Notice("Codex MCP config copied");
           })
+        )
+        .addButton((button) =>
+          button.setButtonText("Copy OpenCode config").onClick(async () => {
+            await navigator.clipboard.writeText(snippets.opencode);
+            new Notice("OpenCode MCP config copied");
+          })
+        )
+        .addButton((button) =>
+          button.setButtonText("Copy Antigravity command").onClick(async () => {
+            await navigator.clipboard.writeText(snippets.agy);
+            new Notice("Antigravity MCP command copied");
+          })
         );
     }
     new Setting(containerEl)

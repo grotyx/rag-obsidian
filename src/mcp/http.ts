@@ -52,10 +52,12 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-export function mcpSetupSnippets(vaultPath: string, bridgePath: string): { claudeCode: string; codex: string } {
+export function mcpSetupSnippets(vaultPath: string, bridgePath: string): { claudeCode: string; codex: string; opencode: string; agy: string } {
   return {
     claudeCode: `claude mcp add --transport stdio rag-obsidian -- node ${shellQuote(bridgePath)} --vault ${shellQuote(vaultPath)}`,
     codex: `[mcp_servers.rag-obsidian]\ncommand = "node"\nargs = [${JSON.stringify(bridgePath)}, "--vault", ${JSON.stringify(vaultPath)}]`,
+    opencode: JSON.stringify({ "rag-obsidian": { type: "local", command: ["node", bridgePath, "--vault", vaultPath], enabled: true } }, null, 2),
+    agy: `agy mcp add rag-obsidian node ${shellQuote(bridgePath)} --vault ${shellQuote(vaultPath)}`,
   };
 }
 
@@ -150,7 +152,7 @@ export class McpHttpServer {
       : { running: false, vaultPath: this.options.vaultPath };
   }
 
-  setupSnippets(): { claudeCode: string; codex: string } {
+  setupSnippets(): { claudeCode: string; codex: string; opencode: string; agy: string } {
     return mcpSetupSnippets(this.options.vaultPath, `${this.options.pluginPath}/mcp-bridge.cjs`);
   }
 

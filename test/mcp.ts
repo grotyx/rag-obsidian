@@ -704,6 +704,9 @@ async function httpChecks(): Promise<void> {
   const setup = mcpSetupSnippets("/Vault With Space", "/Plugin Path/mcp-bridge.cjs");
   assert.match(setup.claudeCode, /'\/Plugin Path\/mcp-bridge\.cjs'/);
   assert.match(setup.codex, /args = \["\/Plugin Path\/mcp-bridge\.cjs", "--vault", "\/Vault With Space"\]/);
+  assert.deepEqual((JSON.parse(setup.opencode) as { "rag-obsidian": { command: string[] } })["rag-obsidian"].command, ["node", "/Plugin Path/mcp-bridge.cjs", "--vault", "/Vault With Space"]);
+  assert.match(setup.agy, /^agy mcp add rag-obsidian node /);
+  assert.match(setup.agy, /'\/Plugin Path\/mcp-bridge\.cjs'/);
 
   const server = new McpHttpServer({
     vaultPath,

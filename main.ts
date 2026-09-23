@@ -381,7 +381,7 @@ export default class ScholarRagPlugin extends Plugin {
     return this.mcpServer?.status() ?? { running: false, vaultPath: "" };
   }
 
-  mcpSetupSnippets(): { claudeCode: string; codex: string } | null {
+  mcpSetupSnippets(): { claudeCode: string; codex: string; opencode: string; agy: string } | null {
     return this.mcpServer?.setupSnippets() ?? null;
   }
 
