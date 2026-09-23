@@ -136,10 +136,11 @@ export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: str
   // A wikilink can't carry `#`, `|`, `[`, `]` or `^` in its target, so a `pdf:` link to such a
   // file would resolve to nothing. List those for renaming instead of writing a dead link.
   const unlinkable = found.filter((f) => /[#|[\]^]/.test(f.path));
-  const pdfs = found.filter((f) => !unlinkable.includes(f));
+  // Nothing left to link to: don't extract every orphan PDF only to report it unmatched.
+  const pdfs = candidates.length ? found.filter((f) => !unlinkable.includes(f)) : [];
 
-  if (!unlinkable.length && (!pdfs.length || !candidates.length)) {
-    new Notice(`Nothing to link · ${pdfs.length} unlinked PDF(s), ${candidates.length} reference(s) without a PDF`);
+  if (!pdfs.length && !unlinkable.length) {
+    new Notice(`Nothing to link · ${found.length} unlinked PDF(s), ${candidates.length} reference(s) without a PDF`);
     return;
   }
 
