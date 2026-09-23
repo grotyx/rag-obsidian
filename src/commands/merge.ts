@@ -74,10 +74,12 @@ export async function mergeDuplicateGroups(
       others
     );
 
+    // Body first: `mergedBody` is the whole file as read above (old frontmatter included), so
+    // writing it after processFrontMatter would put the old frontmatter back.
+    await plugin.app.vault.process(plan.keeperFile, () => mergedBody);
     await plugin.app.fileManager.processFrontMatter(plan.keeperFile, (fm) => {
       Object.assign(fm, mergedFm);
     });
-    await plugin.app.vault.process(plan.keeperFile, () => mergedBody);
 
     // (c) one combined citekey map and one combined wikilink-rename list, across all groups.
     for (const l of losers) {
