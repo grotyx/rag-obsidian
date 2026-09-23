@@ -27,6 +27,54 @@
   font-size: 0.8em;
   color: var(--text-muted);
 }
+.rag-obsidian-library .srag-header select {
+  font-size: 0.85em;
+}
+.rag-obsidian-library .srag-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.rag-obsidian-library .srag-quick-chip {
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.78em;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+.rag-obsidian-library .srag-quick-chip.is-active {
+  color: var(--text-normal);
+  border-color: var(--text-accent);
+}
+.rag-obsidian-library .srag-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.rag-obsidian-library .srag-badges:empty {
+  display: none;
+}
+.rag-obsidian-library .srag-badge {
+  font-size: 0.75em;
+  color: var(--text-muted);
+  padding: 0 5px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+}
+.rag-obsidian-library .srag-badge-error {
+  color: var(--text-error);
+  border-color: var(--text-error);
+}
+.rag-obsidian-library .srag-show-more {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  font-size: 0.85em;
+}
 
 /* Search pane */
 .rag-obsidian-search .srag-header {
