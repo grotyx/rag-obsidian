@@ -28,6 +28,8 @@ import {
   normTitle,
 } from "../src/data/library";
 import { matchPdf, PdfCandidate } from "../src/data/pdfMatch";
+import { pickKeeper, mergeFrontmatter, mergeBodies, MergeNote } from "../src/data/merge";
+import { renameCiteKeys } from "../src/cite/bibliography";
 import {
   getYear,
   firstAuthorFamily,
@@ -467,6 +469,146 @@ AID - 10.1000/xyz123 [doi]
   check(oc[0] === "/home/x/.opencode/bin/opencode", "cliCandidates: opencode's ~/.opencode/bin first");
   const codexWin = cliCandidates("codex", "C:\\Users\\x", "win32");
   check(codexWin[codexWin.length - 1] === "C:\\Users\\x\\AppData\\Roaming\\npm\\codex.exe", "cliCandidates: win32 appends .exe under %APPDATA%/npm");
+}
+
+// ---------- data/merge.ts: pickKeeper ----------
+{
+  const note = (over: Partial<MergeNote>): MergeNote => ({
+    citekey: "x",
+    fm: {},
+    bodyLength: 0,
+    ...over,
+  });
+
+  check(
+    pickKeeper([note({ citekey: "a", fm: { title: "t" } }), note({ citekey: "b", fm: { title: "t", DOI: "d" } })]) === 1,
+    "pickKeeper: more non-empty fields wins"
+  );
+
+  check(
+    pickKeeper([
+      note({ citekey: "a", fm: { title: "t" } }),
+      note({ citekey: "b", fm: { title: "t", summary_source: "pubmed-abstract" } }),
+    ]) === 1,
+    "pickKeeper: tied fields → has summary_source wins"
+  );
+
+  check(
+    pickKeeper([
+      note({ citekey: "a", fm: { title: "t" }, bodyLength: 10 }),
+      note({ citekey: "b", fm: { title: "t" }, bodyLength: 50 }),
+    ]) === 1,
+    "pickKeeper: tied fields+summary → longer body wins"
+  );
+
+  check(
+    pickKeeper([
+      note({ citekey: "a", fm: { title: "t", added: "2024-03-01" } }),
+      note({ citekey: "b", fm: { title: "t", added: "2024-01-15" } }),
+    ]) === 1,
+    "pickKeeper: tied fields+summary+body → earliest added wins"
+  );
+
+  check(
+    pickKeeper([note({ citekey: "b", fm: { title: "t" } }), note({ citekey: "a", fm: { title: "t" } })]) === 1,
+    "pickKeeper: fully tied → citekey order (a before b)"
+  );
+}
+
+// ---------- data/merge.ts: mergeFrontmatter ----------
+{
+  const keeper = { citekey: "smith2020x", title: "T", tags: ["spine"], added: "2024-01-01" };
+  const merged = mergeFrontmatter(keeper, [
+    { citekey: "loser1", title: "T", DOI: "10.1/x", tags: ["spine", "surgery"], abstract: "abs" },
+  ]);
+  check(merged.DOI === "10.1/x", "mergeFrontmatter: fills a key missing on the keeper");
+  check(merged.abstract === "abs", "mergeFrontmatter: fills abstract from the other note");
+  check(JSON.stringify(merged.tags) === JSON.stringify(["spine", "surgery"]), "mergeFrontmatter: tags union, keeper order first");
+  check(merged.citekey === "smith2020x", "mergeFrontmatter: citekey is never copied from another note");
+
+  const notRetracted = mergeFrontmatter({ citekey: "a" }, [{ citekey: "b", retracted: false }]);
+  check(!notRetracted.retracted, "mergeFrontmatter: retracted stays unset when nobody says true");
+  const retracted = mergeFrontmatter({ citekey: "a", retracted: false }, [{ citekey: "b", retracted: true }]);
+  check(retracted.retracted === true, "mergeFrontmatter: retracted:true wins if any note says true");
+
+  const counts = mergeFrontmatter({ citekey: "a", cited_by_count: 5 }, [
+    { citekey: "b", cited_by_count: 12 },
+    { citekey: "c", cited_by_count: 3 },
+  ]);
+  check(counts.cited_by_count === 12, "mergeFrontmatter: cited_by_count is the max across the group");
+
+  const noOverwrite = mergeFrontmatter({ citekey: "a", title: "keeper title" }, [{ citekey: "b", title: "other title" }]);
+  check(noOverwrite.title === "keeper title", "mergeFrontmatter: keeper's own non-empty value wins over others");
+
+  const fmNoPosition = mergeFrontmatter({ citekey: "a" }, [
+    { citekey: "b", position: { start: { line: 0, col: 0, offset: 0 }, end: { line: 3, col: 0, offset: 30 } } },
+  ]);
+  check(!("position" in fmNoPosition), "mergeFrontmatter: never copies metadataCache's own `position` marker");
+}
+
+// ---------- data/merge.ts: mergeBodies ----------
+{
+  const keeperBody = "---\ncitekey: k\n---\n\n# Title\n\n## Notes\n\nkeeper note.\n\n## Highlights\n\n";
+  const merged = mergeBodies(keeperBody, [
+    { citekey: "loser1", body: "## Notes\n\nloser note text.\n\n## Highlights\n" },
+  ]);
+  check(merged.includes("## Merged from loser1"), "mergeBodies: appends a Merged-from heading for the loser");
+  check(merged.includes("loser note text."), "mergeBodies: carries the loser's Notes text over");
+  check(merged.startsWith(keeperBody.replace(/\s*$/, "")), "mergeBodies: keeper body prefix is unchanged");
+
+  const loserWithSummary =
+    "## Summary\n\n**Background / Objective**\nloser summary body\n\n## Notes\n\nloser note 2.\n";
+  const merged2 = mergeBodies(keeperBody, [{ citekey: "loser2", body: loserWithSummary }]);
+  check(!merged2.includes("loser summary body"), "mergeBodies: does not duplicate the loser's Summary block");
+  check(merged2.includes("loser note 2."), "mergeBodies: still carries the loser's Notes past its Summary block");
+
+  const emptyNotes = mergeBodies(keeperBody, [{ citekey: "loser3", body: "## Notes\n\n\n## Highlights\n" }]);
+  check(!emptyNotes.includes("Merged from loser3"), "mergeBodies: an empty Notes section is not appended");
+
+  // Stash: moved only when the keeper has none. loser4 has both a Notes section and a stash,
+  // so the merge produces a "Merged from" section AND a separately-appended top-level stash.
+  const stashedBody = "## Notes\n\nloser4 note.\n\n## Full text (extracted)\n\nthe full text.";
+  const keeperNoStash = mergeBodies(keeperBody, [{ citekey: "loser4", body: stashedBody }]);
+  check(keeperNoStash.includes("## Full text (extracted)"), "mergeBodies: moves the loser's stash when the keeper has none");
+  check(keeperNoStash.includes("the full text."), "mergeBodies: stash text is carried over");
+  check(
+    keeperNoStash.indexOf(STASH_MARKER) > keeperNoStash.indexOf("## Merged from loser4"),
+    "mergeBodies: the moved stash is its own top-level section, appended after the Merged-from one"
+  );
+
+  const keeperWithStash = keeperBody + "\n## Full text (extracted)\n\nkeeper's own full text.";
+  const keptOwnStash = mergeBodies(keeperWithStash, [{ citekey: "loser5", body: stashedBody }]);
+  const stashCount = (keptOwnStash.match(/## Full text \(extracted\)/g) || []).length;
+  check(stashCount === 1, "mergeBodies: keeper's existing stash is not replaced by a loser's");
+  check(keptOwnStash.includes("keeper's own full text."), "mergeBodies: keeper's own stash text survives");
+}
+
+// ---------- cite/bibliography.ts: renameCiteKeys ----------
+{
+  check(renameCiteKeys("See [@a] for details.", { a: "k" }) === "See [@k] for details.", "renameCiteKeys: single key");
+
+  check(
+    renameCiteKeys("As shown [@a; @b, p. 3].", { a: "k" }) === "As shown [@k; @b, p. 3].",
+    "renameCiteKeys: cluster with a locator, unmapped key and locator untouched"
+  );
+
+  check(
+    renameCiteKeys("[@a; @b]", { a: "k", b: "k" }) === "[@k]",
+    "renameCiteKeys: cluster that would repeat a key after renaming dedupes to one"
+  );
+
+  const withCode = "`[@a]` and [@a].";
+  check(
+    renameCiteKeys(withCode, { a: "k" }) === "`[@a]` and [@k].",
+    "renameCiteKeys: leaves citations inside a code span untouched"
+  );
+
+  check(
+    renameCiteKeys("[@smith2020a]", { smith2020: "k" }) === "[@smith2020a]",
+    "renameCiteKeys: a longer citekey sharing a prefix is not confused with the mapped one"
+  );
+
+  check(renameCiteKeys("[@unknown]", { a: "k" }) === "[@unknown]", "renameCiteKeys: unmapped citekey is left as written");
 }
 
 console.log(`unit: all ${passed} assertions passed`);

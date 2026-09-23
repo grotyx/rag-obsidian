@@ -77,6 +77,25 @@ export function anchorsToCitekeys(text: string, citekeys: string[]): string {
     .join("");
 }
 
+/** Rewrite `[@key]` citations under a citekey rename map (merge-duplicates' loser → keeper).
+ *  Preserves everything else in the bracket verbatim — separators, locators (`, p. 3`) — by
+ *  replacing only the matched key tokens in place. A cluster that maps two keys onto the same
+ *  new key (`[@a; @b]` where both rename to the same keeper) collapses to one, dropping any
+ *  locators, since there is no single locator left to keep. Keys not in `map` are untouched;
+ *  code spans are skipped, like `replaceCitations`. */
+export function renameCiteKeys(text: string, map: Record<string, string>): string {
+  if (!Object.keys(map).length) return text;
+  return replaceCitations(text, (keys, raw) => {
+    const mapped = keys.map((k) => map[k] ?? k);
+    if (mapped.every((k, i) => k === keys[i])) return null; // nothing renamed in this cluster
+    const unique = [...new Set(mapped)];
+    if (unique.length !== mapped.length) return `[${unique.map((k) => `@${k}`).join("; ")}]`;
+    return raw.replace(new RegExp(KEY_RE.source, "g"), (tok, key: string) =>
+      tok.startsWith("-@") ? `-@${map[key] ?? key}` : `@${map[key] ?? key}`
+    );
+  });
+}
+
 /** Pull unique citekeys (in first-seen order) out of `[@citekey]` Pandoc citations. */
 export function extractCitekeys(text: string): string[] {
   const keys: string[] = [];
