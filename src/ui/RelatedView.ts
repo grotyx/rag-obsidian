@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, Notice, TFile, normalizePath } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, TFile } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import type { CoupledPaper, MissingPaper } from "../graph/citations";
 import { layoutGraph, topByDegree, LayoutEdge, LayoutNode } from "../graph/layout";
@@ -56,7 +56,7 @@ export class RelatedView extends ItemView {
   private activeCitekey(): string | null {
     const file = this.app.workspace.getActiveFile();
     if (!(file instanceof TFile)) return null;
-    const prefix = normalizePath(this.plugin.settings.referencesFolder) + "/";
+    const prefix = this.plugin.library.folder() + "/";
     if (!file.path.startsWith(prefix)) return null;
     const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
     return fm?.citekey ? String(fm.citekey) : null;

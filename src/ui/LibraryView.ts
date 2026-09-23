@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, debounce, normalizePath } from "obsidian";
+import { ItemView, WorkspaceLeaf, debounce } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { RefEntry } from "../data/library";
 import { filterAndSort, QuickFilters, SortKey, SORT_OPTIONS } from "./libraryFilter";
@@ -54,7 +54,7 @@ export class LibraryView extends ItemView {
 
   /** Re-render (debounced) only for files under the references folder. */
   private onFileEvent(path: string, oldPath?: string): void {
-    const prefix = normalizePath(this.plugin.settings.referencesFolder) + "/";
+    const prefix = this.plugin.library.folder() + "/";
     if (path.startsWith(prefix) || oldPath?.startsWith(prefix)) this.refresh();
   }
 

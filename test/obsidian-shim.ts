@@ -84,6 +84,31 @@ export class TFolder extends TAbstractFile {}
 export class FileSystemAdapter {}
 export class PluginSettingTab {}
 export class Setting {}
+/** Minimal stand-in for the real `SettingGroup` (obsidian.d.ts) — settings.ts's < 1.13 fallback
+ *  renderer instantiates one per group; tests only need `addSetting` to run the callback. */
+export class SettingGroup {
+  constructor(_containerEl?: unknown) {}
+  setHeading(_text?: unknown): this {
+    return this;
+  }
+  addClass(_cls?: string): this {
+    return this;
+  }
+  addSetting(_cb: (setting: unknown) => void): this {
+    return this;
+  }
+  addSearch(_cb: unknown): this {
+    return this;
+  }
+  addExtraButton(_cb: unknown): this {
+    return this;
+  }
+}
+/** Real signature takes a semver string; tests that exercise settings.ts never call the 1.13+
+ *  branch that needs `update()`, so a constant is enough. */
+export function requireApiVersion(_version: string): boolean {
+  return true;
+}
 export class Modal {}
 export class SuggestModal<T> {}
 export class FuzzySuggestModal<T> {}

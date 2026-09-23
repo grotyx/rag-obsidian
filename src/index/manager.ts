@@ -173,7 +173,7 @@ export class IndexManager {
   }
 
   private files(): TFile[] {
-    const prefix = normalizePath(this.settings.referencesFolder) + "/";
+    const prefix = this.library.folder() + "/";
     return this.app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(prefix));
   }
 
@@ -312,7 +312,7 @@ export class IndexManager {
 
   /** Queue a file for debounced incremental reindexing. */
   enqueue(file: TFile): void {
-    const prefix = normalizePath(this.settings.referencesFolder) + "/";
+    const prefix = this.library.folder() + "/";
     if (!file.path.startsWith(prefix)) return;
     this.reindexQueue.add(file.path);
     this.flush();

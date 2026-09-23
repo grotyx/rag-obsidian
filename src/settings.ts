@@ -30,13 +30,22 @@ type Control =
   | { type: "text"; key: string; placeholder?: string }
   | { type: "slider"; key: string; min: number; max: number; step: number };
 
-interface Row {
+interface RowBase {
   name: string;
   desc?: string;
   aliases?: string[];
-  control?: Control;
-  render?: (setting: Setting, group: SettingGroup) => void;
+  /** Whether the row is rendered (and searchable) — re-evaluated on every render/search, unlike
+   *  array membership decided once when `buildDefinitions()` runs. A closure that reads off
+   *  `plugin.settings` stays current even when the array it lives in was captured earlier (see
+   *  the "declare every row once" note on `buildDefinitions()`). Default: always visible. */
+  visible?: () => boolean;
 }
+
+/** A row has a control XOR a custom renderer, never both — mirrors the real
+ *  `SettingDefinitionControl`/`SettingDefinitionRender`'s mutually-exclusive `control`/`render`. */
+type Row =
+  | (RowBase & { control: Control; render?: never })
+  | (RowBase & { control?: never; render: (setting: Setting, group: SettingGroup) => void });
 
 interface Group {
   type: "group";
@@ -44,24 +53,33 @@ interface Group {
   items: Row[];
 }
 
-function text(key: string, name: string, desc?: string, placeholder?: string, aliases?: string[]): Row {
-  return { name, desc, aliases, control: { type: "text", key, placeholder } };
+/** Compile-time-only assignability check (erased at runtime — this declares nothing but a
+ *  `null`, so it never reads a real 1.13-only property and is safe to evaluate on every
+ *  Obsidian version): if `Group`/`Row`/`Control` drift from the real 1.13 `SettingDefinition`
+ *  contract (including the real API's `control`/`render` mutual exclusion), `tsc` fails here
+ *  instead of only surfacing at the Community review or in the running app. */
+const _assertDefinitionsShape: SettingDefinitionItem[] = null as unknown as Group[];
+void _assertDefinitionsShape;
+
+function text(key: string, name: string, desc?: string, placeholder?: string, aliases?: string[], visible?: () => boolean): Row {
+  return { name, desc, aliases, visible, control: { type: "text", key, placeholder } };
 }
-function toggle(key: string, name: string, desc?: string): Row {
-  return { name, desc, control: { type: "toggle", key } };
+function toggle(key: string, name: string, desc?: string, visible?: () => boolean): Row {
+  return { name, desc, visible, control: { type: "toggle", key } };
 }
-function dropdown(key: string, name: string, options: Record<string, string>, desc?: string, aliases?: string[]): Row {
-  return { name, desc, aliases, control: { type: "dropdown", key, options } };
+function dropdown(key: string, name: string, options: Record<string, string>, desc?: string, aliases?: string[], visible?: () => boolean): Row {
+  return { name, desc, aliases, visible, control: { type: "dropdown", key, options } };
 }
-function slider(key: string, name: string, min: number, max: number, step: number, desc?: string): Row {
-  return { name, desc, control: { type: "slider", key, min, max, step } };
+function slider(key: string, name: string, min: number, max: number, step: number, desc?: string, visible?: () => boolean): Row {
+  return { name, desc, visible, control: { type: "slider", key, min, max, step } };
 }
 /** A plain info paragraph (no setting name/control) — matches the original imperative UI's bare
  *  `<p class="setting-item-description">`. Not a `SettingDefinitionEmpty` row: the framework
  *  silently drops those when `name` is empty, so this uses the `render` escape hatch instead. */
-function info(desc: string): Row {
+function info(desc: string, visible?: () => boolean): Row {
   return {
     name: "",
+    visible,
     render: (setting) => {
       setting.settingEl.empty();
       setting.settingEl.createEl("p", { cls: "setting-item-description", text: desc });
@@ -83,12 +101,13 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
-  /** Structurally matches `SettingDefinitionItem[]`; only the `as unknown` cast crosses into the
-   *  real obsidian.d.ts types (a type-level cast, not a property read, so it doesn't trip
-   *  `obsidianmd/no-unsupported-api` — see the `Group`/`Row` doc comment above). Framework-called
-   *  only on Obsidian 1.13+. */
+  /** Structurally matches `SettingDefinitionItem[]` — checked at compile time by
+   *  `_assertDefinitionsShape` above, so this is a plain return, not a property read.
+   *  Framework-called only on Obsidian 1.13+; every row is declared once here (visibility is
+   *  `visible: () => …`, not array membership), so the framework's one-time search indexing
+   *  sees every row regardless of current settings state. */
   getSettingDefinitions(): SettingDefinitionItem[] {
-    return this.buildDefinitions() as unknown as SettingDefinitionItem[];
+    return this.buildDefinitions();
   }
 
   /** Fallback renderer for Obsidian < 1.13, which has no declarative settings API. Bypassed by
@@ -108,6 +127,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
   }
 
   private renderRowFallback(group: SettingGroup, item: Row): void {
+    if (item.visible && !item.visible()) return;
     group.addSetting((setting) => {
       if (item.name) setting.setName(item.name);
       if (item.desc) setting.setDesc(item.desc);
@@ -162,7 +182,10 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     const s = this.plugin.settings;
     switch (key) {
       case "referencesFolder":
-        s.referencesFolder = String(value).trim() || "References";
+        // Store what the user types, even empty mid-edit — the "References" fallback lives at
+        // every consumer (Library.folder()), not here, so clearing the field to retype it
+        // doesn't snap back to the default on a framework re-read (see Library.folder()).
+        s.referencesFolder = String(value).trim();
         break;
       case "citekeyStyle":
         s.citekeyStyle = value as "authoryeartitle" | "authoryear";
@@ -179,10 +202,12 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         s.embeddingModel = String(value).trim();
         break;
       case "ollamaUrl":
-        s.ollamaUrl = String(value).trim() || "http://localhost:11434";
+        // Fallback applied at consumption (llm/client.ts, index/providers/ollama.ts), not here.
+        s.ollamaUrl = String(value).trim();
         break;
       case "openaiBaseUrl":
-        s.openaiBaseUrl = String(value).trim() || "https://api.openai.com/v1";
+        // Fallback applied at consumption (llm/client.ts, index/providers/openai.ts), not here.
+        s.openaiBaseUrl = String(value).trim();
         break;
       case "openaiApiKey":
         s.openaiApiKey = String(value).trim();
@@ -323,6 +348,12 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       ],
     });
 
+    // "provider" below is a build-time snapshot, fine for the description text (which the real
+    // 1.13 API has no way to re-evaluate live anyway). Row *presence* must not be decided from
+    // it — every provider-dependent row is declared once and gated with `visible: () => …`,
+    // which reads `s.embeddingProvider` live each time it's called, so it stays correct even
+    // when the framework's one-time search indexing never rebuilds this array (see the class
+    // doc comment).
     const provider = s.embeddingProvider;
     const retrievalItems: Row[] = [
       info("Changing the provider or model invalidates the index — rebuild it from the search pane afterward."),
@@ -343,24 +374,19 @@ export class ScholarRagSettingTab extends PluginSettingTab {
             ? "On OpenRouter: openai/text-embedding-3-small (1536-d). Straight to OpenAI: the same id without the prefix."
             : "e.g. Xenova/multilingual-e5-small, Xenova/bge-small-en-v1.5"
       ),
-    ];
-    if (provider === "ollama") {
-      retrievalItems.push(text("ollamaUrl", "Ollama URL"));
-    }
-    if (provider === "openai") {
-      retrievalItems.push(text("openaiBaseUrl", "OpenAI base URL"));
-      retrievalItems.push({
+      text("ollamaUrl", "Ollama URL", undefined, undefined, undefined, () => s.embeddingProvider === "ollama"),
+      text("openaiBaseUrl", "OpenAI base URL", undefined, undefined, undefined, () => s.embeddingProvider === "openai"),
+      {
         name: "OpenAI API key",
         aliases: ["API key"],
+        visible: () => s.embeddingProvider === "openai",
         render: (setting) => {
           setting.addText((t) => {
             t.setValue(s.openaiApiKey).onChange((v) => void this.setControlValue("openaiApiKey", v));
             t.inputEl.type = "password";
           });
         },
-      });
-    }
-    retrievalItems.push(
+      },
       toggle(
         "llmRerank",
         "Rerank chat results with the LLM",
@@ -368,9 +394,11 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           "answer is written. One extra request per question; affects chat only."
       ),
       slider("topK", "Results (top-k)", 3, 30, 1, "How many chunks a search returns."),
-      slider("chunkChars", "Chunk size (characters)", 400, 3000, 100, "Target size of each embedded text chunk.")
-    );
+      slider("chunkChars", "Chunk size (characters)", 400, 3000, 100, "Target size of each embedded text chunk."),
+    ];
     if (Platform.isDesktopApp) {
+      // Platform.isDesktopApp can't change while the app is running, so — unlike the settings
+      // above — there's no live state for a `visible` callback to track; plain push is fine.
       retrievalItems.push(
         toggle(
           "indexLocal",
@@ -392,6 +420,8 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       llmOptions.codex = "Codex CLI (ChatGPT login)";
       llmOptions.opencode = "OpenCode CLI (logged-in)";
     }
+    // Same rule as Retrieval above: `llm` (a snapshot) drives description text only; row
+    // presence is `visible: () => …` reading `s.llmProvider` live.
     const chatItems: Row[] = [
       dropdown("llmProvider", "LLM provider", llmOptions),
       text(
@@ -411,82 +441,79 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         ["OpenRouter"]
       ),
       text("chatModel", "Chat model (optional)", 'Model for "Chat with library" answers. Leave empty to use the default model.', "Same as default"),
-    ];
-    if (llm === "anthropic") {
-      chatItems.push({
+      {
         name: "Anthropic API key",
         aliases: ["API key"],
+        visible: () => s.llmProvider === "anthropic",
         render: (setting) => {
           setting.addText((t) => {
             t.setValue(s.anthropicApiKey).onChange((v) => void this.setControlValue("anthropicApiKey", v));
             t.inputEl.type = "password";
           });
         },
-      });
-    }
-    if (llm === "openai") {
-      chatItems.push(info("Uses the OpenAI base URL + API key set under Retrieval above."));
-    }
-    if (llm === "codex" || llm === "opencode") {
-      chatItems.push(
-        text(
-          "cliPath",
-          "CLI executable",
-          "Leave empty to look in the usual install folders. Uses your existing CLI login — " +
-            "no API key is stored by this plugin. Calls run in the background, a few at a time.",
-          "Auto-detect"
-        )
-      );
-      chatItems.push({
+      },
+      info("Uses the OpenAI base URL + API key set under Retrieval above.", () => s.llmProvider === "openai"),
+      text(
+        "cliPath",
+        "CLI executable",
+        "Leave empty to look in the usual install folders. Uses your existing CLI login — " +
+          "no API key is stored by this plugin. Calls run in the background, a few at a time.",
+        "Auto-detect",
+        undefined,
+        () => s.llmProvider === "codex" || s.llmProvider === "opencode"
+      ),
+      {
         name: "Test connection",
         desc: "Sends a one-line prompt through the CLI and reports the reply or error.",
+        visible: () => s.llmProvider === "codex" || s.llmProvider === "opencode",
         render: (setting) => {
           setting.addButton((b) =>
             b.setButtonText("Test").onClick(async () => {
               b.setDisabled(true).setButtonText("Testing…");
               const started = Date.now();
               const elapsed = () => ((Date.now() - started) / 1000).toFixed(1);
+              const testedProvider = s.llmProvider; // read live, not the outer snapshot
               try {
                 const reply = await new LLMClient(this.plugin.settings).chat(
                   [{ role: "user", content: "Reply with exactly: OK" }],
                   "You are a test."
                 );
-                new Notice(`${llm} replied in ${elapsed()}s: ${reply.slice(0, 200)}`);
+                new Notice(`${testedProvider} replied in ${elapsed()}s: ${reply.slice(0, 200)}`);
               } catch (e) {
-                new Notice(`${llm} test failed after ${elapsed()}s: ${e instanceof Error ? e.message : String(e)}`);
+                new Notice(`${testedProvider} test failed after ${elapsed()}s: ${e instanceof Error ? e.message : String(e)}`);
               } finally {
                 b.setDisabled(false).setButtonText("Test");
               }
             })
           );
         },
-      });
-    }
-    if (llm !== "codex" && llm !== "opencode") {
-      chatItems.push(
-        slider(
-          "llmMaxTokens",
-          "Max answer tokens",
-          1024,
-          32768,
-          1024,
-          "Anthropic only (OpenAI-compatible and Ollama endpoints use their own default). " +
-            "Reasoning models spend this budget on thinking before the answer, so keep it high — " +
-            "too low returns an empty reply."
-        )
-      );
-    }
-    chatItems.push(
+      },
+      slider(
+        "llmMaxTokens",
+        "Max answer tokens",
+        1024,
+        32768,
+        1024,
+        "Anthropic only (OpenAI-compatible and Ollama endpoints use their own default). " +
+          "Reasoning models spend this budget on thinking before the answer, so keep it high — " +
+          "too low returns an empty reply.",
+        () => s.llmProvider !== "codex" && s.llmProvider !== "opencode"
+      ),
       dropdown(
         "summaryLanguagePreset",
         "Summary language",
         { en: "English", ko: "Korean", "en+ko": "English + Korean", custom: "Custom…" },
         "Language for AI-generated paper summaries."
-      )
-    );
-    if (!FIXED_SUMMARY_LANGS.includes(s.summaryLanguage)) {
-      chatItems.push(text("summaryLanguage", "Custom summary language", "Free-text language name, e.g. German.", "German"));
-    }
+      ),
+      text(
+        "summaryLanguage",
+        "Custom summary language",
+        "Free-text language name, e.g. German.",
+        "German",
+        undefined,
+        () => !FIXED_SUMMARY_LANGS.includes(s.summaryLanguage)
+      ),
+    ];
     chatItems.push(
       dropdown(
         "citeStyle",
@@ -555,52 +582,54 @@ export class ScholarRagSettingTab extends PluginSettingTab {
             : "Let Claude Code or Codex search this library and manage Markdown while Obsidian is open."
         )
       );
-      if (s.mcpEnabled) {
-        mcpItems.push(
-          toggle(
-            "mcpNoteTools",
-            "Allow note editing tools",
-            "Off = MCP clients get only the library, PubMed and manuscript tools (12), and cannot list, " +
-              "read, create, edit, move or trash other notes. Start a new client session to see the change."
-          )
-        );
-        const snippets = plugin.mcpSetupSnippets();
-        if (snippets) {
-          mcpItems.push({
-            name: "Connect an MCP client",
-            desc: "Copy the setup for this vault. The access token is discovered locally and is never copied.",
-            render: (setting) => {
-              setting
-                .addButton((b) =>
-                  b.setButtonText("Copy Claude Code command").onClick(async () => {
-                    await navigator.clipboard.writeText(snippets.claudeCode);
-                    new Notice("Claude Code MCP command copied");
-                  })
-                )
-                .addButton((b) =>
-                  b.setButtonText("Copy Codex config").onClick(async () => {
-                    await navigator.clipboard.writeText(snippets.codex);
-                    new Notice("Codex MCP config copied");
-                  })
-                )
-                .addButton((b) =>
-                  b.setButtonText("Copy OpenCode config").onClick(async () => {
-                    await navigator.clipboard.writeText(snippets.opencode);
-                    new Notice("OpenCode MCP config copied");
-                  })
-                )
-                .addButton((b) =>
-                  b.setButtonText("Copy Antigravity command").onClick(async () => {
-                    await navigator.clipboard.writeText(snippets.agy);
-                    new Notice("Antigravity MCP command copied");
-                  })
-                );
-            },
-          });
-        }
-        mcpItems.push({
+      // mcpEnabled-dependent rows are declared once and gated with `visible`, not pushed
+      // conditionally, for the same reason as the Retrieval/Chat groups above.
+      mcpItems.push(
+        toggle(
+          "mcpNoteTools",
+          "Allow note editing tools",
+          "Off = MCP clients get only the library, PubMed and manuscript tools (12), and cannot list, " +
+            "read, create, edit, move or trash other notes. Start a new client session to see the change.",
+          () => s.mcpEnabled
+        ),
+        {
+          name: "Connect an MCP client",
+          desc: "Copy the setup for this vault. The access token is discovered locally and is never copied.",
+          visible: () => s.mcpEnabled && !!plugin.mcpSetupSnippets(),
+          render: (setting) => {
+            const snippets = plugin.mcpSetupSnippets();
+            if (!snippets) return; // visible() already gates this; defensive only
+            setting
+              .addButton((b) =>
+                b.setButtonText("Copy Claude Code command").onClick(async () => {
+                  await navigator.clipboard.writeText(snippets.claudeCode);
+                  new Notice("Claude Code MCP command copied");
+                })
+              )
+              .addButton((b) =>
+                b.setButtonText("Copy Codex config").onClick(async () => {
+                  await navigator.clipboard.writeText(snippets.codex);
+                  new Notice("Codex MCP config copied");
+                })
+              )
+              .addButton((b) =>
+                b.setButtonText("Copy OpenCode config").onClick(async () => {
+                  await navigator.clipboard.writeText(snippets.opencode);
+                  new Notice("OpenCode MCP config copied");
+                })
+              )
+              .addButton((b) =>
+                b.setButtonText("Copy Antigravity command").onClick(async () => {
+                  await navigator.clipboard.writeText(snippets.agy);
+                  new Notice("Antigravity MCP command copied");
+                })
+              );
+          },
+        },
+        {
           name: "MCP connection",
           desc: "Restart rotates the per-session access token. Stop leaves MCP off until the plugin reloads or you restart it here.",
+          visible: () => s.mcpEnabled,
           render: (setting) => {
             setting
               .addButton((b) =>
@@ -622,8 +651,8 @@ export class ScholarRagSettingTab extends PluginSettingTab {
                 })
               );
           },
-        });
-      }
+        }
+      );
     }
     groups.push({ type: "group", heading: "External AI (MCP)", items: mcpItems });
 

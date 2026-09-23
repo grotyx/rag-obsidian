@@ -4,8 +4,6 @@ import { ncbiGate } from "./ncbi";
 import { resolveWork } from "../graph/openalex";
 import { str, rec, arr, text, optStr } from "../util/json";
 
-/** Like `str`, but keeps a missing/non-string field as `undefined` rather than "" — for nested
- *  CSL fields (author names, dates) that must not gain a spurious empty-string property. */
 export type SourceId =
   | { kind: "doi"; value: string }
   | { kind: "pmid"; value: string }
@@ -76,8 +74,14 @@ export async function fetchMetadata(id: SourceId, pubmedApiKey = "", mailto = ""
   }
 }
 
+/** Strip only real HTML tags (`<i>`, `</sup>`, `<em class="x">`…), not a bare comparator pair
+ *  like "aged <65 and >80 years" — the old `<[^>]+>` regex matched from the first "<" to the
+ *  next ">" regardless of what was between them, eating the "65 and " in the middle. Also
+ *  decodes entities so an entity-escaped title ("&lt;65") comes out as the literal text. */
 function stripTags(s: string | undefined): string {
-  return s ? s.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : "";
+  if (!s) return "";
+  const noTags = s.replace(/<\/?[A-Za-z][A-Za-z0-9]*(\s[^>]*)?>/g, "");
+  return decodeEntities(noTags).replace(/\s+/g, " ").trim();
 }
 
 function clean(item: CSLItem): CSLItem {
@@ -248,7 +252,7 @@ function extractAbstractXml(xml: string): string {
   let m: RegExpExecArray | null;
   while ((m = re.exec(xml))) {
     const label = m[1].match(/\bLabel="([^"]*)"/i)?.[1];
-    const text = decodeEntities(stripTags(m[2]));
+    const text = stripTags(m[2]); // decodes entities internally now
     if (!text) continue;
     parts.push(label ? `${label}: ${text}` : text);
   }

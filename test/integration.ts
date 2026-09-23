@@ -381,6 +381,7 @@ async function main() {
           year: "",
         })),
       getItem: (ck: string) => seedMap.get(ck) ?? null,
+      folder: () => "References", // CitationGraph.enqueue() routes the referencesFolder prefix through here
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const graph = new CitationGraph(stubApp, stubLib, { ...settings, openalexMailto: "test@example.com" } as any, "_x");

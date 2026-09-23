@@ -87,6 +87,13 @@ function bbox(xs: number[], ys: number[]): number[] {
   return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
 }
 
+/** Push `box` only if every coordinate is finite — a malformed quad point (NaN) must not yield
+ *  a NaN rectangle that silently blocks the `ann.rect` fallback below (rects.length > 0 would
+ *  skip it even though every rect in it is garbage). */
+function pushFiniteBox(rects: number[][], box: number[]): void {
+  if (box.every(Number.isFinite)) rects.push(box);
+}
+
 function quadRects(ann: PdfAnnotation): number[][] {
   // pdfjs ≥ 4 hands quadPoints over as a Float32Array (flat x/y octets); older builds as an Array.
   const raw = ann.quadPoints;
@@ -96,18 +103,18 @@ function quadRects(ann: PdfAnnotation): number[][] {
     if (typeof q[0] === "number") {
       const nums = q as number[];
       for (let i = 0; i + 8 <= nums.length; i += 8) {
-        rects.push(bbox([nums[i], nums[i + 2], nums[i + 4], nums[i + 6]], [nums[i + 1], nums[i + 3], nums[i + 5], nums[i + 7]]));
+        pushFiniteBox(rects, bbox([nums[i], nums[i + 2], nums[i + 4], nums[i + 6]], [nums[i + 1], nums[i + 3], nums[i + 5], nums[i + 7]]));
       }
     } else if (Array.isArray(q[0])) {
       for (const quad of q as unknown[][]) {
         const pts = quad.map(quadPoint);
-        rects.push(bbox(pts.map((p) => p.x), pts.map((p) => p.y)));
+        pushFiniteBox(rects, bbox(pts.map((p) => p.x), pts.map((p) => p.y)));
       }
     } else if (q[0] && typeof q[0] === "object") {
       const pts = (q as unknown[]).map(quadPoint);
       for (let i = 0; i + 4 <= pts.length; i += 4) {
         const slice = pts.slice(i, i + 4);
-        rects.push(bbox(slice.map((p) => p.x), slice.map((p) => p.y)));
+        pushFiniteBox(rects, bbox(slice.map((p) => p.x), slice.map((p) => p.y)));
       }
     }
   }

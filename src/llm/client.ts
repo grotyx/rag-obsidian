@@ -125,7 +125,7 @@ export class LLMClient {
       body.reasoning = { enabled: false };
     }
     const res = await requestWithRetry({
-      url: `${this.settings.openaiBaseUrl.replace(/\/+$/, "")}/chat/completions`,
+      url: `${(this.settings.openaiBaseUrl || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify(body),
@@ -140,7 +140,7 @@ export class LLMClient {
 
   private async ollama(messages: ChatMessage[], system: string): Promise<string> {
     const res = await requestWithRetry({
-      url: `${this.settings.ollamaUrl.replace(/\/+$/, "")}/api/chat`,
+      url: `${(this.settings.ollamaUrl || "http://localhost:11434").replace(/\/+$/, "")}/api/chat`,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
