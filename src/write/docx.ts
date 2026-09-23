@@ -37,7 +37,13 @@ export function findPandoc(cliPathSetting?: string): string | undefined {
  *  academic reference template (Times New Roman 12pt, double-spaced — styles/manuscript-reference.docx).
  *  Same flags as the old scripts/to-docx.cjs. Writes the markdown + template to a throwaway temp
  *  dir (stdin isn't needed) and always cleans it up. */
-export async function exportDocx(markdown: string, outAbsPath: string, pandocPath: string): Promise<void> {
+/** `resourceDir` is the manuscript's own folder, so relative image paths resolve there. */
+export async function exportDocx(
+  markdown: string,
+  outAbsPath: string,
+  pandocPath: string,
+  resourceDir?: string
+): Promise<void> {
   if (!Platform.isDesktopApp) throw new Error("Export to Word needs Obsidian Desktop");
   const { cp, fs, os, pathApi } = loadDesktopNode();
   const tmp = await fs.mkdtemp(pathApi.join(os.tmpdir(), "rag-obsidian-docx-"));
@@ -49,8 +55,11 @@ export async function exportDocx(markdown: string, outAbsPath: string, pandocPat
     await new Promise<void>((resolve, reject) => {
       cp.execFile(
         pandocPath,
-        [inPath, "-f", "markdown", "-t", "docx", "--reference-doc", templatePath, "-o", outAbsPath],
-        { timeout: 2 * 60 * 1000 },
+        [
+          inPath, "-f", "markdown", "-t", "docx", "--reference-doc", templatePath, "-o", outAbsPath,
+          ...(resourceDir ? ["--resource-path", resourceDir] : []),
+        ],
+        { timeout: 2 * 60 * 1000, ...(resourceDir ? { cwd: resourceDir } : {}) },
         (error, _stdout, stderr) => {
           if (error) reject(new Error(stderr.toString().trim().slice(-500) || error.message));
           else resolve();

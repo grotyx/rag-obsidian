@@ -328,7 +328,10 @@ export async function checkRetractionForActive(plugin: ScholarRagPlugin): Promis
 export async function checkRetractionAll(plugin: ScholarRagPlugin, recheck = false): Promise<void> {
   const todo: Entry[] = [];
   let skipped = 0;
+  // Earlier runs' hits stay in the report unless this run re-checks them and finds them clean.
+  const earlier = new Map<string, Entry>();
   for (const e of plugin.library.entries()) {
+    if (e.item.retracted === true) earlier.set(e.file.path, e);
     const hasId = !!(e.item.DOI || e.item.PMID || e.item.openalex_id);
     if (hasId && (recheck || e.item.retracted === undefined)) todo.push(e);
     else skipped++;
@@ -345,6 +348,7 @@ export async function checkRetractionAll(plugin: ScholarRagPlugin, recheck = fal
   let retracted = 0;
   let clean = 0;
   const retractedEntries: Entry[] = [];
+  const cleared: Entry[] = [];
   let outcome = "Checking retractions failed (see console)";
   let writes: Promise<void> = Promise.resolve();
   try {
@@ -368,6 +372,7 @@ export async function checkRetractionAll(plugin: ScholarRagPlugin, recheck = fal
                 retractedEntries.push(e);
               } else {
                 clean++;
+                cleared.push(e);
               }
             });
           await writes;
@@ -387,10 +392,13 @@ export async function checkRetractionAll(plugin: ScholarRagPlugin, recheck = fal
   } finally {
     batch.finish(outcome);
   }
-  if (retractedEntries.length) {
+  for (const e of cleared) earlier.delete(e.file.path);
+  for (const e of retractedEntries) earlier.set(e.file.path, e);
+  const listed = [...earlier.values()];
+  if (retractedEntries.length || (listed.length && cleared.length)) {
     const report =
-      `# Retracted references\n\n${retractedEntries.length} retracted:\n\n` +
-      retractedEntries.map((e) => `- [[${e.file.basename}]] — ${e.title} (${e.year})`).join("\n") +
+      `# Retracted references\n\n${listed.length} retracted:\n\n` +
+      listed.map((e) => `- [[${e.file.basename}]] — ${e.title} (${e.year})`).join("\n") +
       "\n";
     await plugin.writeAndOpen(normalizePath("Retracted references.md"), report);
   }

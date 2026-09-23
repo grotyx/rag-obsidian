@@ -212,9 +212,15 @@ export class ScholarRagSettingTab extends PluginSettingTab {
             // empty means "use the CLI's own default".
             this.plugin.settings.llmModel = "";
             this.plugin.settings.chatModel = "";
-          } else if (next === "openai" && (prev === "codex" || prev === "opencode") && !this.plugin.settings.llmModel) {
-            this.plugin.settings.llmModel = DEFAULT_SETTINGS.llmModel;
-            this.plugin.settings.chatModel = DEFAULT_SETTINGS.chatModel;
+          } else if ((prev === "codex" || prev === "opencode") && !this.plugin.settings.llmModel) {
+            // Leaving a CLI provider: an empty model would 400 on every API call.
+            const fallback: Record<string, string> = {
+              openai: DEFAULT_SETTINGS.llmModel,
+              anthropic: "claude-haiku-4-5-20251001",
+              ollama: "gemma3:4b",
+            };
+            this.plugin.settings.llmModel = fallback[next] ?? "";
+            this.plugin.settings.chatModel = next === "openai" ? DEFAULT_SETTINGS.chatModel : "";
           }
           await this.plugin.saveSettings();
           this.display();

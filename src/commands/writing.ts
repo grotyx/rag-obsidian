@@ -113,7 +113,8 @@ export async function exportManuscriptDocx(plugin: ScholarRagPlugin): Promise<vo
   const outAbsPath = adapter.getFullPath(outRelPath);
   const notice = new Notice("Exporting to Word…", 0);
   try {
-    await exportDocx(stripFrontmatter(rendered.content), outAbsPath, pandocPath);
+    const noteDir = adapter.getFullPath(file.parent?.path ?? "");
+    await exportDocx(stripFrontmatter(rendered.content), outAbsPath, pandocPath, noteDir);
     new Notice(`Exported → ${outRelPath}`);
   } catch (e) {
     new Notice(`Export failed: ${e instanceof Error ? e.message : String(e)}`);

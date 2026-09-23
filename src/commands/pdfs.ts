@@ -131,7 +131,9 @@ export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: str
     citekeyToFile.set(e.citekey, e.file);
   }
 
-  const prefix = normalizePath(folderPath).replace(/\/+$/, "") + "/";
+  // The vault root comes back as "" or "/", and no vault path starts with "/".
+  const folder = normalizePath(folderPath).replace(/^\/+|\/+$/g, "");
+  const prefix = folder ? `${folder}/` : "";
   const pdfs = plugin.app.vault
     .getFiles()
     .filter((f) => f.extension.toLowerCase() === "pdf" && f.path.startsWith(prefix) && !linkedPaths.has(f.path));

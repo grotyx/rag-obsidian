@@ -19,7 +19,7 @@ import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
 import { requestWithRetry } from "../src/llm/client";
-import { buildCliArgs, cliCandidates, parseOpencodeOutput, promptFromMessages } from "../src/llm/cli";
+import { buildCliArgs, cliCandidates, parseOpencodeOutput, promptFromMessages, winQuote } from "../src/llm/cli";
 import { cacheRoot } from "../src/index/localFiles";
 import { pandocCandidates } from "../src/write/pandoc";
 import { stripFrontmatter } from "../src/index/chunker";
@@ -483,6 +483,12 @@ AID - 10.1000/xyz123 [doi]
   check(oc[0] === "/home/x/.opencode/bin/opencode", "cliCandidates: opencode's ~/.opencode/bin first");
   const codexWin = cliCandidates("codex", "C:\\Users\\x", "win32");
   check(codexWin[codexWin.length - 1] === "C:\\Users\\x\\AppData\\Roaming\\npm\\codex.exe", "cliCandidates: win32 appends .exe under %APPDATA%/npm");
+}
+
+// ---------- llm/cli.ts: winQuote ----------
+{
+  check(winQuote("model_reasoning_effort=\"low\"") === '"model_reasoning_effort=""low"""', "winQuote: inner quotes doubled, whole arg wrapped");
+  check(winQuote("C:\\Temp dir\\last.txt") === '"C:\\Temp dir\\last.txt"', "winQuote: a path with a space stays one argument");
 }
 
 // ---------- index/localFiles.ts: cacheRoot (pure — platform/env/home injected) ----------

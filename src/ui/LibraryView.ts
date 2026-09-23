@@ -26,7 +26,9 @@ export class LibraryView extends ItemView {
   private chips: QuickFilters = {};
   private visibleCount = PAGE_SIZE;
   private listEl!: HTMLElement;
-  private refresh = debounce(() => this.render(), 300, true);
+  // renderList, not render: rebuilding the header would drop focus from the filter input
+  // while a batch keeps writing frontmatter.
+  private refresh = debounce(() => this.renderList(), 300, true);
 
   constructor(leaf: WorkspaceLeaf, plugin: ScholarRagPlugin) {
     super(leaf);

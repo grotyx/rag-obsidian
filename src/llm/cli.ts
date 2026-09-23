@@ -97,6 +97,11 @@ export function cliCandidates(provider: "codex" | "opencode", home: string, plat
   return [...posix, `${npm}\\${provider}.cmd`, `${npm}\\${provider}.exe`];
 }
 
+/** Quote one argument for cmd.exe: wrap in double quotes, double any inside. */
+export function winQuote(arg: string): string {
+  return `"${arg.replace(/"/g, '""')}"`;
+}
+
 function firstExisting(paths: string[], fs: typeof import("node:fs")): string | undefined {
   for (const p of paths) {
     try {
@@ -160,7 +165,13 @@ export async function runCli(
     const stdout = await new Promise<string>((resolve, reject) => {
       let child: import("node:child_process").ChildProcess;
       try {
-        child = cp.spawn(bin, args, { cwd: tmp, env, stdio: ["pipe", "pipe", "pipe"] });
+        // Node refuses to spawn a .cmd/.bat without a shell (EINVAL since the CVE-2024-27980
+        // fix), and npm installs these CLIs as .cmd shims on Windows. With a shell, cmd.exe
+        // re-parses the line, so every argument is quoted. ponytail: untested on Windows.
+        const shim = process.platform === "win32" && /\.(cmd|bat)$/i.test(bin);
+        child = shim
+          ? cp.spawn(`"${bin}"`, args.map(winQuote), { cwd: tmp, env, shell: true, stdio: ["pipe", "pipe", "pipe"] })
+          : cp.spawn(bin, args, { cwd: tmp, env, stdio: ["pipe", "pipe", "pipe"] });
       } catch (e) {
         reject(e instanceof Error ? e : new Error(String(e)));
         return;
