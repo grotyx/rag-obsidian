@@ -459,6 +459,18 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       );
 
     if (!this.plugin.settings.mcpEnabled) return;
+    new Setting(containerEl)
+      .setName("Allow note editing tools")
+      .setDesc(
+        "Off = MCP clients get only the library, PubMed and manuscript tools (12), and cannot list, " +
+          "read, create, edit, move or trash other notes. Start a new client session to see the change."
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.mcpNoteTools).onChange(async (on) => {
+          this.plugin.settings.mcpNoteTools = on;
+          await this.plugin.saveSettings();
+        })
+      );
     const snippets = this.plugin.mcpSetupSnippets();
     if (snippets) {
       new Setting(containerEl)

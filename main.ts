@@ -43,7 +43,7 @@ import { resummarizeActive, resummarizeOutdated } from "./src/commands/summaries
 import { indexLinkedPdfs, indexLinkedPdfActive, linkPdfsInFolder } from "./src/commands/pdfs";
 import { FolderSuggestModal } from "./src/ui/FolderSuggestModal";
 import { McpVault } from "./src/mcp/vault";
-import { MCP_TOOLS, McpService } from "./src/mcp/service";
+import { McpService, mcpToolsFor } from "./src/mcp/service";
 import { assertVaultPath, McpHttpServer, McpServerStatus } from "./src/mcp/http";
 import { compileMcpManuscript } from "./src/write/manuscript";
 
@@ -81,7 +81,7 @@ export default class ScholarRagPlugin extends Plugin {
         vaultPath,
         pluginPath: `${vaultPath}/${pluginDir}`,
         version: this.manifest.version,
-        tools: MCP_TOOLS,
+        tools: () => mcpToolsFor(this.settings.mcpNoteTools),
         callTool: (name, args) => service.callTool(name, args),
       });
     }

@@ -271,6 +271,16 @@ function summaryMetadata(content: string, source: string, model: string): string
   return `---\n${lines.join("\n")}\n---${content.slice(match[0].length)}`;
 }
 
+/** General vault-editing tools, separable from the library tools by a setting. */
+export const NOTE_TOOLS: ReadonlySet<string> = new Set([
+  "list_notes", "read_note", "create_note", "update_note", "replace_in_note", "move_note", "trash_note",
+]);
+
+/** The tool list a client sees: every tool, or everything but the note tools. */
+export function mcpToolsFor(noteTools: boolean): McpTool[] {
+  return noteTools ? MCP_TOOLS : MCP_TOOLS.filter((tool) => !NOTE_TOOLS.has(tool.name));
+}
+
 export class McpService {
   private byName = new Map(MCP_TOOLS.map((tool) => [tool.name, tool]));
   private deps: ServiceDeps;
@@ -285,7 +295,10 @@ export class McpService {
 
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     const tool = this.byName.get(name);
-    if (!tool) throw new Error(`UNKNOWN_TOOL: Unknown tool: ${name}`);
+    // A client that listed the tools before the setting changed may still call a hidden one.
+    if (!tool || (NOTE_TOOLS.has(name) && this.plugin.settings.mcpNoteTools === false)) {
+      throw new Error(`UNKNOWN_TOOL: Unknown tool: ${name}`);
+    }
     const properties = (tool.inputSchema.properties ?? {}) as Record<string, unknown>;
     const unknown = Object.keys(args).find((key) => !(key in properties));
     if (unknown) throw new Error(`INVALID_ARGUMENT: Unknown argument: ${unknown}`);

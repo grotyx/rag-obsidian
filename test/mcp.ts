@@ -8,7 +8,7 @@ import * as yaml from "js-yaml";
 import { handleProtocol, McpTool } from "../src/mcp/protocol";
 import { bridgeSource } from "../src/mcp/bridge";
 import { contentHash, McpVault, validateMarkdownPath } from "../src/mcp/vault";
-import { McpService, MCP_TOOLS } from "../src/mcp/service";
+import { McpService, MCP_TOOLS, mcpToolsFor } from "../src/mcp/service";
 import { compileMcpManuscript, renderCompiledManuscript } from "../src/write/manuscript";
 import { assertVaultPath, loadDesktopNode, mcpSetupSnippets, McpHttpServer } from "../src/mcp/http";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -249,6 +249,12 @@ async function serviceChecks(): Promise<void> {
   ]);
   assert.equal(MCP_TOOLS.find((t) => t.name === "search_library")?.annotations?.readOnlyHint, true);
   assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
+  const libraryOnly = mcpToolsFor(false).map((t) => t.name);
+  assert.equal(libraryOnly.length, 12, "note tools off leaves the 12 library tools");
+  for (const hidden of ["list_notes", "read_note", "create_note", "update_note", "replace_in_note", "move_note", "trash_note"]) {
+    assert.ok(!libraryOnly.includes(hidden), `${hidden} hidden when note tools are off`);
+  }
+  assert.equal(mcpToolsFor(true), MCP_TOOLS);
 
   const fake = fakeApp({
     "References/ref.md": "---\ncitekey: smith2024\ntitle: Trial\n---\n\n## Summary\n\nUseful.\n\n##\tNotes\n\n##\tHighlights\n\n## Full text (extracted)\n\nvery long",
@@ -360,6 +366,8 @@ async function serviceChecks(): Promise<void> {
 
   await assert.rejects(() => service.callTool("search_pubmed", { query: "trial", limit: 151 }), /INVALID_ARGUMENT/);
   let cappedAt = 0;
+  const noNotes = new McpService({ ...plugin, settings: { ...plugin.settings, mcpNoteTools: false } } as never, vault);
+  await assert.rejects(noNotes.callTool("list_notes", {}), /UNKNOWN_TOOL/, "a hidden note tool is refused even if called directly");
   const cap150 = await new McpService(plugin, vault, {
     searchPubmed: async (_q: string, opts: { n?: number }) => { cappedAt = opts.n ?? 0; return { hits: [], total: 0 }; },
   }).callTool("search_pubmed", { query: "trial", limit: 150 }) as any;

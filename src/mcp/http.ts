@@ -27,7 +27,8 @@ interface McpHttpOptions {
   vaultPath: string;
   pluginPath: string;
   version: string;
-  tools: McpTool[];
+  /** A function is re-read on every request, so a settings change applies without a restart. */
+  tools: McpTool[] | (() => McpTool[]);
   callTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -299,7 +300,7 @@ export class McpHttpServer {
         return;
       }
       requestId = request.id ?? null;
-      const response = await handleProtocol(request, this.options.tools, async (name, args) => {
+      const response = await handleProtocol(request, typeof this.options.tools === "function" ? this.options.tools() : this.options.tools, async (name, args) => {
         await guardToolPaths(this.options.vaultPath, { ...request, params: { name, arguments: args } });
         return this.options.callTool(name, args);
       }, this.options.version);

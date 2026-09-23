@@ -48,6 +48,9 @@ export interface ScholarRagSettings {
 
   // Local MCP bridge for Claude Code / Codex.
   mcpEnabled: boolean;
+  /** Expose the seven Markdown note tools (list/read/create/update/replace/move/trash) over MCP.
+   *  Off = library, PubMed and manuscript tools only. */
+  mcpNoteTools: boolean;
 }
 
 /** Settings fields holding API keys — kept in Obsidian secretStorage (1.11.4+) when available,
@@ -88,6 +91,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   renderCitations: true,
 
   mcpEnabled: false,
+  mcpNoteTools: true,
 };
 
 /** Section-wise summary produced by the LLM (see ingest/summarize.ts). */
