@@ -6,6 +6,28 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.7.6] — 2026-09-24
+
+### Changed
+
+- **Settings are searchable on Obsidian 1.13+.** The settings tab is described once as
+  declarative definitions (`getSettingDefinitions()`), which 1.13+ renders and indexes for its
+  settings search ("Contact e-mail", "OpenRouter", "API key" now find the plugin). On 1.11.4–1.12
+  `display()` draws the same definitions with the older Setting API, so there is one source of
+  truth. Password fields and multi-button rows (MCP, CLI test) use the definitions' `render` rows.
+- **One PubMed record mapping.** Add-by-PMID and PubMed search shared a copy-pasted esummary →
+  CSL conversion that had drifted; both now use `esummaryToItem`. Titles have HTML tags stripped
+  in search results too, PMCID is set in both paths, and the first DOI/PMC article id wins.
+- **CI on Windows, macOS and Linux** (`.github/workflows/ci.yml`): lint, build, unit and MCP
+  tests on every push, including a real `.cmd` spawn test for the CLI providers on Windows.
+
+### Fixed
+
+- **MCP on Windows:** the bridge resolved the vault with the JS `realpathSync`, the plugin with
+  native `realpath`; on Windows only the native one expands 8.3 short names (`RUNNER~1`), so the
+  two sides hashed different paths and the bridge never found the server. Both use native now.
+  Found by the new Windows CI job.
+
 ## [0.7.5] — 2026-09-24
 
 ### Changed

@@ -39,9 +39,9 @@ OpenRouter.
 > **Update (2026-09-24, v0.7.5):** submitted to the Community directory. 0.7.2–0.7.5 answered its
 > automated review: lint clean at the review's severity (574 findings), `minAppVersion` 1.11.4
 > for `secretStorage`, plain MIT `LICENSE`, type-checking without `@types/node`, and releases
-> built and attested by GitHub Actions. Open: the declarative settings API
-> (`getSettingDefinitions`) and `setDestructive` need Obsidian 1.13 — adopt them when
-> `minAppVersion` can move there.
+> built and attested by GitHub Actions. 0.7.6 adopted the declarative settings API with a
+> fallback renderer for 1.11–1.12. Open: `setDestructive` (1.13 only) replaces `setWarning` when
+> `minAppVersion` moves to 1.13.
 
 ## Phase 1 — things that bite during normal use (do first)
 

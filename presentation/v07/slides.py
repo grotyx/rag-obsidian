@@ -29,7 +29,7 @@ SLIDES = [
     dict(kind="cover", section="표지",
          title="내 서재가\n답한다",
          sub="출처가 붙는 AI 논문 서재 — Obsidian 플러그인",
-         meta="Academic Paper Citation Manager · v0.7.5",
+         meta="Academic Paper Citation Manager · v0.7.6",
          say="안녕하세요. 오늘은 제가 만든 Obsidian 플러그인 Academic Paper Citation Manager를 소개합니다. 한 문장으로 줄이면 내 논문 서재가 직접 답하는 도구입니다."),
 
     # ── 1 · 문제 ─────────────────────────────────────────────────────────────
