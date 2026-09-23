@@ -1,4 +1,4 @@
-import { Editor, Notice, normalizePath } from "obsidian";
+import { Editor, FileSystemAdapter, Notice, normalizePath, Platform } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { CiteSuggestModal, UnsupportedClaimsModal } from "../ui/CiteSuggestModal";
 import { Paragraph, paragraphsOf, rankHits, unsupportedClaims, citationEdit } from "../write/evidence";
@@ -9,6 +9,8 @@ import {
 } from "../cite/bibliography";
 import { formatCitation } from "../cite/format";
 import { renderCompiledManuscript } from "../write/manuscript";
+import { exportDocx, findPandoc } from "../write/docx";
+import { stripFrontmatter } from "../index/chunker";
 
 /** Scan the active note for [@citekey] and insert/refresh a "## References" section. */
 export async function updateBibliography(plugin: ScholarRagPlugin): Promise<void> {
@@ -73,6 +75,51 @@ export async function compileManuscript(plugin: ScholarRagPlugin): Promise<void>
   const outPath = normalizePath(file.path.replace(/\.md$/i, "") + " (compiled).md");
   await plugin.writeAndOpen(outPath, rendered.content);
   new Notice(`Compiled → ${outPath}`);
+}
+
+/** Compile the active note (same core as `compileManuscript`) and convert it straight to a
+ *  sibling .docx via Pandoc, styled with the bundled academic reference template — an
+ *  EndNote/Zotero Word-plugin replacement for a clinician submitting in Word. */
+export async function exportManuscriptDocx(plugin: ScholarRagPlugin): Promise<void> {
+  const file = plugin.app.workspace.getActiveFile();
+  if (!file) {
+    new Notice("No active note");
+    return;
+  }
+  const adapter = plugin.app.vault.adapter;
+  if (!Platform.isDesktopApp || !(adapter instanceof FileSystemAdapter)) {
+    new Notice("Export to Word needs Obsidian Desktop");
+    return;
+  }
+  const pandocPath = findPandoc(plugin.settings.pandocPath);
+  if (!pandocPath) {
+    new Notice("Pandoc not found — install it from pandoc.org (Settings → … Pandoc path to set it manually)");
+    return;
+  }
+  let rendered;
+  try {
+    rendered = await renderCompiledManuscript({
+      content: await plugin.app.vault.read(file),
+      styleId: plugin.styleForNote(file),
+      citeStyle: plugin.settings.citeStyle,
+      getItem: (key) => plugin.library.getItem(key),
+      renderStyle: (style, keys, getItem) => plugin.citeEngine.renderNote(style, keys, getItem),
+    });
+  } catch (error) {
+    new Notice(error instanceof Error ? error.message.replace(/^NO_CITATIONS:\s*/, "") : String(error));
+    return;
+  }
+  const outRelPath = normalizePath(file.path.replace(/\.md$/i, "") + ".docx");
+  const outAbsPath = adapter.getFullPath(outRelPath);
+  const notice = new Notice("Exporting to Word…", 0);
+  try {
+    await exportDocx(stripFrontmatter(rendered.content), outAbsPath, pandocPath);
+    new Notice(`Exported → ${outRelPath}`);
+  } catch (e) {
+    new Notice(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    notice.hide();
+  }
 }
 
 export async function copyCitation(plugin: ScholarRagPlugin): Promise<void> {

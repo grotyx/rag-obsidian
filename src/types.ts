@@ -45,6 +45,8 @@ export interface ScholarRagSettings {
 
   // Phase 5 — writing
   renderCitations: boolean;
+  /** Pandoc executable for "Export manuscript to Word (.docx)"; "" = look in the usual install folders. */
+  pandocPath: string;
 
   // Local MCP bridge for Claude Code / Codex.
   mcpEnabled: boolean;
@@ -89,6 +91,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   openalexMailto: "",
 
   renderCitations: true,
+  pandocPath: "",
 
   mcpEnabled: false,
   mcpNoteTools: true,

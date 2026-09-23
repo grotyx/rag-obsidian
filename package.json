@@ -12,7 +12,7 @@
     "lint": "eslint main.ts src",
     "test:mcp": "esbuild test/mcp.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --outfile=_test-mcp.cjs && node _test-mcp.cjs",
     "test:unit": "esbuild test/unit.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --outfile=_test-unit.cjs && node _test-unit.cjs",
-    "test": "npm run test:unit && npm run test:mcp && esbuild test/integration.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --outfile=_test.cjs && node _test.cjs"
+    "test": "npm run test:unit && npm run test:mcp && esbuild test/integration.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-shim.ts --loader:.docx=binary --outfile=_test.cjs && node _test.cjs"
   },
   "keywords": [
     "obsidian",
