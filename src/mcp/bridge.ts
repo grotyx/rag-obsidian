@@ -39,8 +39,10 @@ function bridgeMain(): void {
     // Must match the same NFC normalization the plugin applies before hashing its discovery
     // filename (src/mcp/http.ts) — otherwise a vault path with decomposed Unicode (common from
     // cloud-sync clients on non-ASCII folder names) hashes differently on this side and the
-    // discovery file the plugin wrote is never found.
-    vault = fs.realpathSync(process.argv[at + 1]).normalize("NFC");
+    // discovery file the plugin wrote is never found. `.native` for the same reason on Windows:
+    // the plugin resolves with fs.promises.realpath (native), which expands 8.3 short names
+    // like RUNNER~1; the JS realpathSync does not, so the two sides would hash different paths.
+    vault = fs.realpathSync.native(process.argv[at + 1]).normalize("NFC");
   } catch {
     process.stderr.write(`rag-obsidian MCP: vault not found: ${process.argv[at + 1]}\n`);
     process.exit(2);

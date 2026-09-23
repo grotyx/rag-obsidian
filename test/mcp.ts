@@ -828,7 +828,7 @@ async function httpChecks(): Promise<void> {
       });
       child.stdin.end(JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/list" }) + "\n");
     });
-    assert.equal(bridged.result.tools[0].name, "echo");
+    assert.equal(bridged.result?.tools?.[0]?.name, "echo", `bridge tools/list: ${JSON.stringify(bridged)}`);
   } finally {
     await server.stop();
     assert.equal(fs.existsSync(info.discoveryPath), false);

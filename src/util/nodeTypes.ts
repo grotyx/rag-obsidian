@@ -80,7 +80,7 @@ export interface FsPromisesLike {
 
 export interface FsSyncLike {
   existsSync(path: string): boolean;
-  realpathSync(path: string): string;
+  realpathSync: ((path: string) => string) & { native(path: string): string };
   statSync(path: string): { uid: number };
   readFileSync(path: string, encoding: string): string;
 }
