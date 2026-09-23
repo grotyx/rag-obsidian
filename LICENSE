@@ -19,9 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-The bundled Citation Style Language files under `styles/` (`*.csl`,
-`locales-en-US.xml`) are distributed by the CSL project under CC BY-SA 3.0
-(https://creativecommons.org/licenses/by-sa/3.0/) and retain that license.

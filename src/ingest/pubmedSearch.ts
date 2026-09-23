@@ -4,7 +4,7 @@ import { splitName, parsePubDate } from "./metadata";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
 import { parseMeshList } from "./summarize";
-import { str, rec, arr, text, numLike } from "../util/json";
+import { str, rec, arr, text, numLike, optStr } from "../util/json";
 
 /** One PubMed search hit: parsed CSL metadata plus identifiers for follow-up fetches. */
 export interface PubmedHit {
@@ -84,7 +84,7 @@ export async function searchPubmedPage(query: string, opts: PubmedSearchOpts = {
       page: text(d.pages) || undefined,
       DOI: doi || undefined,
       PMID: uid,
-      issued: parsePubDate(typeof d.pubdate === "string" ? d.pubdate : undefined),
+      issued: parsePubDate(optStr(d.pubdate)),
     };
     hits.push({ pmid: uid, pmc, item });
   }

@@ -258,7 +258,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Chat model (optional)")
-      .setDesc('Model for "chat with library" answers. Leave empty to use the default model.')
+      .setDesc('Model for "Chat with library" answers. Leave empty to use the default model.')
       .addText((t) =>
         t
           .setPlaceholder("Same as default")
@@ -405,7 +405,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           "Empty = use the lightweight formatter above. The custom box below overrides this."
       )
       .addDropdown((d) => {
-        d.addOption("", "Lightweight (use citation style above)");
+        d.addOption("", "Lightweight (use \"Citation style\" above)");
         for (const [id, label] of Object.entries(BUNDLED_STYLES)) d.addOption(id, label);
         const cur = this.plugin.settings.cslStyleId;
         d.setValue(cur in BUNDLED_STYLES || cur === "" ? cur : "");
@@ -424,7 +424,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       )
       .addText((t) =>
         t
-          .setPlaceholder("Such as nature")
+          .setPlaceholder("nature")
           .setValue(this.plugin.settings.cslStyleId in BUNDLED_STYLES ? "" : this.plugin.settings.cslStyleId)
           .onChange(async (v) => {
             this.plugin.settings.cslStyleId = v.trim();

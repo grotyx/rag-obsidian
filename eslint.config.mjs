@@ -1,7 +1,9 @@
 import { defineConfig } from "eslint/config";
 import obsidianmd from "eslint-plugin-obsidianmd";
-import { DEFAULT_BRANDS } from "eslint-plugin-obsidianmd/dist/lib/rules/ui/brands.js";
-import { DEFAULT_ACRONYMS } from "eslint-plugin-obsidianmd/dist/lib/rules/ui/acronyms.js";
+// The rule's own default lists live in the plugin's dist folder (no public export). Load them
+// defensively: if a future release moves them, lint keeps running with our additions only.
+const { DEFAULT_BRANDS = [] } = await import("eslint-plugin-obsidianmd/dist/lib/rules/ui/brands.js").catch(() => ({}));
+const { DEFAULT_ACRONYMS = [] } = await import("eslint-plugin-obsidianmd/dist/lib/rules/ui/acronyms.js").catch(() => ({}));
 
 // Domain-specific proper names the recommended sentence-case allowlist doesn't know about
 // (academic-metadata sources, citation/export formats, and the CLI providers this plugin talks
@@ -62,16 +64,10 @@ export default defineConfig([
           // setting name ('Find open-access PDF', "Contact e-mail"), a section the user sees
           // (## References, the Retrieval heading), and file extensions like (.ris).
           ignoreWords: ["References", "Retrieval", "Settings"],
-          ignoreRegex: ["([\"'])[A-Z][^\"']*\\1", "\\(\\.[a-z]+\\)"],
+          ignoreRegex: ["([\"'])[A-Z][^\"']*\\1", "“[A-Z][^”]*”", "\\(\\.[a-z]+\\)", "^[a-z0-9-]+$"],
         },
       ],
     },
-  },
-  {
-    // Feature-detected secretStorage falls back to data.json below 1.11.4. Keep the API-version
-    // finding visible without rejecting supported older Obsidian releases.
-    files: ["main.ts"],
-    rules: { "obsidianmd/no-unsupported-api": "warn" },
   },
   {
     // MCP, the codex/opencode CLI providers and the Pandoc .docx export are desktop-only and

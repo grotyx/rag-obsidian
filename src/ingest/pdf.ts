@@ -79,7 +79,8 @@ export interface PdfHighlight {
 
 function quadPoint(v: unknown): { x: number; y: number } {
   const p = rec(v);
-  return { x: num(p.x) ?? 0, y: num(p.y) ?? 0 };
+  // NaN, not 0: a malformed point must match nothing rather than stretch the box to the origin.
+  return { x: num(p.x) ?? NaN, y: num(p.y) ?? NaN };
 }
 
 function bbox(xs: number[], ys: number[]): number[] {

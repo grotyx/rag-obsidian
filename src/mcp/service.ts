@@ -542,8 +542,8 @@ export class McpService {
             const tagsVal: unknown = fm.tags;
             const existing = Array.isArray(tagsVal)
               ? tagsVal.map((t: unknown) => text(t)).filter(Boolean)
-              : typeof tagsVal === "string"
-                ? [tagsVal]
+              : text(tagsVal)
+                ? [text(tagsVal)]
                 : [];
             tagsAdded = normalizedTags.filter((t) => !existing.includes(t));
             if (tagsAdded.length) fm.tags = [...existing, ...tagsAdded];

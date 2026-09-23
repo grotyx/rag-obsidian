@@ -4,6 +4,7 @@ import { extractPdfText } from "../ingest/pdf";
 import { appendStash, hasStashedText, resolvePdfLink } from "../ingest/pdfStash";
 import { matchPdf, PdfCandidate, PdfMatch } from "../data/pdfMatch";
 import { yearFromIssued } from "../index/chunker";
+import { text } from "../util/json";
 import { mapPool } from "../util/pool";
 import { startBatch } from "../ui/progress";
 
@@ -120,7 +121,7 @@ export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: str
     candidates.push({
       citekey: e.citekey,
       DOI: e.item.DOI,
-      PMID: e.item.PMID,
+      PMID: text(e.item.PMID) || undefined,
       title: e.item.title,
       year: yearFromIssued(e.item.issued) || undefined,
     });

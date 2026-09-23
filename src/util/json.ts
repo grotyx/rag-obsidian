@@ -34,3 +34,8 @@ export function numLike(v: unknown): number | undefined {
   }
   return undefined;
 }
+
+/** A string, or undefined (not "") when the value isn't one — for fields where absent must stay absent. */
+export function optStr(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}

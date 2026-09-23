@@ -2,14 +2,10 @@ import { requestUrl } from "obsidian";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
 import { resolveWork } from "../graph/openalex";
-import { str, rec, arr, text } from "../util/json";
+import { str, rec, arr, text, optStr } from "../util/json";
 
 /** Like `str`, but keeps a missing/non-string field as `undefined` rather than "" — for nested
  *  CSL fields (author names, dates) that must not gain a spurious empty-string property. */
-function optStr(v: unknown): string | undefined {
-  return typeof v === "string" ? v : undefined;
-}
-
 export type SourceId =
   | { kind: "doi"; value: string }
   | { kind: "pmid"; value: string }

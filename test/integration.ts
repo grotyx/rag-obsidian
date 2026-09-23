@@ -9,7 +9,7 @@ import "./dom-shim"; // sets globalThis.DOMParser before any ingest module that 
 import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
-import * as yaml from "js-yaml";
+import * as yaml from "yaml";
 
 import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
 import { duplicateGroups, inScope, BackfillScope, Library } from "../src/data/library";
@@ -158,7 +158,7 @@ async function main() {
   for (const file of created) {
     const content = fs.readFileSync(file, "utf8");
     const fmBlock = content.match(/^---\n([\s\S]*?)\n---/);
-    const fm = fmBlock ? (yaml.load(fmBlock[1]) as Record<string, unknown>) : {};
+    const fm = fmBlock ? (yaml.parse(fmBlock[1]) as Record<string, unknown>) : {};
     const chunks = chunkReference(
       {
         citekey: String(fm.citekey),

@@ -1,8 +1,8 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.7.2-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.7.3-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![Obsidian](https://img.shields.io/badge/Obsidian-1.7.2%2B-7c3aed)](https://obsidian.md)
+[![Obsidian](https://img.shields.io/badge/Obsidian-1.11.4%2B-7c3aed)](https://obsidian.md)
 
 **English** · [한국어](README.ko.md)
 
@@ -293,7 +293,7 @@ See [`docs/MCP.md`](./docs/MCP.md) for external-AI setup,
 - Obsidian's Properties panel may warn on nested CSL frontmatter — the data is valid.
 - Set **Contact e-mail** in settings: OpenAlex, Unpaywall and PubMed all use it, and
   open-access PDF lookup does not work without one.
-- API keys live in the OS keychain (Obsidian ≥ 1.11.4) and are blanked in `data.json`; on a
+- API keys live in the OS keychain (Obsidian's secretStorage) and are blanked in `data.json`; on a
   synced vault, enter the key once per device.
 - Source builds/deployments include CSL styles under `styles/` (CC BY-SA 3.0; see
   `styles/README.md`). Community installs fetch and cache a selected CSL style/locale if it is
@@ -336,4 +336,4 @@ Seoul National University College of Medicine
 ## 📄 License
 
 MIT (plugin code). Bundled PDF.js retains its full Apache-2.0 license and modification notice in `main.js`; CSL
-styles/locales retain their CC BY-SA 3.0 license.
+styles/locales retain their CC BY-SA 3.0 license (see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)).

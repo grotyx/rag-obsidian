@@ -6,7 +6,7 @@ if (typeof (globalThis as { window?: unknown }).window === "undefined") {
 
 // Minimal stand-in for the parts of the Obsidian API the non-UI modules use,
 // so the real plugin source can run in Node for integration testing.
-import * as yaml from "js-yaml";
+import * as yaml from "yaml";
 
 export interface RequestUrlResponse {
   status: number;
@@ -38,11 +38,11 @@ export async function requestUrl(
 }
 
 export function stringifyYaml(obj: unknown): string {
-  return yaml.dump(obj, { lineWidth: -1 });
+  return yaml.stringify(obj, { lineWidth: 0 });
 }
 
 export function parseYaml(s: string): unknown {
-  return yaml.load(s);
+  return yaml.parse(s);
 }
 
 /** Real Obsidian's contract: backslash→slash, resolve `.`/`..` segments, drop leading/trailing

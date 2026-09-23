@@ -1,8 +1,8 @@
 # Academic Paper Citation Manager
 
-[![version](https://img.shields.io/badge/version-0.7.2-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.7.3-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![Obsidian](https://img.shields.io/badge/Obsidian-1.7.2%2B-7c3aed)](https://obsidian.md)
+[![Obsidian](https://img.shields.io/badge/Obsidian-1.11.4%2B-7c3aed)](https://obsidian.md)
 
 [English](README.md) · **한국어**
 
@@ -317,4 +317,4 @@ Seoul National University College of Medicine)
 ## 📄 라이선스
 
 MIT (플러그인 코드). PDF.js의 전체 Apache-2.0 라이선스와 수정 고지는 `main.js`에 유지되며, CSL 스타일/locale은
-CC BY-SA 3.0을 유지합니다.
+CC BY-SA 3.0을 유지합니다([THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)).

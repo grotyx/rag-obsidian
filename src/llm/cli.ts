@@ -128,7 +128,7 @@ export async function runCli(
   system: string,
   opts: ChatOpts = {}
 ): Promise<string> {
-  if (!Platform.isDesktopApp) throw new Error("The codex/opencode provider needs Obsidian Desktop");
+  if (!Platform.isDesktopApp) throw new Error("The codex/opencode provider needs Obsidian desktop");
   const provider = settings.llmProvider as "codex" | "opencode";
   const cp = require("node:child_process") as typeof import("node:child_process");
   const fs = require("node:fs") as typeof import("node:fs");

@@ -9,7 +9,6 @@ let chain: Promise<void> = Promise.resolve();
 let lastRelease = 0;
 let lastGap = 0;
 
-
 /** Milliseconds between consecutive requests, a little under the published ceiling. */
 export function ncbiGapMs(hasApiKey: boolean): number {
   return hasApiKey ? 110 : 350;

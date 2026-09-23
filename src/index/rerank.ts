@@ -14,7 +14,6 @@ const SNIPPET = 400;
  *  on retrieval order. Measured: ~8s for 40 passages with thinking off, ~50s with it on. */
 const RERANK_TIMEOUT_MS = 30_000;
 
-
 /**
  * Keep at most `maxPerRef` chunks per reference, then top the list back up to `k` from what was
  * skipped (best score first). Diversity where the library offers it, recall where it doesn't:

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import * as yaml from "js-yaml";
+import * as yaml from "yaml";
 import { handleProtocol, McpTool } from "../src/mcp/protocol";
 import { bridgeSource } from "../src/mcp/bridge";
 import { contentHash, McpVault, validateMarkdownPath } from "../src/mcp/vault";
@@ -153,10 +153,10 @@ function fakeApp(initial: Record<string, string> = {}): {
         const entry = files.get(file.path);
         if (!entry) throw new Error(`NOT_FOUND: ${file.path}`);
         const match = entry.content.match(/^---\r?\n([\s\S]*?)\r?\n---(?=\r?\n|$)/);
-        const fm = (match ? yaml.load(match[1]) : {}) as Record<string, unknown> ?? {};
+        const fm = (match ? yaml.parse(match[1]) : {}) as Record<string, unknown> ?? {};
         fn(fm);
         const body = match ? entry.content.slice(match[0].length) : "\n" + entry.content;
-        put(file.path, `---\n${yaml.dump(fm, { lineWidth: -1 }).trimEnd()}\n---${body}`);
+        put(file.path, `---\n${yaml.stringify(fm, { lineWidth: 0 }).trimEnd()}\n---${body}`);
       },
     },
   };
@@ -543,7 +543,7 @@ async function addReferenceTagsChecks(): Promise<void> {
   const merged = await dup.callTool("add_reference", { identifier: "PMID:555", tags: ["Spine", "New Finding"] }) as any;
   assert.equal(merged.status, "existing");
   assert.deepEqual(merged.tagsAdded, ["new-finding"], "the already-present 'spine' tag is not reported as newly added");
-  const fm = yaml.load((fake.files.get("References/dup.md")?.content.match(/^---\n([\s\S]*?)\n---/) || ["", ""])[1]) as any;
+  const fm = yaml.parse((fake.files.get("References/dup.md")?.content.match(/^---\n([\s\S]*?)\n---/) || ["", ""])[1]) as any;
   assert.deepEqual(fm.tags, ["spine", "new-finding"], "existing tags are preserved, new ones appended once");
 
   const rerun = await dup.callTool("add_reference", { identifier: "PMID:555", tags: ["Spine"] }) as any;

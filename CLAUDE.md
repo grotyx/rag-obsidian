@@ -3,7 +3,7 @@
 > Display name: **Academic Paper Citation Manager** · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.7.2 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.7.3 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -215,7 +215,8 @@ in-vault CDP check — before trusting it.
 - Frontmatter uses **CSL-JSON field names verbatim** (`container-title`, `issued.date-parts`, …).
 - Embedding index is tagged with `provider:model`; on mismatch it won't restore → user rebuilds.
 - API keys live in Obsidian `secretStorage` (synced from in-memory settings on save; `data.json`
-  stores them blanked). On apps without `secretStorage` they fall back to `data.json` as before.
+  stores them blanked). `minAppVersion` is 1.11.4 (0.7.3+), the release that added `secretStorage`;
+  the `data.json` fallback stays for vaults last opened on an older app.
 - **Desktop rule**: `manifest.json` is desktop-only because `src/mcp/{bridge,http}.ts` uses Node
   built-ins behind `Platform.isDesktopApp`. Keep the guard even though mobile installation is no
   longer claimed.

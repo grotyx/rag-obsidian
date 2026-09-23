@@ -29,10 +29,11 @@ export class OllamaProvider implements EmbeddingProvider {
         `Ollama error ${res.status}: ${res.text?.slice(0, 200) || "is Ollama running?"}`
       );
     }
-    const embeddings = arr(rec(res.json as unknown).embeddings) as number[][];
-    if (embeddings.length !== texts.length) {
+    const embeddings = arr(rec(res.json as unknown).embeddings);
+    const valid = embeddings.every((e) => Array.isArray(e) && e.length > 0 && e.every((x) => typeof x === "number"));
+    if (embeddings.length !== texts.length || !valid) {
       throw new Error("Ollama returned unexpected embedding payload");
     }
-    return embeddings;
+    return embeddings as number[][];
   }
 }

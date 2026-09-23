@@ -3,7 +3,7 @@ import process from "process";
 import fs from "fs";
 import path from "path";
 import { createRequire } from "module";
-import builtins from "builtin-modules";
+import { builtinModules as builtins } from "node:module";
 
 const prod = process.argv[2] === "production";
 const require = createRequire(import.meta.url);

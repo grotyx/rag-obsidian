@@ -6,6 +6,31 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.7.3] — 2026-09-23
+
+Answers the Community directory's automated review of 0.7.1.
+
+### Changed
+
+- **Minimum Obsidian version is 1.11.4** (was 1.7.2). The plugin keeps API keys in
+  `secretStorage`, which arrived in 1.11.4; the review counts using it under an older
+  `minAppVersion` as an error. The `data.json` fallback remains for vaults last opened on an
+  older app.
+- `LICENSE` is the plain MIT text so GitHub and the review recognize it; the CC BY-SA 3.0 note
+  for the bundled CSL styles moved to `THIRD_PARTY_NOTICES.md`.
+- Dev dependencies: `builtin-modules` replaced by Node's own `node:module` list, `js-yaml` by
+  `yaml` in the tests (the review's module-replacement advice). Nothing shipped changes.
+
+### Fixed
+
+- A scalar numeric tag (`tags: 2024`) survives `add_reference`'s tag merge, and an unquoted
+  numeric PMID now matches in "Link PDF files in a folder".
+- Ollama embeddings are validated like OpenAI's: an empty or non-numeric vector fails loudly.
+- A malformed PDF highlight point no longer stretches the highlight box to the page origin.
+- Quoted labels match what the user sees ("Chat with library", "New tag", "Citation style"),
+  the CSL style id placeholder is the literal id `nature`, and "Obsidian desktop" is spelled one
+  way.
+
 ## [0.7.2] — 2026-09-23
 
 Prepared for the Obsidian Community directory review.

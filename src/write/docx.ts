@@ -44,7 +44,7 @@ export async function exportDocx(
   pandocPath: string,
   resourceDir?: string
 ): Promise<void> {
-  if (!Platform.isDesktopApp) throw new Error("Export to Word needs Obsidian Desktop");
+  if (!Platform.isDesktopApp) throw new Error("Export to Word needs Obsidian desktop");
   const { cp, fs, os, pathApi } = loadDesktopNode();
   const tmp = await fs.mkdtemp(pathApi.join(os.tmpdir(), "rag-obsidian-docx-"));
   try {
