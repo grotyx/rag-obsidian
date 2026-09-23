@@ -130,7 +130,7 @@ npm test               # unit (253) + MCP checks + live integration suite (216 c
 
 There is no Obsidian headless runner. `test/integration.ts` bundles the **real source modules**
 with `obsidian` aliased to `test/obsidian-shim.ts` (a thin Node stand-in: `requestUrl`→fetch,
-`stringifyYaml`/`parseYaml`→js-yaml). It exercises the genuine pipeline against **live** APIs
+`stringifyYaml`/`parseYaml`→yaml). It exercises the genuine pipeline against **live** APIs
 (Crossref, PubMed, OpenAlex), Orama, a mock LLM HTTP server, and a pdfjs stub. ~90% of the
 plugin is validated this way. Run with `npm test`. Extend by adding numbered sections.
 
@@ -285,7 +285,8 @@ Update **all three** on a release: `manifest.json`, `package.json`, `versions.js
 CHANGELOG.md entry + the Version line in this file and the **version badge in both
 `README.md` and `README.ko.md`** — the Korean badge sat at 0.3.0 for four releases because
 only the English one was being edited). Community releases use an exact `X.Y.Z` tag with no `v`
-prefix. A release commit may use `X.Y.Z: summary`.
+prefix. **Push the tag and let `.github/workflows/release.yml` build, attest and publish** the
+release (the Community review recommends artifact attestations); don't `gh release create` by hand. A release commit may use `X.Y.Z: summary`.
 The deck (`presentation/build_deck.py`) reads its version from `manifest.json`, but the prose
 docs (`lecture_script.md`, `slides_content.md`, `lecture_script_tts.md`) hardcode it — grep `v0.X`
 under `presentation/`; the TTS script spells it in Hangul (`영 점 육`), grep `점` there.
