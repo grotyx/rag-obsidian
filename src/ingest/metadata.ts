@@ -137,19 +137,26 @@ async function fetchCrossref(doi: string): Promise<CSLItem> {
   return clean(item);
 }
 
-async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
-  const key = apiKey ? `&api_key=${encodeURIComponent(apiKey)}` : "";
-  await ncbiGate(!!apiKey);
-  const sum = await requestUrl({
-    url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${pmid}&retmode=json${key}`,
-    throw: false,
-  });
-  if (sum.status >= 400) throw new Error(`PubMed request failed (HTTP ${sum.status})`);
-  const sumJson: unknown = sum.json;
-  const rRaw = rec(rec(sumJson).result)[pmid];
-  if (rRaw === undefined || rRaw === null) throw new Error(`PubMed returned no data for ${pmid}`);
-  const r = rec(rRaw);
-  if (r.error) throw new Error(`PubMed returned no data for ${pmid}`);
+/** Parse one PubMed esummary record (`result[uid]` from esummary.fcgi) into a CSLItem plus its
+ *  PMC id. Shared by the add-by-PMID path (`fetchPubMed` below) and PubMed search
+ *  (`searchPubmedPage` in pubmedSearch.ts), which used to duplicate — and drift on — this
+ *  mapping. Deliberate choices where the two had diverged:
+ *  - title: strip HTML tags (PubMed titles can carry <i>/<sup>) AND collapse whitespace — the
+ *    add-by-PMID behavior; search skipped tag-stripping.
+ *  - PMCID: always set on the item (a real CSL variable) — matches add-by-PMID; search only
+ *    handed back `pmc` alongside the item, which every caller (PubmedSearchModal, mcp/service.ts,
+ *    commands/backfill.ts) already treats as equivalent or falls back to, so adding it here is a
+ *    no-op for them, not a new divergence.
+ *  - doi/pmc articleid: take the FIRST match (what search did, and what PubMed lists as primary),
+ *    not the last.
+ *  - empty volume/issue/page: map "" to undefined (what search did) — callers that don't run the
+ *    result through `clean()` (search hits) need it mapped directly, not left for a cleanup pass
+ *    that may not happen.
+ *  Returns null for a missing or error esummary record. */
+export function esummaryToItem(uid: string, record: unknown): { item: CSLItem; pmc: string } | null {
+  if (record === undefined || record === null) return null;
+  const r = rec(record);
+  if (r.error) return null;
 
   const authors = arr(r.authors)
     .filter((a) => {
@@ -162,8 +169,8 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
   let pmc = "";
   for (const aidRaw of arr(r.articleids)) {
     const aid = rec(aidRaw);
-    if (aid.idtype === "doi") doi = str(aid.value);
-    if (aid.idtype === "pmc") pmc = str(aid.value);
+    if (!doi && aid.idtype === "doi") doi = str(aid.value);
+    if (!pmc && aid.idtype === "pmc") pmc = str(aid.value);
   }
 
   const item: CSLItem = {
@@ -172,14 +179,31 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
     author: authors,
     "container-title": str(r.fulljournalname) || str(r.source),
     "container-title-short": str(r.source) || undefined,
-    volume: text(r.volume),
-    issue: text(r.issue),
-    page: text(r.pages),
-    PMID: pmid,
+    volume: text(r.volume) || undefined,
+    issue: text(r.issue) || undefined,
+    page: text(r.pages) || undefined,
+    PMID: uid,
     PMCID: pmc || undefined,
     DOI: doi || undefined,
     issued: parsePubDate(optStr(r.pubdate)),
   };
+
+  return { item, pmc };
+}
+
+async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
+  const key = apiKey ? `&api_key=${encodeURIComponent(apiKey)}` : "";
+  await ncbiGate(!!apiKey);
+  const sum = await requestUrl({
+    url: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${pmid}&retmode=json${key}`,
+    throw: false,
+  });
+  if (sum.status >= 400) throw new Error(`PubMed request failed (HTTP ${sum.status})`);
+  const sumJson: unknown = sum.json;
+  const rRaw = rec(rec(sumJson).result)[pmid];
+  const parsed = esummaryToItem(pmid, rRaw);
+  if (!parsed) throw new Error(`PubMed returned no data for ${pmid}`);
+  const item = parsed.item;
 
   // abstract via efetch (best-effort) — retmode=xml so we get the real abstract,
   // not the full formatted citation (journal/authors/affiliations/DOI footer)

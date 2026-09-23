@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 
 import { parseLibrary } from "../src/ingest/import";
-import { cleanDoi, detectId, splitName, parsePubDate } from "../src/ingest/metadata";
+import { cleanDoi, detectId, splitName, parsePubDate, esummaryToItem } from "../src/ingest/metadata";
 import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
 import { findIdentifier, isPdfMagic } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, stashedText, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
@@ -158,6 +158,45 @@ AID - 10.1000/xyz123 [doi]
   check(parsePubDate("2020")?.["date-parts"]?.[0]?.join(",") === "2020", "parsePubDate: year only");
   check(parsePubDate(undefined) === undefined, "parsePubDate: undefined → undefined");
   check(parsePubDate("") === undefined, "parsePubDate: empty → undefined");
+
+  // esummaryToItem: shared esummary → CSLItem mapping (fetchPubMed + searchPubmedPage)
+  const record = {
+    title: "Effects of <i>Lumbar</i> Fusion",
+    authors: [
+      { name: "Park SM", authtype: "Author" },
+      { name: "CTG Investigators", authtype: "CollectiveName" },
+    ],
+    fulljournalname: "Spine Journal",
+    source: "Spine J",
+    volume: "",
+    issue: "4",
+    pages: "100-110",
+    pubdate: "2021 Jun",
+    articleids: [
+      { idtype: "doi", value: "10.1000/first-doi" },
+      { idtype: "pmc", value: "PMC1234567" },
+      { idtype: "doi", value: "10.1000/second-doi" },
+    ],
+  };
+  const parsed = esummaryToItem("99999999", record);
+  check(parsed !== null, "esummaryToItem: parses a record");
+  check(parsed?.item.title === "Effects of Lumbar Fusion", "esummaryToItem: strips tags + collapses whitespace in title");
+  check(
+    parsed?.item.author?.length === 1 && parsed?.item.author?.[0].family === "Park" && parsed?.item.author?.[0].given === "SM",
+    "esummaryToItem: drops non-Author authtype (collective name)"
+  );
+  check(parsed?.item.DOI === "10.1000/first-doi", "esummaryToItem: DOI articleid takes the first match");
+  check(parsed?.pmc === "PMC1234567" && parsed?.item.PMCID === "PMC1234567", "esummaryToItem: PMCID set on the item and returned alongside");
+  check(parsed?.item.volume === undefined, "esummaryToItem: empty-string volume → undefined");
+  check(parsed?.item.issue === "4" && parsed?.item.page === "100-110", "esummaryToItem: issue/page pass through");
+  check(parsed?.item.issued?.["date-parts"]?.[0]?.join(",") === "2021,6", "esummaryToItem: issued parsed from pubdate");
+  check(parsed?.item.PMID === "99999999", "esummaryToItem: PMID set to the uid argument");
+
+  const numericVolume = esummaryToItem("1", { title: "T", volume: 42, articleids: [] });
+  check(numericVolume?.item.volume === "42", "esummaryToItem: numeric volume stringified (unquoted YAML/JSON)");
+
+  check(esummaryToItem("1", { error: "cannot get document summary" }) === null, "esummaryToItem: error record → null");
+  check(esummaryToItem("1", undefined) === null, "esummaryToItem: missing record → null");
 }
 
 // ---------- ingest/ncbi.ts ----------

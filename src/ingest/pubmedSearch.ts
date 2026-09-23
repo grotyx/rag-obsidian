@@ -1,10 +1,10 @@
 import { requestUrl } from "obsidian";
 import { keywordsToTags } from "../data/reference";
-import { splitName, parsePubDate } from "./metadata";
+import { esummaryToItem } from "./metadata";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
 import { parseMeshList } from "./summarize";
-import { str, rec, arr, text, numLike, optStr } from "../util/json";
+import { str, rec, arr, numLike } from "../util/json";
 
 /** One PubMed search hit: parsed CSL metadata plus identifiers for follow-up fetches. */
 export interface PubmedHit {
@@ -60,33 +60,9 @@ export async function searchPubmedPage(query: string, opts: PubmedSearchOpts = {
 
   const hits: PubmedHit[] = [];
   for (const uid of uids) {
-    const dRaw = result[uid];
-    if (dRaw === undefined || dRaw === null) continue;
-    const d = rec(dRaw);
-    if (d.error) continue;
-    const ids = arr(d.articleids).map((x) => rec(x));
-    const doi = str(ids.find((x) => x.idtype === "doi")?.value);
-    const pmc = str(ids.find((x) => x.idtype === "pmc")?.value);
-    const authors = arr(d.authors)
-      .filter((au) => {
-        const a2 = rec(au);
-        return !a2.authtype || a2.authtype === "Author";
-      })
-      .map((au) => splitName(str(rec(au).name)));
-    const item: CSLItem = {
-      type: "article-journal",
-      title: str(d.title).replace(/\s+/g, " ").trim(),
-      author: authors,
-      "container-title": str(d.fulljournalname) || str(d.source) || "",
-      "container-title-short": str(d.source) || undefined,
-      volume: text(d.volume) || undefined,
-      issue: text(d.issue) || undefined,
-      page: text(d.pages) || undefined,
-      DOI: doi || undefined,
-      PMID: uid,
-      issued: parsePubDate(optStr(d.pubdate)),
-    };
-    hits.push({ pmid: uid, pmc, item });
+    const parsed = esummaryToItem(uid, result[uid]);
+    if (!parsed) continue;
+    hits.push({ pmid: uid, pmc: parsed.pmc, item: parsed.item });
   }
   return { hits, total };
 }
