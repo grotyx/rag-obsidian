@@ -1,8 +1,17 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Obsidian on Windows cannot dynamically import node: built-ins */
 /* global process -- desktop CLI calls run in Electron's Node.js context */
 import { Platform } from "obsidian";
 import { ScholarRagSettings } from "../types";
 import type { ChatMessage, ChatOpts } from "./client";
+import {
+  nodeRequire,
+  type ChildProcessLike,
+  type ChildProcessModuleLike,
+  type FsPromisesLike,
+  type FsSyncLike,
+  type OsModuleLike,
+  type PathModuleLike,
+  type ProcessEnv,
+} from "../util/nodeTypes";
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -107,7 +116,7 @@ export function winQuote(arg: string): string {
   return `"${arg.replace(/"/g, '""')}"`;
 }
 
-function firstExisting(paths: string[], fs: typeof import("node:fs")): string | undefined {
+function firstExisting(paths: string[], fs: FsSyncLike): string | undefined {
   for (const p of paths) {
     try {
       if (fs.existsSync(p)) return p;
@@ -130,11 +139,11 @@ export async function runCli(
 ): Promise<string> {
   if (!Platform.isDesktopApp) throw new Error("The codex/opencode provider needs Obsidian desktop");
   const provider = settings.llmProvider as "codex" | "opencode";
-  const cp = require("node:child_process") as typeof import("node:child_process");
-  const fs = require("node:fs") as typeof import("node:fs");
-  const fsp = require("node:fs/promises") as typeof import("node:fs/promises");
-  const os = require("node:os") as typeof import("node:os");
-  const path = require("node:path") as typeof import("node:path");
+  const cp = nodeRequire<ChildProcessModuleLike>("node:child_process");
+  const fs = nodeRequire<FsSyncLike>("node:fs");
+  const fsp = nodeRequire<FsPromisesLike>("node:fs/promises");
+  const os = nodeRequire<OsModuleLike>("node:os");
+  const path = nodeRequire<PathModuleLike>("node:path");
 
   const bin = settings.cliPath || firstExisting(cliCandidates(provider, os.homedir(), process.platform), fs);
   if (!bin) {
@@ -157,7 +166,7 @@ export async function runCli(
       "/opt/homebrew/bin",
       "/usr/local/bin",
     ];
-    const env: NodeJS.ProcessEnv = {
+    const env: ProcessEnv = {
       ...process.env,
       PATH: `${process.env.PATH ?? ""}${path.delimiter}${commonBinDirs.join(path.delimiter)}`,
     };
@@ -168,7 +177,7 @@ export async function runCli(
     }
 
     const stdout = await new Promise<string>((resolve, reject) => {
-      let child: import("node:child_process").ChildProcess;
+      let child: ChildProcessLike;
       try {
         // Node refuses to spawn a .cmd/.bat without a shell (EINVAL since the CVE-2024-27980
         // fix), and npm installs these CLIs as .cmd shims on Windows. With a shell, cmd.exe
@@ -195,7 +204,7 @@ export async function runCli(
         if (settled) return;
         settled = true;
         window.clearTimeout(timer);
-        reject(e);
+        reject(e instanceof Error ? e : new Error(String(e)));
       });
       child.on("close", (code) => {
         if (settled) return;
@@ -222,4 +231,3 @@ export async function runCli(
     await fsp.rm(tmp, { recursive: true, force: true });
   }
 }
-/* eslint-enable @typescript-eslint/no-require-imports -- end desktop-only Node loader */

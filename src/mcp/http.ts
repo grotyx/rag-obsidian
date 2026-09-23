@@ -1,9 +1,22 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Obsidian on Windows cannot dynamically import node: built-ins */
 /* global Buffer, process -- desktop MCP server runs in Electron's Node.js context */
-import type { Server, IncomingMessage, ServerResponse } from "node:http";
 import { bridgeSource } from "./bridge";
 import { handleProtocol, McpId, McpRequest, McpTool, mcpError } from "./protocol";
 import { validateMarkdownPath } from "./vault";
+import {
+  nodeRequire,
+  type CryptoModuleLike,
+  type FsPromisesLike,
+  type HttpModuleLike,
+  type IncomingMessageLike,
+  type OsModuleLike,
+  type PathModuleLike,
+  type ServerLike,
+  type ServerResponseLike,
+} from "../util/nodeTypes";
+
+type Server = ServerLike;
+type IncomingMessage = IncomingMessageLike;
+type ServerResponse = ServerResponseLike;
 
 const MAX_REQUEST_BYTES = 1_000_000;
 
@@ -34,18 +47,18 @@ interface McpHttpOptions {
 
 /** Load Node built-ins only after the desktop guard; dynamic node: imports fail in Obsidian on Windows. */
 export function loadDesktopNode(): {
-  crypto: typeof import("node:crypto");
-  fs: typeof import("node:fs/promises");
-  http: typeof import("node:http");
-  os: typeof import("node:os");
-  pathApi: typeof import("node:path");
+  crypto: CryptoModuleLike;
+  fs: FsPromisesLike;
+  http: HttpModuleLike;
+  os: OsModuleLike;
+  pathApi: PathModuleLike;
 } {
   return {
-    crypto: require("node:crypto") as typeof import("node:crypto"),
-    fs: require("node:fs/promises") as typeof import("node:fs/promises"),
-    http: require("node:http") as typeof import("node:http"),
-    os: require("node:os") as typeof import("node:os"),
-    pathApi: require("node:path") as typeof import("node:path"),
+    crypto: nodeRequire<CryptoModuleLike>("node:crypto"),
+    fs: nodeRequire<FsPromisesLike>("node:fs/promises"),
+    http: nodeRequire<HttpModuleLike>("node:http"),
+    os: nodeRequire<OsModuleLike>("node:os"),
+    pathApi: nodeRequire<PathModuleLike>("node:path"),
   };
 }
 
@@ -62,7 +75,7 @@ export function mcpSetupSnippets(vaultPath: string, bridgePath: string): { claud
   };
 }
 
-function inside(root: string, target: string, pathApi: typeof import("node:path")): boolean {
+function inside(root: string, target: string, pathApi: PathModuleLike): boolean {
   const relative = pathApi.relative(root, target);
   return relative === "" || (!relative.startsWith(".." + pathApi.sep) && relative !== ".." && !pathApi.isAbsolute(relative));
 }
@@ -361,4 +374,3 @@ export class McpHttpServer {
     return this.start();
   }
 }
-/* eslint-enable @typescript-eslint/no-require-imports -- end desktop-only Node loader */

@@ -1,19 +1,33 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- emitted standalone CommonJS has no imports */
 /* global Buffer, process -- standalone bridge runs in Node.js */
+import type {
+  CryptoModuleLike,
+  FsSyncLike,
+  HttpModuleLike,
+  OsModuleLike,
+  PathModuleLike,
+  ReadlineModuleLike,
+} from "../util/nodeTypes";
+
+// `bridgeMain`'s body is extracted via `.toString()` (see `bridgeSource` below) and run
+// standalone, so it can't reference an imported helper like `util/nodeTypes.ts`'s `nodeRequire` —
+// only bare `require` calls survive into that string. Declared locally (type-only, erased) so
+// this file doesn't need `@types/node` for it either.
+declare const require: (id: string) => unknown;
+
 /** Standalone CommonJS bridge emitted beside main.js; intentionally Node-stdlib only. */
 export function bridgeSource(): string {
   return `(${bridgeMain.toString()})();\n`;
 }
 
 function bridgeMain(): void {
-  // Type-only casts below (`as typeof import(...)`) are erased by the compiler and never
-  // appear in `bridgeMain.toString()` — they don't change the emitted standalone bridge.
-  const crypto = require("node:crypto") as typeof import("node:crypto");
-  const fs = require("node:fs") as typeof import("node:fs");
-  const http = require("node:http") as typeof import("node:http");
-  const os = require("node:os") as typeof import("node:os");
-  const path = require("node:path") as typeof import("node:path");
-  const readline = require("node:readline") as typeof import("node:readline");
+  // Type-only casts below (`as <Type>`) are erased by the compiler and never appear in
+  // `bridgeMain.toString()` — they don't change the emitted standalone bridge.
+  const crypto = require("node:crypto") as CryptoModuleLike;
+  const fs = require("node:fs") as FsSyncLike;
+  const http = require("node:http") as HttpModuleLike;
+  const os = require("node:os") as OsModuleLike;
+  const path = require("node:path") as PathModuleLike;
+  const readline = require("node:readline") as ReadlineModuleLike;
 
   const at = process.argv.indexOf("--vault");
   if (at < 0 || !process.argv[at + 1]) {
@@ -119,4 +133,3 @@ function bridgeMain(): void {
     });
   });
 }
-/* eslint-enable @typescript-eslint/no-require-imports -- end standalone CommonJS source */
