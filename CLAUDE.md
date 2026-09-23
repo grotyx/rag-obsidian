@@ -70,6 +70,8 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `ingest/retraction.ts` | `checkRetraction` via OpenAlex `is_retracted` (+ "RETRACTED:" title guard) |
 | `ingest/import.ts` | BibTeX / RIS / `.nbib` / CSL-JSON parsing → CSLItem[] |
 | `index/embedding.ts` | `EmbeddingProvider` interface + factory |
+| `util/json.ts` | narrowing helpers for external JSON and frontmatter: `str`, `num`, `rec`, `arr`, `optStr`, `text` (numbers from unquoted YAML survive), `numLike`, `isNumberArray` — use these instead of `any` |
+| `util/nodeTypes.ts` | minimal local types for the Node APIs the desktop-only files call, plus `nodeRequire<T>()`; `tsconfig` has `"types": []`, so the Community review's no-`@types/node` lint is what `npm run lint` sees. Exception: `child_process` is required directly so static scanners see it |
 | `util/pool.ts` | `mapPool` bounded concurrency + `POOL_WIDTH` (15, sized for the LLM wait) + `poolWidth(settings)` (3 for the CLI providers) — the network/LLM half of a batch; vault writes stay sequential. Takes an optional `AbortSignal`: cancelling lets in-flight items finish, starts no new ones, and still resolves (unstarted slots come back empty) |
 | `index/providers/{ollama,openai}.ts` | embedding backends |
 | `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers (`yearFromIssued`, `authorNames`), `chunkHash` (reindex change detector) |
@@ -123,7 +125,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (253) + MCP checks + live integration suite (216 checks)
+npm test               # unit (254) + MCP checks + live integration suite (216 checks)
 ```
 
 ## Testing approach (important)
@@ -208,6 +210,11 @@ in-vault CDP check — before trusting it.
 ## Conventions
 
 - TypeScript, strict null checks, esbuild single-file bundle (`main.js`, gitignored — ship via release).
+- **Lint is the Community review's lint** (0.7.2+): no severity downgrades. External JSON and
+  frontmatter are `unknown` narrowed through `src/util/json.ts` — no `any`. Timers are
+  `window.setTimeout`/`window.clearTimeout` (tests define `window` in `test/obsidian-shim.ts`).
+  UI text is sentence case; proper names go in the rule's allowlist in `eslint.config.mjs`, and
+  text quoting another label keeps that label's casing (covered by the rule's `ignoreRegex`).
 - **Pure-logic modules must not import `obsidian`** beyond `requestUrl`/`stringifyYaml`/`parseYaml`/
   `normalizePath` (so they stay testable via the shim). UI/manager modules may use the full API.
 - All plugin network calls go through Obsidian `requestUrl`, never raw `fetch`.

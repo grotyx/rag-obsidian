@@ -162,10 +162,21 @@ provider를 사용할 수 있습니다.
 > OpenRouter 모델 id에는 공급자 접두어가 붙습니다(`openai/…`, `deepseek/…`). base URL을
 > `https://api.openai.com/v1`로 바꿔 OpenAI에 직접 붙어도 되며, 그때는 접두어를 뺍니다.
 
-- **LLM**(챗 + 요약): OpenAI / 호환(기본) · Anthropic · Ollama(로컬). *Chat model*은 선택 항목으로,
+- **LLM**(챗 + 요약): OpenAI / 호환(기본) · Anthropic · Ollama(로컬) · **Codex CLI** ·
+  **OpenCode CLI**. *Chat model*은 선택 항목으로,
   **Chat with library** 답변에만 기본 모델 대신 적용됩니다. 논문 요약과 PDF 메타데이터 추출은
   기본 모델을 그대로 쓰므로, 답변 품질이 중요한 채팅에만 더 좋은 모델을 지정할 수 있습니다.
 - **임베딩**(검색 + 챗): Ollama(로컬) · OpenAI / 호환.
+- **API 키 없이: Codex CLI / OpenCode CLI**(데스크톱). Codex(ChatGPT 로그인)나 OpenCode를 이미
+  쓰고 있다면 LLM 제공자로 고르세요. 챗·요약·재정렬 호출이 모두 그 CLI를 통해 사용자 로그인으로
+  나가고, 플러그인은 키를 저장하지 않습니다. *Default model*을 비우면 CLI 기본 모델을 쓰고,
+  지정할 수도 있습니다(`gpt-5.1-codex`, OpenCode는 `provider/model`). CLI는 흔한 설치 위치에서 찾고,
+  다르면 *CLI executable*에 경로를 넣으세요. **Test** 버튼으로 확인합니다. 호출은 빈 임시 폴더에서
+  CLI 사용자 설정을 건너뛰고 실행되며(그렇지 않으면 CLI의 MCP 서버와 훅이 매번 뜸), 한 번에
+  4–7초, 일괄 작업은 3개씩입니다. 임베딩은 여전히 OpenRouter/OpenAI 또는 Ollama가 필요합니다.
+- **인덱스 위치**: *Keep the search index outside the vault*(데스크톱)를 켜면 인덱스를 컴퓨터의
+  캐시 폴더에 둡니다. 동기화되는 vault가 변경 때마다 인덱스를 다시 올리지 않고, 기기마다 따로
+  만듭니다.
 - **검색**: *Results (top-k)*는 답변 하나가 참고하는 구절 수(기본 20, 문헌당 최대 3구절이라
   긴 논문 하나가 전체를 차지하지 못함). *Rerank chat results with the LLM*은 기본 꺼짐 —
   켜면 두 배로 뽑은 뒤 모델이 관련도 순으로 재정렬하고, 질문당 요청이 1회 늘어난다.

@@ -557,7 +557,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       )
       .addButton((button) =>
         // setDestructive() (the non-deprecated replacement) requires Obsidian 1.13.0; this plugin's
-        // minAppVersion is 1.7.2, so this stays on the older, still-supported setWarning() —
+        // minAppVersion is 1.11.4, so this stays on the older, still-supported setWarning() —
         // deliberately left as the one remaining `no-deprecated` warning (disabling this specific
         // rule is repo-blocked; see eslint-comments/no-restricted-disable).
         button.setButtonText("Stop server").setWarning().onClick(async () => {

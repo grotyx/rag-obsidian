@@ -467,7 +467,8 @@ export default class ScholarRagPlugin extends Plugin {
     await this.mcpServer?.stop();
   }
 
-  /** Obsidian's OS-keychain secret store (1.11.4+), or null on older apps (minAppVersion is 1.7.2). */
+  /** Obsidian's OS-keychain secret store (1.11.4+), or null on an app older than
+   *  minAppVersion 1.11.4 (a vault last opened there keeps its key in data.json). */
   private secretStore(): SecretStorage | null {
     return this.app.secretStorage ?? null;
   }

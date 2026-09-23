@@ -36,6 +36,13 @@ OpenRouter.
 > retraction check, batch open-access download, folder-of-PDFs linking, Word export, library sort
 > and filters — plus Codex/OpenCode CLI as keyless LLM providers.
 
+> **Update (2026-09-24, v0.7.5):** submitted to the Community directory. 0.7.2–0.7.5 answered its
+> automated review: lint clean at the review's severity (574 findings), `minAppVersion` 1.11.4
+> for `secretStorage`, plain MIT `LICENSE`, type-checking without `@types/node`, and releases
+> built and attested by GitHub Actions. Open: the declarative settings API
+> (`getSettingDefinitions`) and `setDestructive` need Obsidian 1.13 — adopt them when
+> `minAppVersion` can move there.
+
 ## Phase 1 — things that bite during normal use (do first)
 
 1. **Cancel and progress for batches.** Adding 50 papers or filling gaps over a whole library now runs

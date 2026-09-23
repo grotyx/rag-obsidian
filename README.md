@@ -166,11 +166,22 @@ Pluggable, all through Obsidian's `requestUrl` on Obsidian Desktop:
 single key covers chat, paper summaries and embeddings and nothing has to be installed locally.
 Paste the key and you are done; everything else is optional.
 
-- **LLM** (chat + summaries): OpenAI / compatible (default) · Anthropic · Ollama (local).
-  *Chat model* is optional and overrides the default model for **Chat with library** only —
+- **LLM** (chat + summaries): OpenAI / compatible (default) · Anthropic · Ollama (local) ·
+  **Codex CLI** · **OpenCode CLI**. *Chat model* is optional and overrides the default model for **Chat with library** only —
   worth a stronger model there, since summaries and PDF metadata extraction stay on the
   cheaper default.
 - **Embeddings** (search + chat): OpenAI / compatible (default) · Ollama (local).
+- **No API key: Codex CLI / OpenCode CLI** (desktop). If you already use Codex (ChatGPT login)
+  or OpenCode, pick it as the LLM provider: every chat, summary and rerank call runs through
+  that CLI with your own login, and the plugin stores no key. Leave *Default model* empty for
+  the CLI's own default, or name one (`gpt-5.1-codex`; for OpenCode `provider/model`). The CLI
+  is found in the usual install folders, or set *CLI executable*; **Test** checks it. Calls run
+  from an empty temporary folder with the CLI's user config skipped (its MCP servers and hooks
+  would otherwise start on every call), about 4–7 s each, three at a time in batches.
+  Embeddings still need OpenRouter/OpenAI or Ollama.
+- **Index location**: *Keep the search index outside the vault* (desktop) stores it in the
+  computer's cache folder, so a synced vault doesn't re-upload it after every change; each
+  device then builds its own.
 - **Retrieval**: *Results (top-k)* is how many passages an answer is built from (default 20; at
   most three per reference, so one long paper can't take every slot). *Rerank chat results with
   the LLM* is off by default — with it on, chat retrieves twice as many passages and has the
