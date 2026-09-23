@@ -5,6 +5,7 @@ import { extractPdfText, findIdentifier } from "./pdf";
 import { appendStash } from "./pdfStash";
 import { fetchMetadata } from "./metadata";
 import { LLMClient } from "../llm/client";
+import { arr, rec, str } from "../util/json";
 
 /** Import a PDF: extract text → resolve metadata (by embedded DOI/arXiv, else LLM)
  *  → create a reference note → stash extracted text so the indexer embeds it. */
@@ -42,7 +43,7 @@ export class PdfImporter {
   private async attach(note: TFile, pdf: TFile, text: string): Promise<void> {
     // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
     // appended before it is silently dropped.
-    await this.app.fileManager.processFrontMatter(note, (fm) => {
+    await this.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
       fm.pdf = `[[${pdf.path}]]`;
     });
     await this.app.vault.process(note, (body) => appendStash(body, text));
@@ -59,18 +60,18 @@ export class PdfImporter {
     const raw = await llm.chat([{ role: "user", content: prompt }], "You output only valid minified JSON.", {
       noReasoning: true, // copying fields off a title page needs no thinking pass
     });
-    const json = this.parseJson(raw);
+    const json = rec(this.parseJson(raw));
     return {
       type: "article-journal",
-      title: typeof json.title === "string" ? json.title : "",
-      author: Array.isArray(json.authors) ? json.authors : [],
+      title: str(json.title),
+      author: arr(json.authors) as CSLItem["author"],
       "container-title": typeof json.container_title === "string" ? json.container_title : undefined,
       abstract: typeof json.abstract === "string" ? json.abstract : undefined,
       issued: json.year ? { "date-parts": [[Number(json.year)]] } : undefined,
     };
   }
 
-  private parseJson(raw: string): any {
+  private parseJson(raw: string): unknown {
     const m = raw.match(/\{[\s\S]*\}/);
     try {
       return m ? JSON.parse(m[0]) : {};
