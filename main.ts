@@ -191,6 +191,11 @@ export default class ScholarRagPlugin extends Plugin {
       name: "Compile manuscript (resolve [@citekey] + references)",
       callback: () => void writingCmd.compileManuscript(this),
     });
+    this.addCommand({
+      id: "export-docx",
+      name: "Export manuscript to Word (.docx)",
+      callback: () => void writingCmd.exportManuscriptDocx(this),
+    });
     for (const s of ["unread", "reading", "read"] as const) {
       this.addCommand({
         id: `mark-${s}`,

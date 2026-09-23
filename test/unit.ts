@@ -20,6 +20,8 @@ import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
 import { requestWithRetry } from "../src/llm/client";
 import { buildCliArgs, cliCandidates, parseOpencodeOutput, promptFromMessages } from "../src/llm/cli";
+import { pandocCandidates } from "../src/write/pandoc";
+import { stripFrontmatter } from "../src/index/chunker";
 import {
   duplicateGroups,
   inScope,
@@ -467,6 +469,43 @@ AID - 10.1000/xyz123 [doi]
   check(oc[0] === "/home/x/.opencode/bin/opencode", "cliCandidates: opencode's ~/.opencode/bin first");
   const codexWin = cliCandidates("codex", "C:\\Users\\x", "win32");
   check(codexWin[codexWin.length - 1] === "C:\\Users\\x\\AppData\\Roaming\\npm\\codex.exe", "cliCandidates: win32 appends .exe under %APPDATA%/npm");
+}
+
+// ---------- write/pandoc.ts: pandocCandidates ----------
+{
+  const mac = pandocCandidates("/Users/x", "darwin");
+  check(mac[0] === "/opt/homebrew/bin/pandoc", "pandocCandidates: Homebrew (Apple Silicon) first on darwin");
+  check(mac.includes("/usr/local/bin/pandoc"), "pandocCandidates: Homebrew (Intel) on darwin");
+  check(mac.includes("/Users/x/.local/bin/pandoc"), "pandocCandidates: ~/.local/bin on darwin");
+
+  const linux = pandocCandidates("/home/x", "linux");
+  check(linux.includes("/home/x/.local/bin/pandoc"), "pandocCandidates: ~/.local/bin on linux");
+
+  const win = pandocCandidates("C:\\Users\\x", "win32");
+  check(win[0] === "C:\\Program Files\\Pandoc\\pandoc.exe", "pandocCandidates: Program Files first on win32");
+  check(win.length === 1, "pandocCandidates: no %LOCALAPPDATA% entry when unset");
+
+  const winLocal = pandocCandidates("C:\\Users\\x", "win32", "C:\\Users\\x\\AppData\\Local");
+  check(
+    winLocal[1] === "C:\\Users\\x\\AppData\\Local\\Pandoc\\pandoc.exe",
+    "pandocCandidates: %LOCALAPPDATA%\\Pandoc appended on win32 when set"
+  );
+}
+
+// ---------- index/chunker.ts: stripFrontmatter (reused by writing/export-docx) ----------
+{
+  const withFm = "---\ntitle: Draft\nauthor: Me\n---\n\n# Heading\n\nBody [@key].\n";
+  check(
+    stripFrontmatter(withFm) === "\n# Heading\n\nBody [@key].\n",
+    "stripFrontmatter: drops a leading YAML block"
+  );
+  check(stripFrontmatter("# No frontmatter\n") === "# No frontmatter\n", "stripFrontmatter: no-op without one");
+  check(
+    stripFrontmatter("Body starts with\n---\nnot frontmatter\n") === "Body starts with\n---\nnot frontmatter\n",
+    "stripFrontmatter: a mid-document '---' line is not mistaken for a frontmatter block"
+  );
+  const crlf = "---\r\ntitle: Draft\r\n---\r\nBody\r\n";
+  check(stripFrontmatter(crlf) === "Body\r\n", "stripFrontmatter: handles CRLF line endings");
 }
 
 console.log(`unit: all ${passed} assertions passed`);

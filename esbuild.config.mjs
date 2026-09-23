@@ -57,6 +57,7 @@ const ctx = await esbuild.context({
   format: "cjs",
   target: "es2018",
   logLevel: "info",
+  loader: { ".docx": "binary" },
   banner: { js: pdfjsNotice },
   legalComments: "inline",
   sourcemap: prod ? false : "inline",

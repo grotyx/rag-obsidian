@@ -434,6 +434,22 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl)
+      .setName("Pandoc path")
+      .setDesc(
+        'Leave empty to auto-detect (Homebrew, ~/.local/bin, Program Files). Needed for ' +
+          '"Export manuscript to Word (.docx)" — install Pandoc from pandoc.org if that command reports it missing.'
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder("Auto-detect")
+          .setValue(this.plugin.settings.pandocPath)
+          .onChange(async (v) => {
+            this.plugin.settings.pandocPath = v.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
     new Setting(containerEl).setName("External AI (MCP)").setHeading();
     if (!Platform.isDesktopApp) {
       containerEl.createEl("p", {
