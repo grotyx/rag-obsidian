@@ -39,3 +39,12 @@ export async function mapPool<T, R>(
  *  ceiling (3 requests/second, 10 with a key) is held by the request gate in
  *  `ingest/pubmedSearch.ts`, so extra workers queue there instead of drawing 429s. */
 export const POOL_WIDTH = 15;
+
+/** A logged-in CLI (`codex`, `opencode`) is a subscription with its own rate limit and a
+ *  process start per call — a handful at once, not the API's fifteen. */
+export const CLI_POOL_WIDTH = 3;
+
+/** Pool width for a batch whose items each wait on the configured LLM. */
+export function poolWidth(settings: { llmProvider: string }): number {
+  return settings.llmProvider === "codex" || settings.llmProvider === "opencode" ? CLI_POOL_WIDTH : POOL_WIDTH;
+}
