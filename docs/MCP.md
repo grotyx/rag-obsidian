@@ -119,7 +119,7 @@ add_reference
 ```
 
 `get_reference_source` prefers a linked PDF's extracted text (the `## Full text (extracted)` stash
-left by "Index linked PDFs" or PDF import) when it is substantial, then tries PMC open-access full
+left by "Index linked PDF files" or PDF import) when it is substantial, then tries PMC open-access full
 text when PMID/PMCID metadata identifies it, then falls back to the PubMed or stored metadata
 abstract. It returns `sourceType` (`pdf-fulltext`, `pmc-fulltext`, `pubmed-abstract`, or
 `stored-abstract`) and the current whole-note `hash`. The external client must use

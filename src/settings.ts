@@ -1,4 +1,4 @@
-import { App, Notice, Platform, PluginSettingTab, Setting, SettingDefinitionItem } from "obsidian";
+import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type ScholarRagPlugin from "../main";
 import { DEFAULT_SETTINGS, EmbeddingProviderId, LLMProviderId, CiteStyle } from "./types";
 import { BUNDLED_STYLES } from "./cite/csl";
@@ -10,16 +10,6 @@ export class ScholarRagSettingTab extends PluginSettingTab {
   constructor(app: App, plugin: ScholarRagPlugin) {
     super(app, plugin);
     this.plugin = plugin;
-  }
-
-  /** Not implemented: this tab's dynamic, condition-heavy layout (provider dropdowns that swap
-   *  option sets, toggles that reveal whole sections) does not fit the declarative shape without
-   *  a real rewrite. Returning [] is a no-op for Obsidian's renderer — `display()` below still
-   *  runs exactly as before — it only silences the "won't show up in settings search" advisory.
-   *  ponytail: settings search stays unindexed for this tab; migrate to getSettingDefinitions()
-   *  if that search integration is ever wanted. */
-  getSettingDefinitions(): SettingDefinitionItem[] {
-    return [];
   }
 
   /** Required override (Obsidian calls this to render the tab); the body lives in `render()` so
@@ -364,7 +354,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       .addDropdown((d) => {
         d.addOption("en", "English");
         d.addOption("ko", "Korean");
-        d.addOption("en+ko", "English + korean");
+        d.addOption("en+ko", "English + Korean");
         d.addOption("custom", "Custom…");
         const cur = this.plugin.settings.summaryLanguage;
         d.setValue(FIXED_SUMMARY_LANGS.includes(cur) ? cur : "custom");

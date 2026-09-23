@@ -225,7 +225,7 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addCommand({
       id: "open-reference-online",
-      name: "Open this reference online (DOI / PubMed / oa)",
+      name: "Open this reference online (DOI / PubMed / OA)",
       callback: () => this.openReferenceOnline(),
     });
     this.addCommand({
@@ -255,7 +255,7 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addCommand({
       id: "download-oa-pdfs-all",
-      name: "Download open-access pdfs for references without one",
+      name: "Download open-access PDF files for references without one",
       callback: () => void oaCmd.downloadOaPdfsAll(this),
     });
     this.addCommand({
@@ -285,7 +285,7 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addCommand({
       id: "index-linked-pdfs",
-      name: "Index linked pdfs",
+      name: "Index linked PDF files",
       callback: () => void indexLinkedPdfs(this),
     });
     this.addCommand({
@@ -295,7 +295,7 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addCommand({
       id: "link-pdfs-in-folder",
-      name: "Link pdfs in a folder to references",
+      name: "Link PDF files in a folder to references",
       callback: () =>
         new FolderSuggestModal(this.app, (folder) => void linkPdfsInFolder(this, folder.path)).open(),
     });

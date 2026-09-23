@@ -22,8 +22,11 @@ const EXTRA_BRANDS = [
   "Pandoc",
   "Word",
   "MeSH",
+  // Language names are proper nouns in English.
+  "English",
+  "Korean",
 ];
-const EXTRA_ACRONYMS = ["DOI", "PMID", "PMC", "RIS", "CSL", "MCP", "PRISMA"];
+const EXTRA_ACRONYMS = ["DOI", "PMID", "PMC", "RIS", "CSL", "MCP", "PRISMA", "OA"];
 // "Cursor" (the code editor) collides with the common noun "cursor" (text-caret position), which
 // this plugin uses in its own UI text and never uses as a brand reference — drop it so those
 // strings aren't forced to capitalize a plain word.
