@@ -177,10 +177,18 @@ export function mergeBodies(keeperBody: string, others: OtherBody[], summaryDono
 function mergedFromSection(citekey: string, body: string): string {
   const notes = extractSection(body, "## Notes").trim();
   const highlights = extractSection(body, "## Highlights").trim();
-  if (!notes && !highlights) return "";
-  const parts = [`## Merged from ${citekey}`];
-  if (notes) parts.push("", "### Notes", "", notes);
-  if (highlights) parts.push("", "### Highlights", "", highlights);
+  // Sections this loser itself received from an earlier merge ride along unchanged.
+  const earlier = [...body.matchAll(/(^|\n)(## Merged from [^\n]*\n[\s\S]*?)(?=\n## |\n# |$)/g)]
+    .map((m) => m[2].trim())
+    .filter((s) => !s.startsWith(STASH_MARKER));
+  if (!notes && !highlights && !earlier.length) return "";
+  const parts: string[] = [];
+  if (notes || highlights) {
+    parts.push(`## Merged from ${citekey}`);
+    if (notes) parts.push("", "### Notes", "", notes);
+    if (highlights) parts.push("", "### Highlights", "", highlights);
+  }
+  for (const e of earlier) parts.push(...(parts.length ? [""] : []), e);
   return `${parts.join("\n")}\n`;
 }
 
@@ -192,14 +200,14 @@ function stripTrailingMergedBlocks(stash: string): string {
   return idx < 0 ? stash : stash.slice(0, idx).replace(/\s*$/, "");
 }
 
-/** Text under a `## <heading>` line, up to the next heading (any level) or end of body.
- *  Mirrors the boundary rule `splitAtReferences`/`replaceSummaryBlock` use in cite/bibliography.ts. */
+/** Text under a `## <heading>` line, up to the next `#`/`##` heading or end of body — so a
+ *  `### Key points` inside the user's notes stays with them. */
 function extractSection(body: string, heading: string): string {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const m = body.match(new RegExp(`(^|\\n)${escaped}[ \\t]*(\\n|$)`));
   if (!m || m.index === undefined) return "";
   const rest = body.slice(m.index + m[0].length);
-  const next = rest.search(/\n#{1,6}[ \t]/);
+  const next = rest.search(/\n#{1,2}[ \t]/);
   return next >= 0 ? rest.slice(0, next) : rest;
 }
 

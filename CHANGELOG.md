@@ -57,9 +57,22 @@ feature comparison against Zotero and EndNote.
 - **Export manuscript to Word (.docx)**: compiles citations the same way "Compile manuscript"
   does and runs Pandoc with the bundled academic template (Times New Roman 12 pt, double
   spaced). Pandoc path setting, blank = auto-detect.
+- **Screening pane** (systematic reviews): one record at a time with its abstract; Include /
+  Exclude / Maybe, key-question chips, evidence level, study design, a note, and one-click
+  exclusion reasons; keyboard I / E / M, J / K, 1–5. Scoped to all references or a tag, with a
+  running count of included / excluded / pending / unscreened. Writes through the same code as
+  the MCP `set_reference_fields` tool (`src/data/screening.ts`), so tags always match.
+- **Create PRISMA flow diagram…**: PRISMA 2020 counts for all references or a tag — identified,
+  duplicates, screened, excluded (with reasons), full text retrieved or not, included — as a
+  Mermaid flowchart plus a table, in `PRISMA flow (<scope>).md`.
 - **MCP**: setup buttons for OpenCode and Antigravity (`agy`), and a setting to hide the seven
   note-editing tools (`list_notes`, `read_note`, `create_note`, `update_note`,
   `replace_in_note`, `move_note`, `trash_note`) so a client sees only the 12 library tools.
+
+- **`set_reference_fields` refuses `include: include` without a key question** (none passed and
+  none already on the note), and a blank `design`. The owner's screening pipeline already sent
+  both; a client that didn't was writing includes the evidence tables could never place.
+- A full index rebuild embeds four batches at a time (22,622 chunks took 19.5 min one at a time).
 
 ### Fixed
 

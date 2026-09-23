@@ -228,12 +228,24 @@ export class IndexManager {
     const batches: Chunk[][] = [];
     for (let i = 0; i < all.length; i += batchSize) batches.push(all.slice(i, i + batchSize));
     let embedded = 0;
-    const results = await mapPool(batches, EMBED_WIDTH, async (batch) => {
-      const v = await provider.embed(batch.map((c) => c.embedText));
-      embedded += batch.length;
-      onProgress?.(embedded, all.length);
-      return v;
-    });
+    // First failure stops the other workers from starting new (paid) requests.
+    const stop = new AbortController();
+    const results = await mapPool(
+      batches,
+      EMBED_WIDTH,
+      async (batch) => {
+        try {
+          const v = await provider.embed(batch.map((c) => c.embedText));
+          embedded += batch.length;
+          onProgress?.(embedded, all.length);
+          return v;
+        } catch (e) {
+          stop.abort();
+          throw e;
+        }
+      },
+      stop.signal
+    );
     const vectors = results.flat();
 
     this.store.init(vectors[0].length, provider.id);

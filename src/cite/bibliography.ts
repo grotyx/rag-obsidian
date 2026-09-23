@@ -206,5 +206,7 @@ export function extractSummaryBlock(content: string): string | null {
   const range = summaryBlockRange(content);
   if (!range) return null;
   const text = content.slice(range.start, range.end).trim();
-  return text || null;
+  // Headings alone (`## Summary`, legacy `## 요약 (KR)`) are not a summary.
+  const body = text.replace(/^#{1,6}[ \t].*$/gm, "").trim();
+  return body ? text : null;
 }

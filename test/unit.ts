@@ -42,7 +42,7 @@ import {
   MergeNote,
   MergeSourceNote,
 } from "../src/data/merge";
-import { renameCiteKeys } from "../src/cite/bibliography";
+import { extractSummaryBlock, renameCiteKeys } from "../src/cite/bibliography";
 import {
   getYear,
   firstAuthorFamily,
@@ -716,6 +716,17 @@ AID - 10.1000/xyz123 [doi]
 
 // ---------- data/merge.ts: mergeBodies ----------
 {
+  {
+    const sub = mergeBodies("## Notes\n\nkeep\n", [
+      { citekey: "l", body: "## Notes\n\nintro\n### Key points\n- a\n- b\n\n## Highlights\n" },
+    ]);
+    check(sub.includes("### Key points") && sub.includes("- b"), "mergeBodies: a ### subheading inside the loser's Notes stays with them");
+    const chained = mergeBodies("## Notes\n", [
+      { citekey: "a", body: "## Notes\n\n## Merged from b\n\n### Notes\n\nb's note\n" },
+    ]);
+    check(chained.includes("## Merged from b") && chained.includes("b's note"), "mergeBodies: a loser's own earlier Merged-from sections are carried over");
+  }
+
   const keeperBody = "---\ncitekey: k\n---\n\n# Title\n\n## Notes\n\nkeeper note.\n\n## Highlights\n\n";
   const merged = mergeBodies(keeperBody, [
     { citekey: "loser1", body: "## Notes\n\nloser note text.\n\n## Highlights\n" },
@@ -759,6 +770,9 @@ AID - 10.1000/xyz123 [doi]
 
 // ---------- data/merge.ts: planMerge ----------
 {
+  check(extractSummaryBlock("## Summary\n\n## Notes\n") === null, "extractSummaryBlock: a bare heading is not a summary");
+  check(extractSummaryBlock("## Summary\n\ntext\n") !== null, "extractSummaryBlock: a heading with text is a summary");
+
   const keeperNoSummary: MergeSourceNote = {
     citekey: "k",
     fm: { citekey: "k" },
@@ -940,6 +954,11 @@ AID - 10.1000/xyz123 [doi]
   check(!!other && other.count === 1, "prismaCounts: unrecognized note grouped under Other");
 
   const md = prismaMarkdown(counts, "all references", "2026-09-23");
+  const nodeLines = md.split("\n").filter((l) => /^ {4}[A-Z]\[/.test(l));
+  check(
+    nodeLines.length >= 9 && nodeLines.every((l) => /^ {4}[A-Z]\["[^"]*"\]$/.test(l)),
+    "prismaMarkdown: every node label is quoted (parentheses in a bare label break Mermaid's parser)"
+  );
   check(md.includes("flowchart TD"), "prismaMarkdown: contains a valid mermaid flowchart header");
   check(md.includes("n = 7"), "prismaMarkdown: records identified count appears in the diagram");
   check(md.includes("| Records identified | 7 |"), "prismaMarkdown: records identified appears in the table");

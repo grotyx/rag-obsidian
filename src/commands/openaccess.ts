@@ -1,6 +1,6 @@
 import { Notice, TFile, normalizePath, requestUrl } from "obsidian";
 import type ScholarRagPlugin from "../../main";
-import type { Library } from "../data/library";
+import { safePdfName, type Library } from "../data/library";
 import type { CSLItem } from "../types";
 import { findOpenAccess } from "../ingest/unpaywall";
 import { checkRetraction } from "../ingest/retraction";
@@ -152,7 +152,7 @@ export async function downloadOaPdf(plugin: ScholarRagPlugin): Promise<void> {
     return;
   }
   // Citekey comes from frontmatter — sanitize before using it as a vault filename.
-  const safe = citekey.replace(/[^A-Za-z0-9._-]/g, "").replace(/^\.+/, "");
+  const safe = safePdfName(citekey);
   if (!safe || safe.includes("..")) {
     new Notice("Invalid citekey for PDF filename");
     return;
@@ -229,7 +229,7 @@ export async function downloadOaPdfsAll(plugin: ScholarRagPlugin): Promise<void>
                 console.error("[RAG Obsidian] OA PDF download failed", e.file.path, res.message);
                 return;
               }
-              const safe = e.citekey.replace(/[^A-Za-z0-9._-]/g, "").replace(/^\.+/, "");
+              const safe = safePdfName(e.citekey);
               const path = normalizePath(`PDFs/${safe}.pdf`);
               if (!safe || safe.includes("..") || plugin.app.vault.getAbstractFileByPath(path)) {
                 // A hit here means a bad citekey or a name collision — `findPdfFile` already
@@ -395,7 +395,8 @@ export async function checkRetractionAll(plugin: ScholarRagPlugin, recheck = fal
   for (const e of cleared) earlier.delete(e.file.path);
   for (const e of retractedEntries) earlier.set(e.file.path, e);
   const listed = [...earlier.values()];
-  if (retractedEntries.length || (listed.length && cleared.length)) {
+  // Rewrite whenever this run changed the picture — including a re-check that cleared everything.
+  if (retractedEntries.length || cleared.some((e) => e.item.retracted === true)) {
     const report =
       `# Retracted references\n\n${listed.length} retracted:\n\n` +
       listed.map((e) => `- [[${e.file.basename}]] — ${e.title} (${e.year})`).join("\n") +

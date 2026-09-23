@@ -21,11 +21,7 @@ export function findPdfFile(
   notePath: string,
   citekey: string
 ): TFile | null {
-  const link = resolvePdfLink(pdfValue);
-  const linked = link ? plugin.app.metadataCache.getFirstLinkpathDest(link, notePath) : null;
-  if (linked) return linked;
-  const guess = plugin.app.vault.getAbstractFileByPath(normalizePath(`PDFs/${citekey}.pdf`));
-  return guess instanceof TFile ? guess : null;
+  return plugin.library.pdfFile(pdfValue, notePath, citekey);
 }
 
 /** Extract the text of every linked PDF that has no `## Full text (extracted)` section yet and
@@ -134,11 +130,15 @@ export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: str
   // The vault root comes back as "" or "/", and no vault path starts with "/".
   const folder = normalizePath(folderPath).replace(/^\/+|\/+$/g, "");
   const prefix = folder ? `${folder}/` : "";
-  const pdfs = plugin.app.vault
+  const found = plugin.app.vault
     .getFiles()
     .filter((f) => f.extension.toLowerCase() === "pdf" && f.path.startsWith(prefix) && !linkedPaths.has(f.path));
+  // A wikilink can't carry `#`, `|`, `[`, `]` or `^` in its target, so a `pdf:` link to such a
+  // file would resolve to nothing. List those for renaming instead of writing a dead link.
+  const unlinkable = found.filter((f) => /[#|[\]^]/.test(f.path));
+  const pdfs = found.filter((f) => !unlinkable.includes(f));
 
-  if (!pdfs.length || !candidates.length) {
+  if (!unlinkable.length && (!pdfs.length || !candidates.length)) {
     new Notice(`Nothing to link · ${pdfs.length} unlinked PDF(s), ${candidates.length} reference(s) without a PDF`);
     return;
   }
@@ -213,16 +213,22 @@ export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: str
     outcome =
       `${linked} linked (${byType.name} name · ${byType.doi} doi · ${byType.pmid} pmid · ${byType.title} title) · ` +
       `${unmatched.length} unmatched · ${failed} failed` +
+      (unlinkable.length ? ` · ${unlinkable.length} need renaming` : "") +
       (cancelled ? ` · ${cancelled} cancelled` : "");
   } finally {
     batch.finish(outcome);
   }
 
-  if (unmatched.length) {
+  if (unmatched.length || unlinkable.length) {
     const report =
       `# PDF link report\n\n${unmatched.length} unmatched PDF(s) in "${folderPath}":\n\n` +
       unmatched.map((f) => `- ${f.path}`).join("\n") +
-      "\n";
+      "\n" +
+      (unlinkable.length
+        ? `\n${unlinkable.length} PDF(s) skipped — rename them without # | [ ] ^ and run again:\n\n` +
+          unlinkable.map((f) => `- ${f.path}`).join("\n") +
+          "\n"
+        : "");
     await plugin.writeAndOpen(normalizePath("PDF link report.md"), report);
   }
   new Notice(outcome);

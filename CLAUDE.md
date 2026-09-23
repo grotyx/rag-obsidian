@@ -56,6 +56,8 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `data/reference.ts` | citekey generation, CSL-JSON → markdown note builder |
 | `data/library.ts` | CRUD over `References/`, `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` (add-time) + `matchKeys`/`duplicateGroups` (report, groups on any shared identifier) + `BackfillScope`/`inScope` (pure filter for fill-gaps scoping) |
 | `data/pdfMatch.ts` | `matchPdf` — PDF ↔ reference by file name = citekey, then DOI / PMID / title+year in the first 4,000 chars only (reference lists name other papers) |
+| `data/screening.ts` | `applyScreening` — the one screening write (kq / include / level / design / note + mirrored tags), shared by the MCP `set_reference_fields` tool and the Screening pane; include needs ≥1 KQ |
+| `data/prisma.ts` | `prismaCounts` / `prismaMarkdown` — PRISMA 2020 numbers and the Mermaid + table note (`commands/prisma.ts` gathers the records) |
 | `data/merge.ts` | duplicate merge logic: `pickKeeper`, `mergeFrontmatter`, `mergeBodies` (`renameCiteKeys` lives in `cite/bibliography.ts`) |
 | `ingest/metadata.ts` | `detectId` + Crossref / PubMed / arXiv fetchers → CSLItem |
 | `ingest/ncbi.ts` | the one queue every E-utilities request waits in (3/s, 10/s with a key) |
@@ -102,13 +104,14 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `write/docx.ts` + `write/pandoc.ts` | "Export manuscript to Word": Pandoc with the bundled `styles/manuscript-reference.docx` (esbuild `.docx` binary loader); `pandocCandidates` is the pure probe list |
 | `write/manuscript.ts` | pure citation compilation shared by the Obsidian command and MCP output-copy tool |
 | `ui/{LibraryView,SearchView}.ts` | sidebar panes |
+| `ui/ScreeningView.ts` | one-record-at-a-time screening pane (scope, status filter, decisions, KQ/level/design, keyboard), mtime-guarded writes via `applyScreening` |
 | `ui/libraryFilter.ts` | `filterAndSort` for the Library pane (sort keys, quick-filter chips, missing values last) |
 | `ui/FilterRow.ts` | the year-range / author / tag-chip filter row shared by `SearchView` and `ChatView` (`new FilterRow(host, plugin)` → `.filters(): SearchFilters`, `.clear()`); state is pane-local and never persisted |
 | `ui/RelatedView.ts` | citation-graph pane: SVG map (`graph/layout.ts`, ≤40 nodes; dashed node → `AddReferenceModal` prefilled with the OpenAlex id) above the unchanged text lists |
 | `ui/ChatView.ts` | chat pane — a `FilterRow` between log and input scopes the next answer (its `describeFilters` label rides along on the persisted turn and heads the source list), history persisted to `<pluginDir>/chat.json` (last 50 messages; the model still sees the last 8), Clear chat, and "Save as note" per answer → `Chat/<date> <question>.md` |
 | `ui/progress.ts` | `startBatch`/`cancelBatch` — status-bar progress with a ✕ for the two batch commands, one batch at a time, hands out the `AbortSignal` |
 | `ui/CiteSuggestModal.ts` | `CiteSuggestModal` (pick a retrieved reference → insert `[@citekey]`) + `UnsupportedClaimsModal` (uncited claim paragraphs, one **Suggest** button each) |
-| `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal,BackfillScopeModal,MergeDuplicatesModal,FolderSuggestModal}.ts` | modals |
+| `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal,BackfillScopeModal,MergeDuplicatesModal,FolderSuggestModal,PrismaScopeModal}.ts` | modals |
 | `main.ts` | plugin lifecycle, views, `addCommand` wiring, ribbons, events, citation rendering + shared plumbing (`writeAndOpen`, `activeRef`, `styleForNote`) |
 
 ## Commands (dev)
@@ -120,7 +123,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (196) + MCP checks + live integration suite (216 checks)
+npm test               # unit (244) + MCP checks + live integration suite (216 checks)
 ```
 
 ## Testing approach (important)

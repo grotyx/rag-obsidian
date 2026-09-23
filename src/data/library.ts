@@ -1,6 +1,7 @@
 import { App, TFile, normalizePath } from "obsidian";
 import { CSLItem, ScholarRagSettings } from "../types";
 import { buildNote, generateCitekey, generateFilename, BuildNoteOpts } from "./reference";
+import { resolvePdfLink } from "../ingest/pdfStash";
 
 export interface RefEntry {
   file: TFile;
@@ -22,8 +23,28 @@ export interface RefEntry {
   include?: string;
 }
 
+/** Citekey as used in a PDF file name: what the download commands write to `PDFs/`. */
+export function safePdfName(citekey: string): string {
+  return citekey.replace(/[^A-Za-z0-9._-]/g, "").replace(/^\.+/, "");
+}
+
 export class Library {
   constructor(public app: App, public settings: ScholarRagSettings) {}
+
+  /** The one way a reference's PDF is located: the `pdf:` link if it resolves, then
+   *  `PDFs/<citekey>.pdf` as the download commands name it. The Library badge, PRISMA and every
+   *  PDF command go through here so they agree. */
+  pdfFile(pdfValue: unknown, notePath: string, citekey: string): TFile | null {
+    const link = resolvePdfLink(pdfValue);
+    const linked = link ? this.app.metadataCache.getFirstLinkpathDest(link, notePath) : null;
+    if (linked) return linked;
+    for (const name of new Set([citekey, safePdfName(citekey)])) {
+      if (!name) continue;
+      const f = this.app.vault.getAbstractFileByPath(normalizePath(`PDFs/${name}.pdf`));
+      if (f instanceof TFile) return f;
+    }
+    return null;
+  }
 
   folder(): string {
     return normalizePath(this.settings.referencesFolder || "References");
@@ -209,11 +230,7 @@ export class Library {
       const citedByRaw = fm.cited_by_count;
       const citedBy =
         citedByRaw === undefined || citedByRaw === null || citedByRaw === "" ? undefined : Number(citedByRaw);
-      const pdfField = fm.pdf;
-      const hasLinkedPdf = typeof pdfField === "string" ? pdfField.trim().length > 0 : !!pdfField;
-      const hasPdf =
-        hasLinkedPdf ||
-        this.app.vault.getAbstractFileByPath(normalizePath(`PDFs/${citekey}.pdf`)) instanceof TFile;
+      const hasPdf = this.pdfFile(fm.pdf, file.path, citekey) !== null;
       out.push({
         citekey,
         item: fm as unknown as CSLItem,

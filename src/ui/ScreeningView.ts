@@ -304,7 +304,12 @@ export class ScreeningView extends ItemView {
       }
       this.plugin.library.invalidateKeyCache();
       const key = item.citekey;
-      const scoped = this.plugin.library.entries().filter((e) => inScope(e, this.currentScope()));
+      // metadataCache re-parses the note asynchronously, so entries() still holds the old
+      // decision here — overlay the one we just wrote.
+      const scoped = this.plugin.library
+        .entries()
+        .filter((e) => inScope(e, this.currentScope()))
+        .map((e) => (e.citekey === key ? { ...e, item: { ...e.item, include } } : e));
       this.queue = scoped.filter((e) => matchesStatus(e, this.statusFilter)).map((e) => ({ citekey: e.citekey, file: e.file }));
       const stillAt = this.queue.findIndex((q) => q.citekey === key);
       this.index = stillAt >= 0 ? Math.min(stillAt + 1, this.queue.length - 1) : Math.min(this.index, Math.max(0, this.queue.length - 1));
@@ -317,7 +322,11 @@ export class ScreeningView extends ItemView {
 
   private onKeydown = (evt: KeyboardEvent): void => {
     if (!this.contentEl.contains(document.activeElement)) return;
-    if (document.activeElement === this.noteInput) return;
+    // Not while typing in any field (the design <select> jumps by letter), and never with a
+    // modifier: Cmd+E / Cmd+I are Obsidian's own shortcuts.
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement || active instanceof HTMLSelectElement || active instanceof HTMLTextAreaElement) return;
+    if (evt.metaKey || evt.ctrlKey || evt.altKey) return;
     switch (evt.key) {
       case "i": case "I": evt.preventDefault(); void this.commit("include"); break;
       case "e": case "E": evt.preventDefault(); void this.commit("exclude"); break;
