@@ -6,6 +6,7 @@ import { resolveWork, relatedWorks } from "../graph/openalex";
 import { detectId, fetchMetadata } from "../ingest/metadata";
 import { mapPool, POOL_WIDTH } from "../util/pool";
 import { startBatch } from "../ui/progress";
+import { str, num } from "../util/json";
 
 /** Write a Dataview-powered dashboard note (live, sortable). Falls back to a static table. */
 export async function buildDashboard(plugin: ScholarRagPlugin): Promise<void> {
@@ -37,7 +38,7 @@ export async function buildDashboard(plugin: ScholarRagPlugin): Promise<void> {
         const it = r.item as Record<string, unknown>;
         const tags = Array.isArray(it.tags) ? (it.tags as string[]).slice(0, 4).join(", ") : "";
         const link = `[[${r.file.basename}\\|${r.title.replace(/\|/g, "/")}]]`;
-        return `| ${r.year} | ${r.authors} | ${link} | ${it.status ?? ""} | ${it.cited_by_count ?? ""} | ${tags} |`;
+        return `| ${r.year} | ${r.authors} | ${link} | ${str(it.status)} | ${num(it.cited_by_count) ?? ""} | ${tags} |`;
       })
       .join("\n");
     out = `# Library Dashboard\n\n${rows.length} references. (Install Dataview for a live, sortable table.)\n\n${header}\n${body}\n`;
@@ -74,12 +75,11 @@ export async function readingQueue(plugin: ScholarRagPlugin): Promise<void> {
       Number(b.item.cited_by_count ?? 0) - Number(a.item.cited_by_count ?? 0)
   );
   const body = rows
-    .map(
-      (r) =>
-        `- [[${r.file.basename}]] — ${r.authors} ${r.year} · _${r.item.status ?? "unread"}_${
-          r.item.cited_by_count != null ? ` · ${r.item.cited_by_count} cites` : ""
-        }`
-    )
+    .map((r) => {
+      const status = str(r.item.status) || "unread";
+      const cites = num(r.item.cited_by_count);
+      return `- [[${r.file.basename}]] — ${r.authors} ${r.year} · _${status}_${cites != null ? ` · ${cites} cites` : ""}`;
+    })
     .join("\n");
   const out = `# Reading queue\n\n${rows.length} to read:\n\n${body || "_(all caught up)_"}\n`;
   const path = normalizePath("Reading queue.md");
@@ -92,8 +92,8 @@ export async function setStatus(
 ): Promise<void> {
   const r = plugin.activeRef();
   if (!r) return;
-  await plugin.app.fileManager.processFrontMatter(r.file, (fm) => (fm.status = status));
-  new Notice(`${r.fm.citekey} → ${status}`);
+  await plugin.app.fileManager.processFrontMatter(r.file, (fm: Record<string, unknown>) => (fm.status = status));
+  new Notice(`${str(r.fm.citekey)} → ${status}`);
 }
 
 /** Resolve each reference on OpenAlex and write `cited_by_count` (+ `openalex_id`). */
@@ -106,7 +106,7 @@ export async function backfillCitationCounts(plugin: ScholarRagPlugin): Promise<
     for (const { item, file } of entries) {
       const w = await resolveWork(item, plugin.settings.openalexMailto);
       if (w) {
-        await plugin.app.fileManager.processFrontMatter(file, (fm) => {
+        await plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
           fm.cited_by_count = w.citedByCount;
           if (!fm.openalex_id) fm.openalex_id = w.openalexId;
         });
@@ -172,7 +172,7 @@ export async function enrichMetadata(plugin: ScholarRagPlugin): Promise<void> {
             .catch(() => {}) // an earlier note's failed write must not fail this one
             .then(async () => {
               let changed = false;
-              await plugin.app.fileManager.processFrontMatter(t.file, (fm) => {
+              await plugin.app.fileManager.processFrontMatter(t.file, (fm: Record<string, unknown>) => {
                 const set = (k: string, v: unknown) => ((fm[k] = v), (changed = true));
                 if (!fm.abstract && fresh.abstract) set("abstract", fresh.abstract);
                 if (!fm["container-title"] && fresh["container-title"]) set("container-title", fresh["container-title"]);
@@ -215,7 +215,7 @@ export async function renameTag(
   for (const { file } of plugin.library.entries()) {
     const fm = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
     if (!fm || !Array.isArray(fm.tags) || !fm.tags.includes(oldTag)) continue;
-    await plugin.app.fileManager.processFrontMatter(file, (f) => {
+    await plugin.app.fileManager.processFrontMatter(file, (f: Record<string, unknown>) => {
       const t = new Set<string>(((f.tags as string[]) || []).filter(Boolean));
       t.delete(oldTag);
       if (newTag) t.add(newTag);
@@ -245,7 +245,7 @@ export async function exportCitationNetwork(plugin: ScholarRagPlugin): Promise<v
   const edges: [string, string][] = [];
   for (const ck of cks) for (const ref of plugin.citationGraph.referencesInLibrary(ck)) edges.push([ck, ref]);
   if (!edges.length) {
-    new Notice('No edges — run "Build citation graph" first');
+    new Notice('No edges — run "build citation graph" first');
     return;
   }
   const id = (k: string) => k.replace(/[^A-Za-z0-9]/g, "_");
@@ -283,6 +283,7 @@ export async function suggestRelated(plugin: ScholarRagPlugin): Promise<void> {
       const have = w.title && plugin.library.findDuplicate({ type: "article-journal", title: w.title });
       return `- ${w.title || w.id} — _${w.citedByCount} citations_ · [OpenAlex](https://openalex.org/${w.id})${have ? `  ✓ already in library (${have})` : ""}`;
     });
-  const out = `# Related to ${r.fm.citekey}\n\n${rel.length} related works (OpenAlex), most-cited first:\n\n${lines.join("\n")}\n`;
-  await plugin.writeAndOpen(`Related to ${r.fm.citekey}.md`, out);
+  const citekey = str(r.fm.citekey);
+  const out = `# Related to ${citekey}\n\n${rel.length} related works (OpenAlex), most-cited first:\n\n${lines.join("\n")}\n`;
+  await plugin.writeAndOpen(`Related to ${citekey}.md`, out);
 }

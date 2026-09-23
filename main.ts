@@ -48,6 +48,7 @@ import { FolderSuggestModal } from "./src/ui/FolderSuggestModal";
 import { McpVault } from "./src/mcp/vault";
 import { McpService, mcpToolsFor } from "./src/mcp/service";
 import { assertVaultPath, McpHttpServer, McpServerStatus } from "./src/mcp/http";
+import { str, rec } from "./src/util/json";
 import { compileMcpManuscript } from "./src/write/manuscript";
 
 const LEGACY_PLUGIN_ID = "rag-obsidian";
@@ -224,7 +225,7 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addCommand({
       id: "open-reference-online",
-      name: "Open this reference online (DOI / PubMed / OA)",
+      name: "Open this reference online (DOI / PubMed / oa)",
       callback: () => this.openReferenceOnline(),
     });
     this.addCommand({
@@ -254,7 +255,7 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addCommand({
       id: "download-oa-pdfs-all",
-      name: "Download open-access PDFs for references without one",
+      name: "Download open-access pdfs for references without one",
       callback: () => void oaCmd.downloadOaPdfsAll(this),
     });
     this.addCommand({
@@ -284,7 +285,7 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addCommand({
       id: "index-linked-pdfs",
-      name: "Index linked PDFs",
+      name: "Index linked pdfs",
       callback: () => void indexLinkedPdfs(this),
     });
     this.addCommand({
@@ -294,7 +295,7 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addCommand({
       id: "link-pdfs-in-folder",
-      name: "Link PDFs in a folder to references",
+      name: "Link pdfs in a folder to references",
       callback: () =>
         new FolderSuggestModal(this.app, (folder) => void linkPdfsInFolder(this, folder.path)).open(),
     });
@@ -435,7 +436,7 @@ export default class ScholarRagPlugin extends Plugin {
     this.settings.mcpEnabled = enabled;
     await this.saveSettings();
     if (!this.mcpServer) {
-      if (enabled) new Notice("MCP access is available in Obsidian Desktop only");
+      if (enabled) new Notice("MCP access is available in Obsidian desktop only");
       return;
     }
     if (enabled) await this.startMcp();
@@ -482,7 +483,7 @@ export default class ScholarRagPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, rec(await this.loadData()));
     let migrated = false;
     if ((this.settings.embeddingProvider as string) === "transformers") {
       this.settings.embeddingProvider = DEFAULT_SETTINGS.embeddingProvider;
@@ -583,8 +584,8 @@ export default class ScholarRagPlugin extends Plugin {
   /** Citation style for a note: its `csl` / `citation-style` frontmatter, else the global setting. */
   styleForNote(file: TFile | null): string {
     if (file) {
-      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      const s = fm?.csl ?? fm?.["citation-style"];
+      const fm = rec(this.app.metadataCache.getFileCache(file)?.frontmatter);
+      const s = fm.csl ?? fm["citation-style"];
       if (typeof s === "string" && s.trim()) return s.trim();
     }
     return this.settings.cslStyleId;
@@ -706,7 +707,7 @@ export default class ScholarRagPlugin extends Plugin {
   /** Open a URL externally — http(s) only, so frontmatter can't smuggle javascript:/file: schemes. */
   safeOpenExternal(url: string): void {
     if (!/^https?:\/\//i.test(url)) {
-      new Notice("Blocked non-http(s) URL");
+      new Notice("Blocked non-HTTP(s) URL");
       return;
     }
     if (typeof window !== "undefined" && window.open) window.open(url, "_blank");
@@ -717,15 +718,13 @@ export default class ScholarRagPlugin extends Plugin {
     const r = this.activeRef();
     if (!r) return;
     const fm = r.fm;
-    const url = fm.DOI
-      ? `https://doi.org/${fm.DOI}`
-      : fm.PMID
-      ? `https://pubmed.ncbi.nlm.nih.gov/${fm.PMID}/`
-      : fm.oa_url
-      ? String(fm.oa_url)
-      : fm.URL
-      ? String(fm.URL)
-      : "";
+    const doi = str(fm.DOI);
+    const pmid = str(fm.PMID);
+    const url = doi
+      ? `https://doi.org/${doi}`
+      : pmid
+      ? `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`
+      : str(fm.oa_url) || str(fm.URL);
     if (!url) {
       new Notice("No DOI / PMID / URL on this note");
       return;

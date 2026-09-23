@@ -88,7 +88,7 @@ export async function exportManuscriptDocx(plugin: ScholarRagPlugin): Promise<vo
   }
   const adapter = plugin.app.vault.adapter;
   if (!Platform.isDesktopApp || !(adapter instanceof FileSystemAdapter)) {
-    new Notice("Export to Word needs Obsidian Desktop");
+    new Notice("Export to Word needs Obsidian desktop");
     return;
   }
   const pandocPath = findPandoc(plugin.settings.pandocPath);

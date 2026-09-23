@@ -140,7 +140,7 @@ export async function backfillSummaries(
       if (!r.summary && !r.tags.length && !r.meshTried) continue;
       // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
       // appended before it is silently dropped.
-      await plugin.app.fileManager.processFrontMatter(r.entry.file, (fm) => {
+      await plugin.app.fileManager.processFrontMatter(r.entry.file, (fm: Record<string, unknown>) => {
         if (r.summary && r.sourceTag) {
           fm.summary_source = r.sourceTag;
           fm.summary_model = plugin.settings.llmModel;

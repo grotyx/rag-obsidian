@@ -4,12 +4,13 @@ import { duplicateGroups, inScope, BackfillScope } from "../data/library";
 import { prismaCounts, prismaMarkdown, PrismaRecord } from "../data/prisma";
 import { localDate } from "../data/reference";
 import { findPdfFile } from "./pdfs";
+import { str } from "../util/json";
 
 /** "Full text" agrees with `commands/summaries.ts`' `sourceName`: a resolvable PDF, or a summary
  *  sourced from one (`pdf-fulltext`) or from PMC (`pmc-fulltext`). */
 function hasFullText(plugin: ScholarRagPlugin, e: ReturnType<ScholarRagPlugin["library"]["entries"]>[number]): boolean {
   if (findPdfFile(plugin, e.item.pdf, e.file.path, e.citekey)) return true;
-  const source = String(e.item.summary_source ?? "");
+  const source = str(e.item.summary_source);
   return source === "pdf-fulltext" || source === "pmc-fulltext";
 }
 
