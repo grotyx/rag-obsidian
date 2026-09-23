@@ -4,6 +4,7 @@ import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
 import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA } from "./store";
 import { capPerReference } from "./rerank";
+import { mapPool } from "../util/pool";
 import { FileIO, NodeFileIO, localIndexDir } from "./localFiles";
 
 import {
@@ -17,6 +18,9 @@ import {
 
 /** Chunks pulled from the index before the per-reference cap thins them. */
 const OVERFETCH = 3;
+
+/** Embedding requests in flight during a full rebuild (a local Ollama just queues them). */
+const EMBED_WIDTH = 4;
 
 
 /** Orchestrates the embedding index: build, incremental update, persistence, search. */
@@ -219,13 +223,18 @@ export class IndexManager {
       return 0;
     }
 
+    // A few embedding requests in flight: one at a time took 19.5 min for 22,622 chunks.
     const batchSize = 32;
-    const vectors: number[][] = [];
-    for (let i = 0; i < all.length; i += batchSize) {
-      const batch = all.slice(i, i + batchSize);
-      vectors.push(...(await provider.embed(batch.map((c) => c.embedText))));
-      onProgress?.(Math.min(i + batchSize, all.length), all.length);
-    }
+    const batches: Chunk[][] = [];
+    for (let i = 0; i < all.length; i += batchSize) batches.push(all.slice(i, i + batchSize));
+    let embedded = 0;
+    const results = await mapPool(batches, EMBED_WIDTH, async (batch) => {
+      const v = await provider.embed(batch.map((c) => c.embedText));
+      embedded += batch.length;
+      onProgress?.(embedded, all.length);
+      return v;
+    });
+    const vectors = results.flat();
 
     this.store.init(vectors[0].length, provider.id);
     await this.store.addChunks(all, vectors);
