@@ -38,12 +38,15 @@
 
   [hidden] { display: none !important; }
   html, body { height: 100%; }
-  body { background: var(--paper); color: var(--ink); font-family: var(--sans); margin: 0; }
+  body { background: var(--paper); color: var(--ink); font-family: var(--sans); margin: 0; word-break: keep-all; overflow-wrap: anywhere; }
+  /* Presenter view: slide on the left, the script on the right. Audience view: slide only. */
   .app {
-    height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 12px; padding-inline: 16px; padding-block: 12px;
+    height: 100%; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr);
+    gap: 20px; padding-inline: 16px; padding-block: 12px;
   }
+  .app[data-view="presenter"] { grid-template-columns: minmax(0, 1fr) minmax(280px, 30%); }
   .app:fullscreen { background: var(--paper); }
+  .main { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
 
   /* 16:9 stage, sized to the viewport; everything inside scales with it (cqi). */
   .stage {
@@ -52,6 +55,7 @@
     cursor: pointer; user-select: none; -webkit-user-select: none;
   }
   .app:fullscreen .stage { width: min(100%, calc((100dvh - 64px) * 16 / 9)); }
+  .app[data-view="presenter"] .stage { width: min(100%, calc((100dvh - 96px) * 16 / 9)); }
 
   /* Citation ruler: one tick per slide, a taller tick where a section starts. */
   .ruler {
@@ -193,11 +197,34 @@
   .bar kbd { font: 400 11px/1 var(--mono); color: var(--muted); margin-left: 6px; }
   .bar button[aria-pressed="true"] kbd { color: var(--faint); }
 
-  .notes {
-    width: min(100%, 880px); box-sizing: border-box; border-top: 1px solid var(--rule); padding-block: 10px 4px;
-    display: grid; gap: 6px; font-size: 15px; line-height: 1.6; max-height: 28dvh; overflow: auto;
+  .script {
+    min-width: 0; overflow: auto; border-left: 1px solid var(--rule); padding-inline: 20px 4px;
+    padding-block: 8px; display: flex; flex-direction: column; gap: 18px;
   }
-  .notes .meta { font: 400 12px/1.4 var(--mono); color: var(--muted); }
+  .sc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    font: 400 12px/1.4 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sc-clock { font-size: 13px; color: var(--ink); }
+  .sc-clock.over { color: var(--cite); }
+  .sc-label { font: 600 11px/1 var(--mono); color: var(--cite); letter-spacing: 0.12em; text-transform: uppercase; }
+  .sc-screen { font: 700 15px/1.45 var(--sans); color: var(--ink); margin-top: 6px; }
+  .sc-say { font: 500 clamp(17px, 1.45vw, 23px)/1.75 var(--sans); color: var(--ink); margin: 0; text-wrap: pretty; }
+  .sc-time { height: 3px; background: var(--rule); border-radius: 2px; overflow: hidden; }
+  .sc-time span { display: block; height: 100%; width: 0; background: var(--marker); }
+  .sc-next { border-top: 1px solid var(--rule); padding-top: 14px; display: grid; gap: 6px; color: var(--muted); }
+  .sc-next .sc-screen { color: var(--muted); }
+  .sc-next p { margin: 0; font-size: 14px; line-height: 1.65; }
+
+  /* Captions: the spoken line under the slide — for recording and the Remotion preview. */
+  .caption {
+    position: absolute; left: 10cqi; right: 10cqi; bottom: 6.2cqi; text-align: center;
+    font: 500 1.85cqi/1.5 var(--sans); color: var(--ink); background: var(--paper-2);
+    border: 1px solid var(--rule); border-radius: 0.5cqi; padding: 0.7cqi 1.4cqi; pointer-events: none;
+    text-wrap: balance;
+  }
+  @media (max-width: 900px) {
+    .app[data-view="presenter"] { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100%; }
+    .script { border-left: 0; border-top: 1px solid var(--rule); padding-inline: 0; padding-block: 14px; }
+  }
 
   .grid {
     position: fixed; inset: 0; z-index: 10; background: var(--paper); overflow: auto;
@@ -219,25 +246,38 @@
   }
 </style>
 
-<div class="app" id="app">
+<div class="app" id="app" data-view="presenter">
+  <div class="main">
   <div class="stage" id="stage" tabindex="0" role="region" aria-roledescription="슬라이드" aria-live="polite">
     <div class="ruler" id="ruler" aria-hidden="true"></div>
     <div id="slides"></div>
+    <div class="caption" id="caption" hidden></div>
     <div class="foot" aria-hidden="true"><span id="where"></span><span class="n" id="count"></span></div>
   </div>
   <div class="bar" role="toolbar" aria-label="발표 조작">
     <button type="button" id="prev">이전<kbd>←</kbd></button>
     <button type="button" id="next">다음<kbd>→</kbd></button>
     <button type="button" id="play" aria-pressed="false">자동 재생<kbd>P</kbd></button>
-    <button type="button" id="noteBtn" aria-pressed="false">대본<kbd>N</kbd></button>
+    <button type="button" id="noteBtn" aria-pressed="true">대본<kbd>N</kbd></button>
+    <button type="button" id="capBtn" aria-pressed="false">자막<kbd>C</kbd></button>
     <button type="button" id="gridBtn">전체 목록<kbd>G</kbd></button>
     <button type="button" id="fs">전체 화면<kbd>F</kbd></button>
   </div>
-  <div class="notes" id="notes" hidden>
-    <div class="meta" id="noteMeta"></div>
-    <div id="noteSay"></div>
-    <div class="meta" id="noteNext"></div>
   </div>
+  <aside class="script" id="script" aria-label="대본">
+    <div class="sc-head"><span id="scMeta"></span><span class="sc-clock" id="scClock">00:00</span></div>
+    <div>
+      <div class="sc-label">지금 화면</div>
+      <div class="sc-screen" id="scScreen"></div>
+    </div>
+    <p class="sc-say" id="scSay"></p>
+    <div class="sc-time" aria-hidden="true"><span id="scTime"></span></div>
+    <div class="sc-next">
+      <div class="sc-label">다음</div>
+      <div class="sc-screen" id="scNextScreen"></div>
+      <p id="scNextSay"></p>
+    </div>
+  </aside>
 </div>
 <div class="grid" id="grid" hidden>
   <div class="head"><span>전체 슬라이드</span><button type="button" id="gridClose" class="tile" style="min-height:0;flex-direction:row">닫기 · Esc</button></div>
@@ -292,7 +332,7 @@ const KIND = {
       const v = Number(String(r[0]).replace(/,/g, ""));
       return `<div class="r"><span class="l">${esc(r[1])}</span><div class="track"><div class="bar" style="--w:${(v / max) * 100}%;--i:${i}"></div></div><span class="v">${esc(r[0])}</span></div>`;
     }).join("");
-    return `<div class="eyebrow" ${a()}>바이포탈 엔도스코피 진료지침</div><div class="rows" ${a()}>${rows}</div>`;
+    return `<div class="eyebrow" ${a()}>Biportal endoscopy guideline</div><div class="rows" ${a()}>${rows}</div>`;
   },
   url: (s) => `<div class="eyebrow" ${a()}>공개 저장소</div><div class="u" ${a()}><mark>${esc(s.url)}</mark></div><p class="sub" ${a()}>${esc(s.sub)}</p>`,
   qa: (s) => `<div class="eyebrow" ${a()}>질문이 나오면</div><p class="big" ${a()}>${esc(s.q)}</p><p class="sub" ${a()}>${br(s.a)}</p>`,
@@ -347,10 +387,15 @@ function go(i) {
   const s = SLIDES[cur];
   $("where").textContent = `§ ${s.section}`;
   $("count").textContent = `${String(s.id).padStart(2, "0")} / ${SLIDES.length}`;
-  $("noteMeta").textContent = `${s.id} · ${s.section} · ${s.sec}초`;
-  $("noteSay").textContent = s.say;
+  $("scMeta").textContent = `${s.id} / ${SLIDES.length} · ${s.section} · ${s.sec}초`;
+  $("scScreen").textContent = screenText(s);
+  $("scSay").textContent = s.say;
+  $("caption").textContent = s.say;
   const nx = SLIDES[cur + 1];
-  $("noteNext").textContent = nx ? `다음 → ${String(nx.text || nx.title || nx.n || nx.q || nx.url || (nx.items || []).join(" · ") || nx.kind).replace(/\n/g, " ")}` : "마지막 장";
+  $("scNextScreen").textContent = nx ? screenText(nx) : "마지막 장";
+  $("scNextSay").textContent = nx ? nx.say : "";
+  slideStart = Date.now();
+  if (started === null && cur > 0) started = Date.now();
   [...tiles.children].forEach((t, k) => t.setAttribute("aria-current", k === cur ? "true" : "false"));
   try { history.replaceState(null, "", `#s${s.id}`); } catch (e) {}
   if (playing) schedule();
@@ -367,12 +412,39 @@ function schedule() {
 }
 function setPlaying(v) {
   playing = v; $("play").setAttribute("aria-pressed", String(v));
+  if (v && started === null) started = Date.now();
   if (v) schedule(); else clearTimeout(timer);
 }
 function toggleNotes() {
-  const box = $("notes"); box.hidden = !box.hidden;
-  $("noteBtn").setAttribute("aria-pressed", String(!box.hidden));
+  const app = $("app");
+  const on = app.dataset.view !== "presenter";
+  app.dataset.view = on ? "presenter" : "audience";
+  $("script").hidden = !on;
+  $("noteBtn").setAttribute("aria-pressed", String(on));
 }
+function toggleCaptions() {
+  const c = $("caption"); c.hidden = !c.hidden;
+  $("capBtn").setAttribute("aria-pressed", String(!c.hidden));
+}
+function screenText(s) {
+  const t = s.text || s.title || (s.n && `${s.n} ${s.label}`) || s.q || s.url || (s.items || []).join(" · ")
+    || (s.rows && s.rows.map((r) => `${r[0]} ${r[1]}`).join(" → ")) || (s.good && `✕ ${s.bad} → ${s.good}`)
+    || (s.a && `${s.a} → ${s.b}`) || (s.lines && "노트 예시") || s.kind;
+  return String(t).replace(/\n/g, " ");
+}
+// Clocks: elapsed since the first slide change (or autoplay) against the planned total; a bar for
+// the current slide's planned seconds.
+const planned = SLIDES.filter((s) => s.section !== "부록").reduce((n, s) => n + s.sec, 0);
+let started = null, slideStart = Date.now();
+const mmss = (ms) => { const t = Math.max(0, Math.round(ms / 1000)); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+setInterval(() => {
+  const el = started === null ? 0 : Date.now() - started;
+  const clock = $("scClock");
+  clock.textContent = `${mmss(el)} / ${mmss(planned * 1000)}`;
+  clock.classList.toggle("over", el > planned * 1000);
+  const frac = Math.min(1, (Date.now() - slideStart) / (SLIDES[cur].sec * 1000));
+  $("scTime").style.width = `${frac * 100}%`;
+}, 250);
 function openGrid() { $("grid").hidden = false; (tiles.children[cur] || tiles.children[0]).focus(); }
 function closeGrid() { $("grid").hidden = true; $("stage").focus(); }
 async function toggleFs() {
@@ -386,6 +458,7 @@ $("prev").addEventListener("click", prev);
 $("next").addEventListener("click", next);
 $("play").addEventListener("click", () => setPlaying(!playing));
 $("noteBtn").addEventListener("click", toggleNotes);
+$("capBtn").addEventListener("click", toggleCaptions);
 $("gridBtn").addEventListener("click", openGrid);
 $("gridClose").addEventListener("click", closeGrid);
 $("fs").addEventListener("click", toggleFs);
@@ -410,6 +483,7 @@ document.addEventListener("keydown", (e) => {
     case "End": e.preventDefault(); go(SLIDES.length - 1); break;
     case "p": case "P": setPlaying(!playing); break;
     case "n": case "N": toggleNotes(); break;
+    case "c": case "C": toggleCaptions(); break;
     case "g": case "G": openGrid(); break;
     case "f": case "F": toggleFs(); break;
   }

@@ -20,8 +20,9 @@ Kinds (each is one visual template in deck.html):
   qa       q, a                           — appendix, only when asked
   end      text, sub
 
-Naming rule for this project: never write the abbreviation for the technique — Korean text says
-바이포탈 엔도스코피.
+Naming rule for this project: never write the abbreviation for the technique. Medical and research
+terms stay in English inside the Korean text (owner's preference, 2026-09-24): Biportal endoscopy,
+dural tear, abstract, full text, evidence table, guideline, systematic review.
 """
 
 SLIDES = [
@@ -37,8 +38,8 @@ SLIDES = [
          say="먼저 문제부터 보겠습니다."),
     dict(kind="say", section="문제", text="논문,\n몇 편이나 읽으세요?",
          say="질문 하나 드리겠습니다. 한 주제로 논문을 몇 편이나 읽어보셨어요?"),
-    dict(kind="num", section="문제", n="1,605", label="편 — 진료지침 하나에 검색된 논문",
-         say="저는 최근 바이포탈 엔도스코피 진료지침을 만들었습니다. PubMed에서 검색된 논문이 "
+    dict(kind="num", section="문제", n="1,605", label="편 — guideline 하나에 검색된 논문",
+         say="저는 최근 Biportal endoscopy guideline을 만들었습니다. PubMed에서 검색된 논문이 "
              "1,605편이었습니다."),
     dict(kind="say", section="문제", text="다 읽을 수\n있을까요?", hl="다",
          say="이걸 사람이 다 읽을 수 있을까요? 솔직히 불가능합니다."),
@@ -79,7 +80,7 @@ SLIDES = [
              "## Notes",
              "내 메모",
          ],
-         say="노트는 이렇게 생겼습니다. 맨 위에 저자, 연도, DOI, PMID가 표준 서지 형식으로 들어갑니다. 그 아래로 AI가 쓴 구조화 요약과 제 메모."),
+         say="노트는 이렇게 생겼습니다. 맨 위에 저자, 연도, DOI, PMID가 표준 서지 형식으로 들어갑니다. 그 아래로 AI가 쓴 structured summary와 제 메모."),
     dict(kind="say", section="아이디어", text="그냥\n텍스트 파일입니다",
          say="특별한 데이터베이스가 아닙니다. 그냥 텍스트 파일, 마크다운이에요."),
     dict(kind="list", section="아이디어", items=["서버 없음", "계정 없음", "내 폴더에 그대로"],
@@ -96,7 +97,7 @@ SLIDES = [
          items=["DOI · PMID", "PubMed 검색", "PDF · Zotero 파일"],
          say="논문을 넣는 길은 여러 가지입니다. DOI나 PMID를 붙여넣어도 되고 플러그인 안에서 PubMed를 검색해도 됩니다. PDF를 넣거나 Zotero·EndNote에서 내보낸 파일을 그대로 가져와도 되고요."),
     dict(kind="say", section="흐름", text="넣으면\nAI가 요약합니다",
-         say="넣으면 AI가 배경, 방법, 결과, 결론으로 나눠 요약합니다. 원문이 공개된 논문은 전문을 읽고 아니면 초록을 읽어요."),
+         say="넣으면 AI가 Background, Methods, Results, Conclusion으로 나눠 요약합니다. 원문이 공개된 논문은 full text를 읽고 아니면 abstract를 읽어요."),
     dict(kind="say", section="흐름", text="주제 태그는\nMeSH로", hl="MeSH",
          say="주제 태그는 PubMed의 MeSH 용어로 자동으로 붙습니다. 그래서 Obsidian 그래프에서 주제별로 뭉쳐 보이죠."),
     dict(kind="say", section="흐름", text="검색은\n단어와 뜻을 함께", hl="뜻",
@@ -104,8 +105,8 @@ SLIDES = [
     dict(kind="eq", section="흐름", a="MI", b="myocardial infarction",
          say="그래서 MI로 검색해도 myocardial infarction 논문이 잡힙니다."),
     dict(kind="cite", section="흐름",
-         q="수술 후 합병증은 무엇이 보고됐나?",
-         a="경막 파열과 수술 후 혈종이 주로 보고됐다 [1][2].",
+         q="어떤 complication이 보고됐나?",
+         a="Dural tear와 postoperative hematoma가 주로 보고됐다 [1][2].",
          src=["[1] 내 서재의 노트 → 결과 구절", "[2] 내 서재의 노트 → 결과 구절"],
          say="질문하면 답의 문장마다 번호가 붙습니다. 번호를 누르면 내 서재에 있는 논문의 실제 구절로 가요. 화면은 예시입니다."),
     dict(kind="say", section="흐름", text="근거가 없으면\n없다고", hl="없다고",
@@ -120,29 +121,29 @@ SLIDES = [
          say="마지막은 인용 그래프입니다. 내 논문들이 여러 번 인용하는데 내 서재에는 없는 논문, 제가 놓친 핵심 논문을 찾아줍니다."),
 
     # ── 4 · 실전 ─────────────────────────────────────────────────────────────
-    dict(kind="section", section="실전", no="4", title="실전: 진료지침",
+    dict(kind="section", section="실전", no="4", title="실전: Guideline",
          say="이제 실제로 써본 이야기입니다."),
-    dict(kind="say", section="실전", text="바이포탈 엔도스코피\n진료지침",
-         say="바이포탈 엔도스코피 임상진료지침을 이 도구로 만들었습니다."),
+    dict(kind="say", section="실전", text="Biportal endoscopy\nguideline",
+         say="Biportal endoscopy clinical practice guideline을 이 도구로 만들었습니다."),
     dict(kind="num", section="실전", n="1,605", label="편 검색",
          say="PubMed 검색으로 1,605편을 모았습니다. 월 단위로 나눠 스크립트가 넣었어요."),
-    dict(kind="num", section="실전", n="1,139", label="편 스크리닝",
-         say="범위를 정리하고 1,139편을 스크리닝했습니다."),
+    dict(kind="num", section="실전", n="1,139", label="편 screening",
+         say="범위를 정리하고 1,139편을 screening했습니다."),
     dict(kind="num", section="실전", n="830", label="편 포함",
-         say="초록을 기준으로 830편을 포함했죠."),
-    dict(kind="num", section="실전", n="609", label="편 전문 요약",
-         say="그중 전문을 구한 609편은 AI가 구조화해서 요약했습니다."),
-    dict(kind="num", section="실전", n="1,366", label="줄 근거표",
-         say="요약에서 근거표 1,366줄을 뽑았고요."),
+         say="Abstract를 기준으로 830편을 포함했죠."),
+    dict(kind="num", section="실전", n="609", label="편 full text 요약",
+         say="그중 full text를 구한 609편은 AI가 구조화해서 요약했습니다."),
+    dict(kind="num", section="실전", n="1,366", label="줄 evidence table",
+         say="요약에서 evidence table 1,366줄을 뽑았고요."),
     dict(kind="num", section="실전", n="33", label="개 합의 질문",
          say="그리고 패널이 투표할 합의 질문 33개가 나왔습니다."),
     dict(kind="funnel", section="실전",
-         rows=[["1,605", "검색"], ["1,139", "스크리닝"], ["830", "포함"], ["609", "전문 요약"], ["33", "합의 질문"]],
+         rows=[["1,605", "검색"], ["1,139", "Screening"], ["830", "포함"], ["609", "Full text 요약"], ["33", "합의 질문"]],
          say="한눈에 보면 이렇습니다. 1,605편에서 33개 질문까지."),
-    dict(kind="say", section="실전", text="PRISMA 흐름도도\n자동으로", hl="PRISMA",
-         say="체계적 문헌고찰에 필요한 PRISMA 흐름도도 플러그인이 숫자를 세서 그려줍니다."),
-    dict(kind="say", section="실전", text="스크리닝은\n키보드로 한 편씩",
-         say="사람이 직접 스크리닝할 때는 한 편씩 초록을 봅니다. I는 포함, E는 제외. 키보드로 판정해요."),
+    dict(kind="say", section="실전", text="PRISMA flow diagram도\n자동으로", hl="PRISMA",
+         say="Systematic review에 필요한 PRISMA flow diagram도 플러그인이 숫자를 세서 그려줍니다."),
+    dict(kind="say", section="실전", text="Screening은\n키보드로 한 편씩",
+         say="사람이 직접 screening할 때는 한 편씩 abstract를 봅니다. I는 포함, E는 제외. 키보드로 판정해요."),
     dict(kind="say", section="실전", text="AI는 초안,\n결정은 사람", hl="사람",
          say="AI가 만든 건 초안입니다. 포함 여부도 권고도 최종 결정은 패널이 합니다."),
 
@@ -167,8 +168,8 @@ SLIDES = [
          say="중복 논문을 합치고 철회된 논문을 표시하고 무료로 공개된 PDF를 한꺼번에 받아옵니다."),
     dict(kind="say", section="비교", text="그리고\n그 너머", hl="너머",
          say="그리고 그걸 넘어섭니다."),
-    dict(kind="list", section="비교", items=["뜻으로 찾기", "출처 달린 답", "스크리닝 · PRISMA"],
-         say="뜻으로 찾고 출처 달린 답을 받습니다. 스크리닝과 PRISMA까지 한 곳에서 하죠."),
+    dict(kind="list", section="비교", items=["뜻으로 찾기", "출처 달린 답", "Screening · PRISMA"],
+         say="뜻으로 찾고 출처 달린 답을 받습니다. Screening과 PRISMA까지 한 곳에서 하죠."),
     dict(kind="say", section="비교", text="언제든\n나갈 수 있습니다",
          say="그리고 언제든 나갈 수 있습니다. BibTeX, RIS, CSL-JSON으로 전부 내보냅니다. 데이터는 처음부터 "
              "제 파일이었으니까요."),

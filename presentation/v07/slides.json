@@ -31,9 +31,9 @@
   "kind": "num",
   "section": "문제",
   "n": "1,605",
-  "label": "편 — 진료지침 하나에 검색된 논문",
-  "say": "저는 최근 바이포탈 엔도스코피 진료지침을 만들었습니다. PubMed에서 검색된 논문이 1,605편이었습니다.",
-  "sec": 10.4
+  "label": "편 — guideline 하나에 검색된 논문",
+  "say": "저는 최근 Biportal endoscopy guideline을 만들었습니다. PubMed에서 검색된 논문이 1,605편이었습니다.",
+  "sec": 13.0
  },
  {
   "id": 5,
@@ -147,8 +147,8 @@
    "## Notes",
    "내 메모"
   ],
-  "say": "노트는 이렇게 생겼습니다. 맨 위에 저자, 연도, DOI, PMID가 표준 서지 형식으로 들어갑니다. 그 아래로 AI가 쓴 구조화 요약과 제 메모.",
-  "sec": 12.0
+  "say": "노트는 이렇게 생겼습니다. 맨 위에 저자, 연도, DOI, PMID가 표준 서지 형식으로 들어갑니다. 그 아래로 AI가 쓴 structured summary와 제 메모.",
+  "sec": 14.4
  },
  {
   "id": 17,
@@ -219,8 +219,8 @@
   "kind": "say",
   "section": "흐름",
   "text": "넣으면\nAI가 요약합니다",
-  "say": "넣으면 AI가 배경, 방법, 결과, 결론으로 나눠 요약합니다. 원문이 공개된 논문은 전문을 읽고 아니면 초록을 읽어요.",
-  "sec": 10.0
+  "say": "넣으면 AI가 Background, Methods, Results, Conclusion으로 나눠 요약합니다. 원문이 공개된 논문은 full text를 읽고 아니면 abstract를 읽어요.",
+  "sec": 17.6
  },
  {
   "id": 24,
@@ -253,8 +253,8 @@
   "id": 27,
   "kind": "cite",
   "section": "흐름",
-  "q": "수술 후 합병증은 무엇이 보고됐나?",
-  "a": "경막 파열과 수술 후 혈종이 주로 보고됐다 [1][2].",
+  "q": "어떤 complication이 보고됐나?",
+  "a": "Dural tear와 postoperative hematoma가 주로 보고됐다 [1][2].",
   "src": [
    "[1] 내 서재의 노트 → 결과 구절",
    "[2] 내 서재의 노트 → 결과 구절"
@@ -311,7 +311,7 @@
   "kind": "section",
   "section": "실전",
   "no": "4",
-  "title": "실전: 진료지침",
+  "title": "실전: Guideline",
   "say": "이제 실제로 써본 이야기입니다.",
   "sec": 3.4
  },
@@ -319,9 +319,9 @@
   "id": 34,
   "kind": "say",
   "section": "실전",
-  "text": "바이포탈 엔도스코피\n진료지침",
-  "say": "바이포탈 엔도스코피 임상진료지침을 이 도구로 만들었습니다.",
-  "sec": 6.0
+  "text": "Biportal endoscopy\nguideline",
+  "say": "Biportal endoscopy clinical practice guideline을 이 도구로 만들었습니다.",
+  "sec": 11.4
  },
  {
   "id": 35,
@@ -337,9 +337,9 @@
   "kind": "num",
   "section": "실전",
   "n": "1,139",
-  "label": "편 스크리닝",
-  "say": "범위를 정리하고 1,139편을 스크리닝했습니다.",
-  "sec": 5.0
+  "label": "편 screening",
+  "say": "범위를 정리하고 1,139편을 screening했습니다.",
+  "sec": 6.0
  },
  {
   "id": 37,
@@ -347,26 +347,26 @@
   "section": "실전",
   "n": "830",
   "label": "편 포함",
-  "say": "초록을 기준으로 830편을 포함했죠.",
-  "sec": 4.0
+  "say": "Abstract를 기준으로 830편을 포함했죠.",
+  "sec": 5.2
  },
  {
   "id": 38,
   "kind": "num",
   "section": "실전",
   "n": "609",
-  "label": "편 전문 요약",
-  "say": "그중 전문을 구한 609편은 AI가 구조화해서 요약했습니다.",
-  "sec": 6.0
+  "label": "편 full text 요약",
+  "say": "그중 full text를 구한 609편은 AI가 구조화해서 요약했습니다.",
+  "sec": 7.2
  },
  {
   "id": 39,
   "kind": "num",
   "section": "실전",
   "n": "1,366",
-  "label": "줄 근거표",
-  "say": "요약에서 근거표 1,366줄을 뽑았고요.",
-  "sec": 4.2
+  "label": "줄 evidence table",
+  "say": "요약에서 evidence table 1,366줄을 뽑았고요.",
+  "sec": 6.2
  },
  {
   "id": 40,
@@ -388,7 +388,7 @@
    ],
    [
     "1,139",
-    "스크리닝"
+    "Screening"
    ],
    [
     "830",
@@ -396,7 +396,7 @@
    ],
    [
     "609",
-    "전문 요약"
+    "Full text 요약"
    ],
    [
     "33",
@@ -410,18 +410,18 @@
   "id": 42,
   "kind": "say",
   "section": "실전",
-  "text": "PRISMA 흐름도도\n자동으로",
+  "text": "PRISMA flow diagram도\n자동으로",
   "hl": "PRISMA",
-  "say": "체계적 문헌고찰에 필요한 PRISMA 흐름도도 플러그인이 숫자를 세서 그려줍니다.",
-  "sec": 8.0
+  "say": "Systematic review에 필요한 PRISMA flow diagram도 플러그인이 숫자를 세서 그려줍니다.",
+  "sec": 11.4
  },
  {
   "id": 43,
   "kind": "say",
   "section": "실전",
-  "text": "스크리닝은\n키보드로 한 편씩",
-  "say": "사람이 직접 스크리닝할 때는 한 편씩 초록을 봅니다. I는 포함, E는 제외. 키보드로 판정해요.",
-  "sec": 8.2
+  "text": "Screening은\n키보드로 한 편씩",
+  "say": "사람이 직접 screening할 때는 한 편씩 abstract를 봅니다. I는 포함, E는 제외. 키보드로 판정해요.",
+  "sec": 10.4
  },
  {
   "id": 44,
@@ -524,10 +524,10 @@
   "items": [
    "뜻으로 찾기",
    "출처 달린 답",
-   "스크리닝 · PRISMA"
+   "Screening · PRISMA"
   ],
-  "say": "뜻으로 찾고 출처 달린 답을 받습니다. 스크리닝과 PRISMA까지 한 곳에서 하죠.",
-  "sec": 7.6
+  "say": "뜻으로 찾고 출처 달린 답을 받습니다. Screening과 PRISMA까지 한 곳에서 하죠.",
+  "sec": 8.6
  },
  {
   "id": 55,
