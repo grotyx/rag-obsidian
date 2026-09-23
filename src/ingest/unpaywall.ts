@@ -1,4 +1,5 @@
 import { requestUrl } from "obsidian";
+import { arr, rec, str } from "../util/json";
 
 export interface OAResult {
   isOA: boolean;
@@ -24,17 +25,17 @@ export async function findOpenAccess(doi: string, email: string): Promise<OAResu
     throw: false,
   });
   if (res.status >= 400 || !res.json) return null;
-  const j = res.json;
-  const best = j.best_oa_location;
+  const j = rec(res.json);
+  const best = rec(j.best_oa_location);
   // `best_oa_location` often has only a landing page (for PLOS it is just the DOI link) while a
   // repository copy in `oa_locations` carries the actual PDF — scan them all before giving up.
-  const locations = [best, ...(Array.isArray(j.oa_locations) ? j.oa_locations : [])].filter(Boolean);
-  const withPdf = locations.find((l: { url_for_pdf?: string }) => l.url_for_pdf);
+  const locations = [j.best_oa_location, ...arr(j.oa_locations)].filter(Boolean).map(rec);
+  const withPdf = locations.find((l) => str(l.url_for_pdf));
   return {
     isOA: !!j.is_oa,
-    pdfUrl: withPdf?.url_for_pdf || undefined,
-    landingUrl: best?.url_for_landing_page || best?.url || undefined,
-    license: best?.license || undefined,
-    version: best?.version || withPdf?.version || undefined,
+    pdfUrl: str(withPdf?.url_for_pdf) || undefined,
+    landingUrl: str(best.url_for_landing_page) || str(best.url) || undefined,
+    license: str(best.license) || undefined,
+    version: str(best.version) || str(withPdf?.version) || undefined,
   };
 }

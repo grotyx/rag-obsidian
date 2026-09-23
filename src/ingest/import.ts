@@ -1,4 +1,5 @@
 import { CSLItem, CSLName } from "../types";
+import { rec } from "../util/json";
 
 /** Parse a Zotero/EndNote/Mendeley export (CSL-JSON, BibTeX, or RIS) into CSL items. */
 export function parseLibrary(text: string): CSLItem[] {
@@ -25,10 +26,10 @@ export function parseLibrary(text: string): CSLItem[] {
 
 // ---------- CSL-JSON ----------
 function parseCslJson(text: string): CSLItem[] {
-  const data = JSON.parse(text);
-  const arr = Array.isArray(data) ? data : [data];
-  return arr.map((raw) => {
-    const it = { ...raw } as CSLItem;
+  const data: unknown = JSON.parse(text);
+  const list = Array.isArray(data) ? data : [data];
+  return list.map((raw) => {
+    const it = { ...rec(raw) } as CSLItem;
     delete (it as Record<string, unknown>).id; // citekey is regenerated
     if (!it.type) it.type = "article-journal";
     return it;

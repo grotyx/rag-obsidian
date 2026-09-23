@@ -9,14 +9,39 @@ import "pdfjs-dist/build/pdf.worker.mjs";
 
 import { cleanDoi } from "./metadata";
 import { STASH_MAX_CHARS } from "./pdfStash";
+import { arr, num, rec, str } from "../util/json";
+
+/** The pdfjs types below describe only the fields this file actually reads off the library's
+ *  (untyped) return values — not the full pdfjs API. */
+interface PdfTextContent {
+  items: unknown[];
+}
+
+interface PdfAnnotation {
+  subtype?: unknown;
+  quadPoints?: unknown;
+  rect?: unknown;
+  contentsObj?: unknown;
+  contents?: unknown;
+}
+
+interface PdfPage {
+  getTextContent(): Promise<PdfTextContent>;
+  getAnnotations(): Promise<unknown[]>;
+}
+
+interface PdfDocument {
+  numPages: unknown;
+  getPage(n: number): Promise<PdfPage>;
+}
 
 export type PdfjsLike = {
   GlobalWorkerOptions: { workerSrc: string };
-  getDocument: (opts: any) => { promise: Promise<any> };
+  getDocument: (opts: { data: Uint8Array; isEvalSupported: boolean }) => { promise: Promise<PdfDocument> };
 };
 
 let _pdfjs: PdfjsLike | null = null;
-let _loader: () => Promise<PdfjsLike> = async () => bundledPdfjs;
+let _loader: () => Promise<PdfjsLike> = async () => bundledPdfjs as PdfjsLike;
 
 /** Override the pdfjs loader (used by tests to inject the local Node build). */
 export function setPdfjsLoader(fn: () => Promise<PdfjsLike>): void {
@@ -32,12 +57,12 @@ async function getPdfjs(): Promise<PdfjsLike> {
 export async function extractPdfText(data: ArrayBuffer): Promise<{ text: string; pages: number }> {
   const pdfjs = await getPdfjs();
   const doc = await pdfjs.getDocument({ data: new Uint8Array(data), isEvalSupported: false }).promise;
-  const pages: number = doc.numPages;
+  const pages = num(doc.numPages) ?? 0;
   let text = "";
   for (let i = 1; i <= pages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    text += content.items.map((it: any) => ("str" in it ? it.str : "")).join(" ") + "\n\n";
+    text += content.items.map((it) => str(rec(it).str)).join(" ") + "\n\n";
     if (text.length > STASH_MAX_CHARS) break; // safety cap for huge PDFs
   }
   const trimmed = text.trim();
@@ -52,33 +77,43 @@ export interface PdfHighlight {
   text: string; // highlighted text (for highlights) or the note body (for sticky notes)
 }
 
-function quadRects(ann: any): number[][] {
+function quadPoint(v: unknown): { x: number; y: number } {
+  const p = rec(v);
+  return { x: num(p.x) ?? 0, y: num(p.y) ?? 0 };
+}
+
+function bbox(xs: number[], ys: number[]): number[] {
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+function quadRects(ann: PdfAnnotation): number[][] {
   // pdfjs ≥ 4 hands quadPoints over as a Float32Array (flat x/y octets); older builds as an Array.
-  const q = ArrayBuffer.isView(ann.quadPoints) ? Array.from(ann.quadPoints as ArrayLike<number>) : ann.quadPoints;
+  const raw = ann.quadPoints;
+  const q: unknown = ArrayBuffer.isView(raw) ? Array.from(raw as unknown as ArrayLike<number>) : raw;
   const rects: number[][] = [];
   if (Array.isArray(q) && q.length) {
     if (typeof q[0] === "number") {
-      for (let i = 0; i + 8 <= q.length; i += 8) {
-        const xs = [q[i], q[i + 2], q[i + 4], q[i + 6]];
-        const ys = [q[i + 1], q[i + 3], q[i + 5], q[i + 7]];
-        rects.push([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
+      const nums = q as number[];
+      for (let i = 0; i + 8 <= nums.length; i += 8) {
+        rects.push(bbox([nums[i], nums[i + 2], nums[i + 4], nums[i + 6]], [nums[i + 1], nums[i + 3], nums[i + 5], nums[i + 7]]));
       }
     } else if (Array.isArray(q[0])) {
-      for (const quad of q) {
-        const xs = quad.map((p: any) => p.x);
-        const ys = quad.map((p: any) => p.y);
-        rects.push([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
+      for (const quad of q as unknown[][]) {
+        const pts = quad.map(quadPoint);
+        rects.push(bbox(pts.map((p) => p.x), pts.map((p) => p.y)));
       }
     } else if (q[0] && typeof q[0] === "object") {
-      for (let i = 0; i + 4 <= q.length; i += 4) {
-        const pts = q.slice(i, i + 4);
-        const xs = pts.map((p) => p.x);
-        const ys = pts.map((p) => p.y);
-        rects.push([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
+      const pts = (q as unknown[]).map(quadPoint);
+      for (let i = 0; i + 4 <= pts.length; i += 4) {
+        const slice = pts.slice(i, i + 4);
+        rects.push(bbox(slice.map((p) => p.x), slice.map((p) => p.y)));
       }
     }
   }
-  if (!rects.length && Array.isArray(ann.rect)) rects.push(ann.rect);
+  if (!rects.length) {
+    const rect = arr(ann.rect);
+    if (rect.length && rect.every((n) => typeof n === "number")) rects.push(rect as number[]);
+  }
   return rects;
 }
 
@@ -88,21 +123,30 @@ export async function extractPdfHighlights(data: ArrayBuffer): Promise<PdfHighli
   const doc = await pdfjs.getDocument({ data: new Uint8Array(data), isEvalSupported: false }).promise;
   const out: PdfHighlight[] = [];
   const MARKUP = new Set(["Highlight", "Underline", "StrikeOut", "Squiggly"]);
-  for (let p = 1; p <= doc.numPages; p++) {
+  const numPages = num(doc.numPages) ?? 0;
+  for (let p = 1; p <= numPages; p++) {
     const page = await doc.getPage(p);
-    const anns: any[] = await page.getAnnotations();
-    if (!anns.some((a) => MARKUP.has(a.subtype) || a.subtype === "Text" || a.subtype === "FreeText")) continue;
+    const anns = (await page.getAnnotations()).map(rec) as PdfAnnotation[];
+    const markupOrNote = (a: PdfAnnotation) => {
+      const s = str(a.subtype);
+      return MARKUP.has(s) || s === "Text" || s === "FreeText";
+    };
+    if (!anns.some(markupOrNote)) continue;
     const content = await page.getTextContent();
-    const items = (content.items as any[])
-      .filter((it) => "str" in it && it.str.trim())
+    const items = content.items
+      .map(rec)
+      .filter((it) => str(it.str).trim())
       .map((it) => {
-        const x = it.transform[4];
-        const y = it.transform[5];
-        return { str: it.str as string, cx: x + (it.width || 0) / 2, cy: y + (it.height || 0) / 2 };
+        const transform = Array.isArray(it.transform) ? (it.transform as unknown[]) : [];
+        const x = num(transform[4]) ?? 0;
+        const y = num(transform[5]) ?? 0;
+        return { str: str(it.str), cx: x + (num(it.width) ?? 0) / 2, cy: y + (num(it.height) ?? 0) / 2 };
       });
     for (const a of anns) {
-      const note = (a.contentsObj?.str ?? a.contents ?? "").trim();
-      if (MARKUP.has(a.subtype)) {
+      const contentsObj = rec(a.contentsObj);
+      const note = str(contentsObj.str ?? a.contents).trim();
+      const subtype = str(a.subtype);
+      if (MARKUP.has(subtype)) {
         const rects = quadRects(a);
         const picked = items
           .filter((t) => rects.some((r) => t.cx >= r[0] - 1 && t.cx <= r[2] + 1 && t.cy >= r[1] - 1 && t.cy <= r[3] + 1))
@@ -110,7 +154,7 @@ export async function extractPdfHighlights(data: ArrayBuffer): Promise<PdfHighli
         const text = picked.join(" ").replace(/\s+/g, " ").trim();
         if (text) out.push({ page: p, type: "highlight", text: note ? `${text} — ${note}` : text });
         else if (note) out.push({ page: p, type: "note", text: note });
-      } else if ((a.subtype === "Text" || a.subtype === "FreeText") && note) {
+      } else if ((subtype === "Text" || subtype === "FreeText") && note) {
         out.push({ page: p, type: "note", text: note });
       }
     }

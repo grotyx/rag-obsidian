@@ -1,3 +1,9 @@
+// Obsidian runs plugin code in a browser window; modules call `window.setTimeout` for popout
+// compatibility, so give Node the same global.
+if (typeof (globalThis as { window?: unknown }).window === "undefined") {
+  (globalThis as { window?: unknown }).window = globalThis;
+}
+
 // Minimal stand-in for the parts of the Obsidian API the non-UI modules use,
 // so the real plugin source can run in Node for integration testing.
 import * as yaml from "js-yaml";

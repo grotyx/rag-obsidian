@@ -1,6 +1,7 @@
 import { requestUrl } from "obsidian";
 import { normalizeDoi, shortId } from "../graph/openalex";
 import { CSLItem } from "../types";
+import { rec, str } from "../util/json";
 
 const OPENALEX = "https://api.openalex.org";
 
@@ -21,8 +22,9 @@ export async function checkRetraction(item: CSLItem, mailto = ""): Promise<Retra
   url += "?select=is_retracted,title" + (mailto ? `&mailto=${encodeURIComponent(mailto)}` : "");
   const res = await requestUrl({ url, throw: false });
   if (res.status >= 400 || !res.json) return null;
+  const j = rec(res.json);
   // Publishers retitle withdrawn papers "RETRACTED: …" / "Retracted article: …"; a paper *about*
   // retractions ("Retracted publications in spine surgery") must not match.
-  const retracted = !!res.json.is_retracted || /^\s*retracted(\s+article)?:/i.test(String(res.json.title || ""));
+  const retracted = !!j.is_retracted || /^\s*retracted(\s+article)?:/i.test(str(j.title));
   return { retracted, source: "openalex" };
 }

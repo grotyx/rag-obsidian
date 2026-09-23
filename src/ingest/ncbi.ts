@@ -9,6 +9,7 @@ let chain: Promise<void> = Promise.resolve();
 let lastRelease = 0;
 let lastGap = 0;
 
+
 /** Milliseconds between consecutive requests, a little under the published ceiling. */
 export function ncbiGapMs(hasApiKey: boolean): number {
   return hasApiKey ? 110 : 350;
@@ -23,7 +24,7 @@ export function ncbiGate(hasApiKey: boolean): Promise<void> {
     // request, so if a keyless call follows a keyed one, spacing it by its own 110 ms would put
     // two requests inside NCBI's keyless 3/s window — which is what gets an address throttled.
     const owed = Math.max(gap, lastGap) - (Date.now() - lastRelease);
-    if (owed > 0) await new Promise((r) => setTimeout(r, owed));
+    if (owed > 0) await new Promise((r) => window.setTimeout(r, owed));
     lastRelease = Date.now();
     lastGap = gap;
   });
