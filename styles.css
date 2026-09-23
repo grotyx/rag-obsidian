@@ -390,3 +390,28 @@
   display: block;
   margin-top: 6px;
 }
+
+/* Screening pane */
+.rag-obsidian-screening .srag-header {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.rag-obsidian-screening .srag-badge-error {
+  color: var(--text-error);
+  font-size: 0.82em;
+  min-height: 1.2em;
+}
+.rag-obsidian-screening .srag-screening-body h2 {
+  margin-bottom: 2px;
+}
+.rag-obsidian-screening .srag-screening-controls {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.rag-obsidian-screening .srag-screening-controls select,
+.rag-obsidian-screening .srag-chat-input {
+  width: 100%;
+  margin-bottom: 8px;
+}

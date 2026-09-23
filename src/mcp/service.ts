@@ -4,7 +4,8 @@ import { detectId, fetchMetadata, SourceId } from "../ingest/metadata";
 import { fetchPmcFullText, fetchPubmedRecord, PubmedHit, searchPubmedPage } from "../ingest/pubmedSearch";
 import { STASH_MARKER, stashedText } from "../ingest/pdfStash";
 import { SearchFilters } from "../index/store";
-import { summaryBlock, keywordsToTags, tagSlug } from "../data/reference";
+import { summaryBlock, keywordsToTags } from "../data/reference";
+import { applyScreening, INCLUDE_VALUES, LEVELS, ScreeningFields } from "../data/screening";
 import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
@@ -158,8 +159,8 @@ export const MCP_TOOLS: McpTool[] = [
         description: "Only the keys below are accepted; any other key is rejected and nothing is written.",
         properties: {
           kq: strings("Key-question ids this reference bears on, e.g. [\"1\", \"3\"]."),
-          include: { type: "string", enum: ["include", "exclude", "pending"], description: "Screening decision." },
-          level: { type: "string", enum: ["1", "2", "3", "4", "5"], description: "Evidence level." },
+          include: { type: "string", enum: [...INCLUDE_VALUES], description: "Screening decision." },
+          level: { type: "string", enum: [...LEVELS], description: "Evidence level." },
           design: string("Study design (free text; slugified into a design-<slug> tag)."),
           screening_note: string("Free-text screening note."),
           add_tags: strings("Additional tags to add, merged and deduped."),
@@ -563,13 +564,15 @@ export class McpService {
     const badKey = Object.keys(fields).find((k) => !allowedFields.has(k));
     if (badKey) throw new Error(`INVALID_ARGUMENT: unknown field: ${badKey}`);
 
-    const kq = boundedStringArrayArg(fields, "kq");
-    const include = enumArg(fields, "include", ["include", "exclude", "pending"] as const);
-    const level = enumArg(fields, "level", ["1", "2", "3", "4", "5"] as const);
-    const design = optionalNonEmptyString(fields, "design");
-    const screeningNote = optionalString(fields, "screening_note");
-    const addTags = boundedStringArrayArg(fields, "add_tags");
-    const removeTags = boundedStringArrayArg(fields, "remove_tags");
+    const screening: ScreeningFields = {
+      kq: boundedStringArrayArg(fields, "kq"),
+      include: enumArg(fields, "include", INCLUDE_VALUES),
+      level: enumArg(fields, "level", LEVELS),
+      design: optionalNonEmptyString(fields, "design"),
+      screening_note: optionalString(fields, "screening_note"),
+      add_tags: boundedStringArrayArg(fields, "add_tags"),
+      remove_tags: boundedStringArrayArg(fields, "remove_tags"),
+    };
 
     return this.vault.mutate(async () => {
       const file = this.plugin.library.getFile(citekey);
@@ -578,51 +581,13 @@ export class McpService {
       const current = await this.vault.readFullNote(file.path);
       if (current.hash !== expectedHash) throw new Error(`CONTENT_CHANGED: read ${file.path} again before changing it`);
 
-      let finalTags: string[] = [];
-      const finalFields: Record<string, unknown> = {};
+      let result: ReturnType<typeof applyScreening> | undefined;
       await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
-        let tags: string[] = Array.isArray(fm.tags) ? fm.tags.map(String) : typeof fm.tags === "string" ? [fm.tags] : [];
-        const dropPrefixed = (prefix: string) => { tags = tags.filter((t) => !t.startsWith(prefix)); };
-        const addTag = (t: string) => { if (!tags.includes(t)) tags.push(t); };
-
-        if (kq !== undefined) {
-          fm.kq = kq;
-          dropPrefixed("kq-");
-          for (const k of kq) addTag(/^\d+$/.test(k) ? `kq-${k.padStart(2, "0")}` : `kq-${tagSlug(k)}`);
-        }
-        if (include !== undefined) {
-          fm.include = include;
-          tags = tags.filter((t) => t !== "include" && t !== "exclude" && t !== "pending");
-          addTag(include);
-        }
-        if (level !== undefined) {
-          fm.level = level;
-          dropPrefixed("level-");
-          addTag(`level-${level}`);
-        }
-        if (design !== undefined) {
-          fm.design = design;
-          dropPrefixed("design-");
-          addTag(`design-${tagSlug(design)}`);
-        }
-        if (screeningNote !== undefined) fm.screening_note = screeningNote;
-        if (addTags) for (const t of keywordsToTags(addTags)) addTag(t);
-        if (removeTags) {
-          const drop = new Set(keywordsToTags(removeTags));
-          tags = tags.filter((t) => !drop.has(t));
-        }
-
-        fm.tags = tags;
-        finalTags = tags;
-        finalFields.kq = Array.isArray(fm.kq) ? fm.kq : [];
-        finalFields.include = typeof fm.include === "string" ? fm.include : null;
-        finalFields.level = typeof fm.level === "string" ? fm.level : null;
-        finalFields.design = typeof fm.design === "string" ? fm.design : null;
-        finalFields.screening_note = typeof fm.screening_note === "string" ? fm.screening_note : null;
+        result = applyScreening(fm, screening);
       });
 
       const updated = await this.vault.readFullNote(file.path);
-      return { citekey, path: file.path, hash: updated.hash, tags: finalTags, fields: finalFields };
+      return { citekey, path: file.path, hash: updated.hash, tags: result!.tags, fields: result!.fields };
     });
   }
 
