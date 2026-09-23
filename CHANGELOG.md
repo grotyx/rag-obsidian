@@ -6,6 +6,27 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.7.4] — 2026-09-24
+
+Answers the Community directory's automated review of 0.7.3.
+
+### Changed
+
+- **Type-checks without `@types/node`.** The review lints without Node's type definitions, so
+  every `typeof import("node:…")` in the desktop-only files (local index cache, Codex/OpenCode
+  CLI, MCP bridge and server, Word export) became an unresolved type and hundreds of
+  type-safety warnings. Those files now use small local interfaces for exactly the Node APIs
+  they call (`src/util/nodeTypes.ts`), and `tsconfig.json` sets `"types": []` so the local lint
+  sees what the review sees. Runtime code is unchanged.
+- **Releases are built, attested and published by GitHub Actions** when an `X.Y.Z` tag is
+  pushed (`.github/workflows/release.yml`), so `main.js`, `manifest.json` and `styles.css` carry
+  build-provenance attestations.
+- Dropped the unused `js-yaml` and `@orama/plugin-data-persistence` dependencies.
+
+### Fixed
+
+- A CLI process error always rejects with an `Error`.
+
 ## [0.7.3] — 2026-09-23
 
 Answers the Community directory's automated review of 0.7.1.
