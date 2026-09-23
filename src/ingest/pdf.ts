@@ -87,11 +87,12 @@ function bbox(xs: number[], ys: number[]): number[] {
   return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
 }
 
-/** Push `box` only if every coordinate is finite — a malformed quad point (NaN) must not yield
- *  a NaN rectangle that silently blocks the `ann.rect` fallback below (rects.length > 0 would
- *  skip it even though every rect in it is garbage). */
-function pushFiniteBox(rects: number[][], box: number[]): void {
-  if (box.every(Number.isFinite)) rects.push(box);
+/** Push `box` only if every coordinate is finite; report whether it was. A malformed quad (NaN)
+ *  is dropped and makes quadRects add `ann.rect` too, so that line's text is not lost. */
+function pushFiniteBox(rects: number[][], box: number[]): boolean {
+  if (!box.every(Number.isFinite)) return false;
+  rects.push(box);
+  return true;
 }
 
 function quadRects(ann: PdfAnnotation): number[][] {
@@ -99,26 +100,27 @@ function quadRects(ann: PdfAnnotation): number[][] {
   const raw = ann.quadPoints;
   const q: unknown = ArrayBuffer.isView(raw) ? Array.from(raw as unknown as ArrayLike<number>) : raw;
   const rects: number[][] = [];
+  let bad = false;
   if (Array.isArray(q) && q.length) {
     if (typeof q[0] === "number") {
       const nums = q as number[];
       for (let i = 0; i + 8 <= nums.length; i += 8) {
-        pushFiniteBox(rects, bbox([nums[i], nums[i + 2], nums[i + 4], nums[i + 6]], [nums[i + 1], nums[i + 3], nums[i + 5], nums[i + 7]]));
+        if (!pushFiniteBox(rects, bbox([nums[i], nums[i + 2], nums[i + 4], nums[i + 6]], [nums[i + 1], nums[i + 3], nums[i + 5], nums[i + 7]]))) bad = true;
       }
     } else if (Array.isArray(q[0])) {
       for (const quad of q as unknown[][]) {
         const pts = quad.map(quadPoint);
-        pushFiniteBox(rects, bbox(pts.map((p) => p.x), pts.map((p) => p.y)));
+        if (!pushFiniteBox(rects, bbox(pts.map((p) => p.x), pts.map((p) => p.y)))) bad = true;
       }
     } else if (q[0] && typeof q[0] === "object") {
       const pts = (q as unknown[]).map(quadPoint);
       for (let i = 0; i + 4 <= pts.length; i += 4) {
         const slice = pts.slice(i, i + 4);
-        pushFiniteBox(rects, bbox(slice.map((p) => p.x), slice.map((p) => p.y)));
+        if (!pushFiniteBox(rects, bbox(slice.map((p) => p.x), slice.map((p) => p.y)))) bad = true;
       }
     }
   }
-  if (!rects.length) {
+  if (!rects.length || bad) {
     const rect = ann.rect;
     if (isNumberArray(rect)) rects.push(rect);
   }

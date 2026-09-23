@@ -212,10 +212,10 @@ AID - 10.1000/xyz123 [doi]
     comparators?.item.title === "Outcomes in patients aged <65 and >80 years",
     `esummaryToItem: a literal comparator pair survives title cleanup, not just a real tag: "${comparators?.item.title}"`
   );
-  // An entity-escaped title ("&lt;65") must decode to the same literal text, not keep the entity.
+  // Entity-escaped markup decodes first and is then stripped like real markup.
   const escaped = esummaryToItem("3", { title: "Effect of &lt;i&gt;X&lt;/i&gt; on outcomes &amp; survival", articleids: [] });
   check(
-    escaped?.item.title === "Effect of <i>X</i> on outcomes & survival",
+    escaped?.item.title === "Effect of X on outcomes & survival",
     `esummaryToItem: entity-escaped text decodes (not left as "&lt;"/"&amp;"): "${escaped?.item.title}"`
   );
 
@@ -288,6 +288,34 @@ AID - 10.1000/xyz123 [doi]
   check(
     highlights.length === 1 && highlights[0].text === "highlighted text",
     `extractPdfHighlights: a malformed quad point falls back to ann.rect instead of losing the highlight: ${JSON.stringify(highlights)}`
+  );
+  // Two quads: the first is fine but covers no text, the second is malformed. The good quad alone
+  // must not suppress the ann.rect fallback, or the malformed line's text is lost.
+  setPdfjsLoader(async () => ({
+    GlobalWorkerOptions: { workerSrc: "" },
+    getDocument: () => ({
+      promise: Promise.resolve({
+        numPages: 1,
+        getPage: async () => ({
+          getTextContent: async () => ({
+            items: [{ str: "second line", transform: [1, 0, 0, 1, 10, 10], width: 20, height: 10 }],
+          }),
+          getAnnotations: async () => [
+            {
+              subtype: "Highlight",
+              quadPoints: [{ x: 500, y: 500 }, { x: 510, y: 500 }, { x: 500, y: 510 }, { x: 510, y: 510 }, { x: 1, y: 1 }, {}, { x: 2, y: 1 }, { x: 2, y: 2 }],
+              rect: [0, 0, 600, 600],
+              contents: "",
+            },
+          ],
+        }),
+      }),
+    }),
+  }));
+  const partial = await extractPdfHighlights(new ArrayBuffer(8));
+  check(
+    partial.length === 1 && partial[0].text === "second line",
+    `extractPdfHighlights: one malformed quad among good ones still adds ann.rect: ${JSON.stringify(partial)}`
   );
 }
 
@@ -601,7 +629,10 @@ AID - 10.1000/xyz123 [doi]
   check(title("Tumours of grade <II and >IV") === "Tumours of grade <II and >IV", "stripTags: a comparator before a letter is not a tag");
   check(title("Patients aged <65 and >80 years") === "Patients aged <65 and >80 years", "stripTags: a comparator before a digit is not a tag");
   check(title("<jats:title>Effect</jats:title> of <i>X</i> on <sup>2</sup>H") === "Effect of X on 2H", "stripTags: namespaced JATS tags and inline HTML tags are removed");
-  check(title("A &amp; B &lt;5") === "A & B <5", "stripTags: entities are decoded after stripping");
+  check(title("A &amp; B &lt;5") === "A & B <5", "stripTags: entities are decoded");
+  check(title("ASA class <I and >III, Child-Pugh <B or >C") === "ASA class <I and >III, Child-Pugh <B or >C", "stripTags: a comparator before a tag-like letter is kept");
+  check(title("<scp>COVID</scp>-19 <mml:math><mi>β</mi></mml:math> <ext-link ext-link-type=\"uri\" xlink:href=\"x\">link</ext-link>") === "COVID-19 β link", "stripTags: any markup tag (scp, MathML, attributes) is removed");
+  check(title("&#x3b2;-blocker &#8211; &amp;lt;") === "β-blocker – &lt;", "stripTags: numeric entities decode, one pass (no double decode)");
 }
 
 // ---------- types.ts: effective() — empty path/URL settings fall back to the shipped default ----------

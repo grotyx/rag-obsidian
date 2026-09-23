@@ -88,8 +88,9 @@ export class PluginSettingTab {
   display(): void {}
 }
 export class Setting {}
-/** Minimal stand-in for the real `SettingGroup` (obsidian.d.ts) — settings.ts's < 1.13 fallback
- *  renderer instantiates one per group; tests only need `addSetting` to run the callback. */
+/** Minimal stand-in for the real `SettingGroup` (obsidian.d.ts) so settings.ts loads. Every method
+ *  is a no-op: the < 1.13 fallback renderer (`display()`) is not exercised by the Node tests — it
+ *  is checked in Obsidian itself. */
 export class SettingGroup {
   constructor(_containerEl?: unknown) {}
   setHeading(_text?: unknown): this {

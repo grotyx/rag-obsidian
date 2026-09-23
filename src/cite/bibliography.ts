@@ -140,16 +140,14 @@ export function inTextLabel(item: CSLItem): string {
   return `(${fam}, ${yr})`;
 }
 
-/** citeproc emits HTML entities (`&#38;`, `&amp;`) — decode them (and collapse whitespace)
- *  for the plain-text and DOM renderers of its output. */
+/** Decode HTML entities (citeproc's `&#38;`/`&amp;`, escaped markup in PubMed/Crossref text) and
+ *  collapse whitespace. One pass, so `&amp;lt;` becomes the text "&lt;", not "<". */
 export function decodeEntities(s: string): string {
+  const named: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
   return s
-    .replace(/&#x([0-9a-fA-F]+);/g, (_m: string, h: string) => safeCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_m: string, n: string) => safeCodePoint(parseInt(n, 10)))
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ")
+    .replace(/&(?:#x([0-9a-fA-F]+)|#(\d+)|(amp|lt|gt|quot|apos|nbsp));/g, (_m: string, h?: string, d?: string, n?: string) =>
+      h ? safeCodePoint(parseInt(h, 16)) : d ? safeCodePoint(parseInt(d, 10)) : named[n ?? ""]
+    )
     .replace(/\s+/g, " ")
     .trim();
 }

@@ -1,6 +1,7 @@
 import { requestUrl } from "obsidian";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
+import { decodeEntities } from "../cite/bibliography";
 import { resolveWork } from "../graph/openalex";
 import { str, rec, arr, text, optStr } from "../util/json";
 
@@ -74,19 +75,16 @@ export async function fetchMetadata(id: SourceId, pubmedApiKey = "", mailto = ""
   }
 }
 
-/** Strip only real HTML tags (`<i>`, `</sup>`, `<em class="x">`…), not a bare comparator pair
- *  like "aged <65 and >80 years" — the old `<[^>]+>` regex matched from the first "<" to the
- *  next ">" regardless of what was between them, eating the "65 and " in the middle. Also
- *  decodes entities so an entity-escaped title ("&lt;65") comes out as the literal text. */
+/** Decode entities, then strip real markup (`<i>`, `</sup>`, `<jats:p>`, `<scp>`, `<mi>`,
+ *  `<ext-link ext-link-type="uri">`…) — but not a bare comparator pair like "aged <65 and >80" or
+ *  "grade <II and >IV": the old `<[^>]+>` ate everything between them. A tag is a name followed
+ *  directly by `>`/`/>` or by `attr="value"` pairs; comparator text has neither. */
 function stripTags(s: string | undefined): string {
   if (!s) return "";
-  // Only real markup: a namespaced tag (<jats:p>, <mml:math>) or a known inline HTML tag. A bare
-  // "<[^>]+>" also ate comparators in titles ("aged <65 and >80", "grade <II and >IV").
-  const noTags = s.replace(
-    /<\/?(?:[A-Za-z][\w.-]*:[A-Za-z][\w.-]*|(?:i|b|u|em|strong|sup|sub|sc|span|a|br|p|div|title|italic|bold|underline|list|list-item|sec|inline-formula|math))(?=[\s/>])[^<>]*>/gi,
-    ""
-  );
-  return decodeEntities(noTags).replace(/\s+/g, " ").trim();
+  return decodeEntities(s)
+    .replace(/<\/?[A-Za-z][\w.:-]*(?:\s+[\w.:-]+\s*=\s*(?:"[^"]*"|'[^']*'))*\s*\/?>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function clean(item: CSLItem): CSLItem {
@@ -238,15 +236,6 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
   }
 
   return clean(item);
-}
-
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&");
 }
 
 /** Pull the abstract out of a PubMed efetch XML response: concatenate all

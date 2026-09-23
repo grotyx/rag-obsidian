@@ -17,8 +17,8 @@ const FIXED_SUMMARY_LANGS = ["en", "ko", "en+ko"];
 
 /**
  * Internal, version-agnostic mirror of Obsidian 1.13's declarative setting shape. `getSettingDefinitions()`
- * hands this straight to the framework (a structural match, cast at that one boundary — see its
- * comment); `display()`'s fallback renderer for Obsidian < 1.13 walks it directly. Kept as our own
+ * returns this as `SettingDefinitionItem[]` (a structural match, so tsc checks it against the real
+ * contract there); `display()`'s fallback renderer for Obsidian < 1.13 walks it directly. Kept as our own
  * types (not the real `obsidian.d.ts` ones) so reading these fields in the < 1.13 fallback path
  * doesn't trip `obsidianmd/no-unsupported-api` — that rule flags any read of a real 1.13-only
  * property, and it can't know the fallback only runs on Obsidian versions where these are plain
@@ -52,14 +52,6 @@ interface Group {
   heading?: string;
   items: Row[];
 }
-
-/** Compile-time-only assignability check (erased at runtime — this declares nothing but a
- *  `null`, so it never reads a real 1.13-only property and is safe to evaluate on every
- *  Obsidian version): if `Group`/`Row`/`Control` drift from the real 1.13 `SettingDefinition`
- *  contract (including the real API's `control`/`render` mutual exclusion), `tsc` fails here
- *  instead of only surfacing at the Community review or in the running app. */
-const _assertDefinitionsShape: SettingDefinitionItem[] = null as unknown as Group[];
-void _assertDefinitionsShape;
 
 function text(key: string, name: string, desc?: string, placeholder?: string, aliases?: string[], visible?: () => boolean): Row {
   return { name, desc, aliases, visible, control: { type: "text", key, placeholder } };
@@ -105,8 +97,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     this.customLanguage = !FIXED_SUMMARY_LANGS.includes(plugin.settings.summaryLanguage);
   }
 
-  /** Structurally matches `SettingDefinitionItem[]` — checked at compile time by
-   *  `_assertDefinitionsShape` above, so this is a plain return, not a property read.
+  /** Structurally matches `SettingDefinitionItem[]` — tsc checks it against this return type.
    *  Framework-called only on Obsidian 1.13+. Every row is declared once and gated by
    *  `visible: () => …`: Obsidian leaves a hidden row out of its search for that render, so a
    *  row becomes searchable (and visible) as soon as the setting that gates it changes. */

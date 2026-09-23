@@ -10,9 +10,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Fixed
 
-- **PDF highlights:** a highlight with a malformed quad point no longer drops its text; the
-  annotation's own rectangle is used as before.
-- **PubMed titles:** entities are decoded after tag stripping — "&amp;" stayed escaped.
+- **PDF highlights:** a highlight with a malformed quad point no longer drops its text — the
+  annotation's own rectangle is added whenever any quad is unusable, not only when all are.
+- **PubMed titles:** entities are decoded — "&amp;" stayed escaped. Decoding runs once, first, so
+  entity-escaped markup (`&lt;i&gt;`) is stripped like real markup and `&amp;lt;` stays "&lt;";
+  numeric entities (`&#x3b2;`) decode too, through the same helper citeproc output uses.
 - **Settings text fields** keep what you type, spaces included: clearing "References folder",
   "Ollama URL" or "OpenAI base URL" to retype it no longer snaps back to the default mid-edit, and
   the empty field shows the default as its placeholder. One helper, `effective()`, trims the value
@@ -20,8 +22,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 - **OpenAI base URL / API key and Ollama URL** show whenever either the embedding provider or the
   chat LLM uses them — with embeddings on Ollama and chat on OpenRouter the key field was hidden.
 - **Custom summary language** no longer hides itself while you type (typing "en" made it vanish).
-- **Abstracts and titles:** tag stripping keeps comparators ("grade <II and >IV") and still removes
-  Crossref's namespaced JATS markup (`<jats:p>`, `<mml:math>`).
+- **Abstracts and titles:** tag stripping keeps comparators ("grade <II and >IV", "ASA <I and
+  >III") and still removes any real tag — JATS (`<jats:p>`), MathML (`<mi>`), `<scp>`, and tags
+  with attributes. A tag is a name followed by `>` or by `attr="value"` pairs.
 - **Settings search on 1.13+:** every row is declared once with a `visible` rule, so a row shows
   up in search as soon as it applies (e.g. "Ollama URL" right after switching the provider). The
   definitions are now type-checked against Obsidian's own `SettingDefinitionItem` (no cast).
