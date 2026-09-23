@@ -1,0 +1,420 @@
+<title>내 서재가 답한다</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  /* Tokens — Remotion reads the same values (see talk.md). */
+  :root {
+    --paper: #edf0f2;
+    --paper-2: #f7f8f9;
+    --ink: #15202e;
+    --muted: #5d6a77;
+    --faint: #aab4be;
+    --rule: #c8d0d7;
+    --cite: #2a58a3;
+    --marker: #f5d352;
+    --marker-ink: #15202e;
+    --mark-band: 58%;
+    --mark-pos: 86%;
+    --t-enter: 420ms;
+    --t-stagger: 90ms;
+    --t-mark-delay: 350ms;
+    --t-mark: 600ms;
+    --sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0e141c; --paper-2: #151d27; --ink: #e5ebf0; --muted: #8b98a5; --faint: #4a5664;
+      --rule: #29333f; --cite: #83a8ea; --marker: #f2cf4f; --marker-ink: #f2cf4f; --mark-band: 9%; --mark-pos: 100%;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0e141c; --paper-2: #151d27; --ink: #e5ebf0; --muted: #8b98a5; --faint: #4a5664;
+    --rule: #29333f; --cite: #83a8ea; --marker: #f2cf4f; --marker-ink: #f2cf4f; --mark-band: 9%; --mark-pos: 100%;
+    color-scheme: dark;
+  }
+
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { background: var(--paper); color: var(--ink); font-family: var(--sans); margin: 0; }
+  .app {
+    height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 12px; padding-inline: 16px; padding-block: 12px;
+  }
+  .app:fullscreen { background: var(--paper); }
+
+  /* 16:9 stage, sized to the viewport; everything inside scales with it (cqi). */
+  .stage {
+    position: relative; width: min(100%, calc((100dvh - 120px) * 16 / 9)); aspect-ratio: 16 / 9;
+    max-width: 100%; container-type: inline-size; overflow: hidden; background: var(--paper);
+    cursor: pointer; user-select: none; -webkit-user-select: none;
+  }
+  .app:fullscreen .stage { width: min(100%, calc((100dvh - 64px) * 16 / 9)); }
+
+  /* Citation ruler: one tick per slide, a taller tick where a section starts. */
+  .ruler {
+    position: absolute; left: 5cqi; right: 5cqi; top: 3.2cqi; height: 1.4cqi;
+    display: flex; align-items: flex-end; gap: 0.28cqi; pointer-events: none;
+  }
+  .tick { flex: 1; height: 38%; background: var(--rule); border-radius: 1px; transition: background 200ms, height 200ms; }
+  .tick.sec { height: 70%; }
+  .tick.done { background: var(--ink); }
+  .tick.now { background: var(--marker); height: 100%; box-shadow: 0 0 0 0.12cqi var(--ink) inset; }
+
+  .foot {
+    position: absolute; left: 5cqi; right: 5cqi; bottom: 3cqi; display: flex; justify-content: space-between;
+    font: 400 1.25cqi/1 var(--mono); color: var(--muted); letter-spacing: 0.04em; pointer-events: none;
+  }
+  .foot .n { font-variant-numeric: tabular-nums; }
+
+  .slide {
+    position: absolute; inset: 7cqi 7cqi 7cqi; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; gap: 2.2cqi;
+  }
+  .slide[hidden] { display: none !important; }
+
+  /* Entrance: every [data-a] rises in, staggered by --i. The resting state is visible. */
+  .slide [data-a] { opacity: 1; transform: none; }
+  .slide.enter [data-a] { opacity: 0; transform: translateY(1.1cqi); }
+  .slide.on [data-a] {
+    opacity: 1; transform: none;
+    transition: opacity var(--t-enter) ease-out, transform var(--t-enter) cubic-bezier(.2,.7,.2,1);
+    transition-delay: calc(var(--i, 0) * var(--t-stagger));
+  }
+
+  /* Highlighter: a band across the lower two-thirds of the phrase, swept left to right. */
+  mark {
+    color: var(--marker-ink); background-color: transparent;
+    background-image: linear-gradient(var(--marker), var(--marker));
+    background-repeat: no-repeat; background-position: 0 var(--mark-pos); background-size: 100% var(--mark-band);
+    padding-inline: 0.12em; margin-inline: -0.12em; border-radius: 0.08em;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  }
+  .slide.enter mark { background-size: 0% var(--mark-band); }
+  .slide.on mark { background-size: 100% var(--mark-band); transition: background-size var(--t-mark) cubic-bezier(.3,.6,.2,1) var(--t-mark-delay); }
+
+  .eyebrow { font: 600 1.35cqi/1 var(--mono); color: var(--cite); letter-spacing: 0.14em; text-transform: uppercase; }
+  .big { font-weight: 700; font-size: 6.4cqi; line-height: 1.22; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
+  .sub { font-size: 2.2cqi; color: var(--muted); line-height: 1.5; margin: 0; text-wrap: balance; }
+
+  /* cover */
+  .k-cover .big { font-size: 9.6cqi; line-height: 1.1; }
+  .k-cover .meta { font: 400 1.4cqi/1.4 var(--mono); color: var(--muted); }
+
+  /* section */
+  .k-section .no { font: 600 4.6cqi/1 var(--mono); color: var(--cite); }
+  .k-section .big { font-size: 7.6cqi; }
+  .k-section .line { width: 8cqi; height: 0.28cqi; background: var(--ink); }
+
+  /* num */
+  .k-num .n { font-weight: 700; font-size: 17cqi; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+  .k-num .sub { font-size: 2.6cqi; color: var(--ink); }
+
+  /* vs */
+  .k-vs .bad { font-size: 3.4cqi; color: var(--muted); text-decoration: line-through; text-decoration-thickness: 0.18cqi; text-decoration-color: var(--faint); }
+  .k-vs .bad::before { content: "✕  "; text-decoration: none; display: inline-block; color: var(--faint); }
+  .k-vs .arrow { font: 400 2.4cqi/1 var(--mono); color: var(--faint); }
+
+  /* eq */
+  .k-eq .row { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 1.6cqi 3cqi; }
+  .k-eq .a { font: 600 9cqi/1 var(--mono); letter-spacing: -0.02em; }
+  .k-eq .arrow { font: 400 3cqi/1 var(--mono); color: var(--faint); }
+  .k-eq .b { font-weight: 700; font-size: 5.2cqi; }
+  .k-eq .sub { font-size: 1.9cqi; }
+
+  /* steps */
+  .k-steps .row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 1.6cqi 2.2cqi; }
+  .k-steps .step { display: flex; flex-direction: column; align-items: center; gap: 1cqi; }
+  .k-steps .step .i { font: 600 1.3cqi/1 var(--mono); color: var(--cite); }
+  .k-steps .step .w { font-weight: 700; font-size: 3.5cqi; white-space: nowrap; }
+  .k-steps .step:last-child .w { background: linear-gradient(var(--marker), var(--marker)) no-repeat 0 var(--mark-pos) / 100% var(--mark-band); color: var(--marker-ink); padding-inline: 0.12em; }
+  .k-steps .arrow { font: 400 2.6cqi/1 var(--mono); color: var(--faint); padding-top: 2cqi; }
+
+  /* list */
+  .k-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1.6cqi; align-items: center; }
+  .k-list li { font-weight: 700; font-size: 5cqi; line-height: 1.2; letter-spacing: -0.015em; }
+  .k-list li::before { content: "—"; font: 400 0.7em/1 var(--mono); color: var(--cite); margin-right: 0.5em; vertical-align: 0.12em; }
+
+  /* note — the one framed object: it is a file */
+  .k-note .file {
+    width: min(60cqi, 100%); text-align: left; background: var(--paper-2); border: 1px solid var(--rule);
+    border-radius: 0.6cqi; overflow: hidden;
+  }
+  .k-note .tab { font: 400 1.25cqi/1 var(--mono); color: var(--muted); padding: 1.1cqi 1.6cqi; border-bottom: 1px solid var(--rule); }
+  .k-note pre { margin: 0; padding: 1.3cqi 1.8cqi; font: 400 1.5cqi/1.5 var(--mono); color: var(--ink); white-space: pre-wrap; }
+  .k-note .dash { color: var(--faint); }
+  .k-note .key { color: var(--cite); }
+  .k-note .h { font-weight: 600; }
+  .k-note .dim { color: var(--muted); }
+
+  /* cite */
+  .k-cite .q { font-size: 2.4cqi; color: var(--muted); }
+  .k-cite .q b { font: 600 1.4cqi/1 var(--mono); color: var(--cite); margin-right: 0.8em; vertical-align: 0.25em; }
+  .k-cite .big { font-size: 4.4cqi; max-width: 62cqi; }
+  .k-cite .anchor {
+    font: 600 0.5em/1 var(--mono); color: var(--paper); background: var(--cite); border-radius: 0.3em;
+    padding: 0.28em 0.38em; margin-left: 0.18em; vertical-align: 0.4em;
+  }
+  .k-cite .src { list-style: none; margin: 0; padding: 0; font: 400 1.5cqi/1.7 var(--mono); color: var(--muted); }
+
+  /* funnel — widths to scale */
+  .k-funnel .rows { width: min(70cqi, 100%); display: flex; flex-direction: column; gap: 1.2cqi; }
+  .k-funnel .r { display: grid; grid-template-columns: 11cqi 1fr 9cqi; align-items: center; gap: 1.6cqi; }
+  .k-funnel .l { font-size: 1.9cqi; color: var(--muted); text-align: right; }
+  .k-funnel .track { height: 2.6cqi; }
+  .k-funnel .bar { height: 100%; background: var(--ink); border-radius: 0.2cqi; width: var(--w); min-width: 0.5cqi; }
+  .slide.enter.k-funnel .bar { width: 0; }
+  .slide.on.k-funnel .bar { width: var(--w); transition: width 700ms cubic-bezier(.3,.6,.2,1); transition-delay: calc(var(--i) * 140ms + 150ms); }
+  .k-funnel .r:last-child .bar { background: var(--marker); box-shadow: 0 0 0 0.12cqi var(--ink) inset; }
+  .k-funnel .v { font-weight: 700; font-size: 2.6cqi; text-align: left; font-variant-numeric: tabular-nums; }
+
+  /* url */
+  .k-url .u { font: 600 4.6cqi/1.2 var(--mono); letter-spacing: -0.02em; overflow-wrap: anywhere; }
+
+  /* qa */
+  .k-qa .big { font-size: 5cqi; }
+  .k-qa .sub { font-size: 2.5cqi; line-height: 1.6; }
+
+  /* end */
+  .k-end .big { font-size: 9cqi; }
+  .k-end .u { font: 400 2cqi/1 var(--mono); color: var(--cite); }
+
+  /* Controls under the stage */
+  .bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font: 500 13px/1 var(--sans); }
+  .bar button {
+    font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--rule);
+    border-radius: 999px; padding: 8px 14px; cursor: pointer;
+  }
+  .bar button:hover { border-color: var(--ink); }
+  .bar button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .bar button:focus-visible, .tile:focus-visible, .stage:focus-visible { outline: 2px solid var(--cite); outline-offset: 2px; }
+  .bar kbd { font: 400 11px/1 var(--mono); color: var(--muted); margin-left: 6px; }
+  .bar button[aria-pressed="true"] kbd { color: var(--faint); }
+
+  .notes {
+    width: min(100%, 880px); box-sizing: border-box; border-top: 1px solid var(--rule); padding-block: 10px 4px;
+    display: grid; gap: 6px; font-size: 15px; line-height: 1.6; max-height: 28dvh; overflow: auto;
+  }
+  .notes .meta { font: 400 12px/1.4 var(--mono); color: var(--muted); }
+
+  .grid {
+    position: fixed; inset: 0; z-index: 10; background: var(--paper); overflow: auto;
+    padding-inline: 16px; padding-block: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  .grid .head { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto 12px; font: 600 14px/1 var(--sans); }
+  .grid .tiles { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+  .tile {
+    text-align: left; font: 500 13px/1.4 var(--sans); color: var(--ink); background: var(--paper-2);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 10px; cursor: pointer; min-height: 72px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .tile .id { font: 400 11px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tile[aria-current="true"] { border-color: var(--ink); box-shadow: inset 0 -4px 0 var(--marker); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .slide.enter [data-a], .slide.enter mark, .slide.enter.k-funnel .bar { opacity: 1; transform: none; background-size: 100% var(--mark-band); width: var(--w); }
+    .slide.on [data-a], .slide.on mark, .slide.on.k-funnel .bar, .tick { transition: none !important; }
+  }
+</style>
+
+<div class="app" id="app">
+  <div class="stage" id="stage" tabindex="0" role="region" aria-roledescription="슬라이드" aria-live="polite">
+    <div class="ruler" id="ruler" aria-hidden="true"></div>
+    <div id="slides"></div>
+    <div class="foot" aria-hidden="true"><span id="where"></span><span class="n" id="count"></span></div>
+  </div>
+  <div class="bar" role="toolbar" aria-label="발표 조작">
+    <button type="button" id="prev">이전<kbd>←</kbd></button>
+    <button type="button" id="next">다음<kbd>→</kbd></button>
+    <button type="button" id="play" aria-pressed="false">자동 재생<kbd>P</kbd></button>
+    <button type="button" id="noteBtn" aria-pressed="false">대본<kbd>N</kbd></button>
+    <button type="button" id="gridBtn">전체 목록<kbd>G</kbd></button>
+    <button type="button" id="fs">전체 화면<kbd>F</kbd></button>
+  </div>
+  <div class="notes" id="notes" hidden>
+    <div class="meta" id="noteMeta"></div>
+    <div id="noteSay"></div>
+    <div class="meta" id="noteNext"></div>
+  </div>
+</div>
+<div class="grid" id="grid" hidden>
+  <div class="head"><span>전체 슬라이드</span><button type="button" id="gridClose" class="tile" style="min-height:0;flex-direction:row">닫기 · Esc</button></div>
+  <div class="tiles" id="tiles"></div>
+</div>
+
+<script>
+const SLIDES = /*SLIDES*/[];
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const br = (s) => esc(s).replace(/\n/g, "<br>");
+function marked(text, hl) {
+  const html = br(text);
+  if (!hl) return html;
+  const h = esc(hl);
+  const at = html.indexOf(h);
+  return at < 0 ? html : html.slice(0, at) + "<mark>" + h + "</mark>" + html.slice(at + h.length);
+}
+let n = 0;
+const a = () => `data-a style="--i:${n++}"`;
+
+const KIND = {
+  cover: (s) => `<div class="eyebrow" ${a()}>${esc(s.meta)}</div>
+    <h1 class="big" ${a()}>${marked(s.title, "답한다")}</h1>
+    <p class="sub" ${a()}>${esc(s.sub)}</p>`,
+  section: (s) => `<div class="no" ${a()}>§${esc(s.no)}</div><div class="line" ${a()}></div><h2 class="big" ${a()}>${esc(s.title)}</h2>`,
+  say: (s) => `<p class="big" ${a()}>${marked(s.text, s.hl)}</p>${s.small ? `<p class="sub" ${a()}>${esc(s.small)}</p>` : ""}`,
+  num: (s) => `<div class="n" ${a()}>${esc(s.n)}</div><p class="sub" ${a()}>${esc(s.label)}</p>`,
+  vs: (s) => `<div class="bad" ${a()}>${esc(s.bad)}</div><div class="arrow" ${a()}>↓</div><p class="big" ${a()}><mark>${esc(s.good)}</mark></p>`,
+  eq: (s) => `<div class="row"><span class="a" ${a()}>${esc(s.a)}</span><span class="arrow" ${a()}>→</span><span class="b" ${a()}><mark>${esc(s.b)}</mark></span></div>
+    <p class="sub" ${a()}>단어가 달라도 뜻이 같으면 찾는다</p>`,
+  steps: (s) => `<div class="row">${s.items.map((it, i) => `${i ? `<span class="arrow" ${a()}>→</span>` : ""}<div class="step" ${a()}><span class="i">${i + 1}</span><span class="w">${esc(it)}</span></div>`).join("")}</div>`,
+  list: (s) => `${s.title ? `<div class="eyebrow" ${a()}>${esc(s.title)}</div>` : ""}<ul>${s.items.map((it) => `<li ${a()}>${esc(it)}</li>`).join("")}</ul>`,
+  note: (s) => {
+    let inFm = false;
+    const lines = s.lines.map((l) => {
+      if (l === "---") { inFm = !inFm; return `<span class="dash">---</span>`; }
+      if (inFm) { const m = l.match(/^([\w-]+):(.*)$/); return m ? `<span class="key">${esc(m[1])}:</span>${esc(m[2])}` : esc(l); }
+      if (l.startsWith("## ")) return `<span class="h">${esc(l)}</span>`;
+      return `<span class="dim">${esc(l)}</span>`;
+    });
+    return `<div class="eyebrow" ${a()}>노트 한 개</div><div class="file" ${a()}><div class="tab">References/kim2023biportal.md</div><pre>${lines.join("\n")}</pre></div>`;
+  },
+  cite: (s) => {
+    const ans = esc(s.a).replace(/\[(\d+)\]/g, '<span class="anchor">$1</span>');
+    return `<div class="eyebrow" ${a()}>예시 화면</div><p class="q" ${a()}><b>Q</b>${esc(s.q)}</p><p class="big" ${a()}>${ans}</p>
+      <ul class="src" ${a()}>${s.src.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+  },
+  funnel: (s) => {
+    const max = Math.max(...s.rows.map((r) => Number(String(r[0]).replace(/,/g, ""))));
+    const rows = s.rows.map((r, i) => {
+      const v = Number(String(r[0]).replace(/,/g, ""));
+      return `<div class="r"><span class="l">${esc(r[1])}</span><div class="track"><div class="bar" style="--w:${(v / max) * 100}%;--i:${i}"></div></div><span class="v">${esc(r[0])}</span></div>`;
+    }).join("");
+    return `<div class="eyebrow" ${a()}>바이포탈 엔도스코피 진료지침</div><div class="rows" ${a()}>${rows}</div>`;
+  },
+  url: (s) => `<div class="eyebrow" ${a()}>공개 저장소</div><div class="u" ${a()}><mark>${esc(s.url)}</mark></div><p class="sub" ${a()}>${esc(s.sub)}</p>`,
+  qa: (s) => `<div class="eyebrow" ${a()}>질문이 나오면</div><p class="big" ${a()}>${esc(s.q)}</p><p class="sub" ${a()}>${br(s.a)}</p>`,
+  end: (s) => `<p class="big" ${a()}>${esc(s.text)}</p><div class="u" ${a()}>${esc(s.sub)}</div>`,
+};
+
+const host = document.getElementById("slides");
+const els = SLIDES.map((s) => {
+  n = 0;
+  const el = document.createElement("section");
+  el.className = `slide k-${s.kind}`;
+  el.hidden = true;
+  el.setAttribute("aria-label", `${s.id} / ${SLIDES.length}`);
+  el.innerHTML = KIND[s.kind](s);
+  host.appendChild(el);
+  return el;
+});
+
+const ruler = document.getElementById("ruler");
+SLIDES.forEach((s, i) => {
+  const t = document.createElement("span");
+  t.className = "tick" + (i === 0 || s.section !== SLIDES[i - 1].section ? " sec" : "");
+  ruler.appendChild(t);
+});
+const ticks = [...ruler.children];
+
+const $ = (id) => document.getElementById(id);
+const tiles = $("tiles");
+SLIDES.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "tile";
+  const label = s.text || s.title || s.n && `${s.n} ${s.label}` || s.q || s.url || (s.items || []).join(" · ") || s.good || s.kind;
+  b.innerHTML = `<span class="id">${s.id} · ${esc(s.section)}</span><span>${esc(String(label).replace(/\n/g, " "))}</span>`;
+  b.addEventListener("click", () => { closeGrid(); go(i); });
+  tiles.appendChild(b);
+});
+
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let cur = -1;
+function go(i) {
+  i = Math.max(0, Math.min(SLIDES.length - 1, i));
+  if (i === cur) return;
+  if (cur >= 0) { els[cur].hidden = true; els[cur].classList.remove("on", "enter"); }
+  cur = i;
+  const el = els[cur];
+  el.classList.remove("on");
+  if (!reduce) el.classList.add("enter");
+  el.hidden = false;
+  if (!reduce) requestAnimationFrame(() => requestAnimationFrame(() => { el.classList.remove("enter"); el.classList.add("on"); }));
+  else el.classList.add("on");
+  ticks.forEach((t, k) => { t.classList.toggle("done", k < cur); t.classList.toggle("now", k === cur); });
+  const s = SLIDES[cur];
+  $("where").textContent = `§ ${s.section}`;
+  $("count").textContent = `${String(s.id).padStart(2, "0")} / ${SLIDES.length}`;
+  $("noteMeta").textContent = `${s.id} · ${s.section} · ${s.sec}초`;
+  $("noteSay").textContent = s.say;
+  const nx = SLIDES[cur + 1];
+  $("noteNext").textContent = nx ? `다음 → ${String(nx.text || nx.title || nx.n || nx.q || nx.url || (nx.items || []).join(" · ") || nx.kind).replace(/\n/g, " ")}` : "마지막 장";
+  [...tiles.children].forEach((t, k) => t.setAttribute("aria-current", k === cur ? "true" : "false"));
+  try { history.replaceState(null, "", `#s${s.id}`); } catch (e) {}
+  if (playing) schedule();
+}
+const next = () => go(cur + 1);
+const prev = () => go(cur - 1);
+
+let playing = false, timer = 0;
+function schedule() {
+  clearTimeout(timer);
+  if (!playing) return;
+  if (cur >= SLIDES.length - 1) { setPlaying(false); return; }
+  timer = setTimeout(next, SLIDES[cur].sec * 1000);
+}
+function setPlaying(v) {
+  playing = v; $("play").setAttribute("aria-pressed", String(v));
+  if (v) schedule(); else clearTimeout(timer);
+}
+function toggleNotes() {
+  const box = $("notes"); box.hidden = !box.hidden;
+  $("noteBtn").setAttribute("aria-pressed", String(!box.hidden));
+}
+function openGrid() { $("grid").hidden = false; (tiles.children[cur] || tiles.children[0]).focus(); }
+function closeGrid() { $("grid").hidden = true; $("stage").focus(); }
+async function toggleFs() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await $("app").requestFullscreen();
+  } catch (e) { /* fullscreen not available here */ }
+}
+
+$("prev").addEventListener("click", prev);
+$("next").addEventListener("click", next);
+$("play").addEventListener("click", () => setPlaying(!playing));
+$("noteBtn").addEventListener("click", toggleNotes);
+$("gridBtn").addEventListener("click", openGrid);
+$("gridClose").addEventListener("click", closeGrid);
+$("fs").addEventListener("click", toggleFs);
+$("stage").addEventListener("click", (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  (e.clientX - r.left < r.width * 0.3 ? prev : next)();
+});
+let tx = null;
+$("stage").addEventListener("touchstart", (e) => { tx = e.touches[0].clientX; }, { passive: true });
+$("stage").addEventListener("touchend", (e) => {
+  if (tx === null) return;
+  const dx = e.changedTouches[0].clientX - tx; tx = null;
+  if (Math.abs(dx) > 40) (dx < 0 ? next : prev)();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!$("grid").hidden) { if (e.key === "Escape" || e.key === "g" || e.key === "G") { e.preventDefault(); closeGrid(); } return; }
+  switch (e.key) {
+    case "ArrowRight": case "PageDown": case " ": e.preventDefault(); next(); break;
+    case "ArrowLeft": case "PageUp": e.preventDefault(); prev(); break;
+    case "Home": e.preventDefault(); go(0); break;
+    case "End": e.preventDefault(); go(SLIDES.length - 1); break;
+    case "p": case "P": setPlaying(!playing); break;
+    case "n": case "N": toggleNotes(); break;
+    case "g": case "G": openGrid(); break;
+    case "f": case "F": toggleFs(); break;
+  }
+});
+
+const start = Number((location.hash.match(/^#s(\d+)$/) || [])[1] || 1) - 1;
+go(Number.isFinite(start) ? start : 0);
+</script>

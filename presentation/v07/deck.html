@@ -1,0 +1,420 @@
+<title>내 서재가 답한다</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  /* Tokens — Remotion reads the same values (see talk.md). */
+  :root {
+    --paper: #edf0f2;
+    --paper-2: #f7f8f9;
+    --ink: #15202e;
+    --muted: #5d6a77;
+    --faint: #aab4be;
+    --rule: #c8d0d7;
+    --cite: #2a58a3;
+    --marker: #f5d352;
+    --marker-ink: #15202e;
+    --mark-band: 58%;
+    --mark-pos: 86%;
+    --t-enter: 420ms;
+    --t-stagger: 90ms;
+    --t-mark-delay: 350ms;
+    --t-mark: 600ms;
+    --sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0e141c; --paper-2: #151d27; --ink: #e5ebf0; --muted: #8b98a5; --faint: #4a5664;
+      --rule: #29333f; --cite: #83a8ea; --marker: #f2cf4f; --marker-ink: #f2cf4f; --mark-band: 9%; --mark-pos: 100%;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0e141c; --paper-2: #151d27; --ink: #e5ebf0; --muted: #8b98a5; --faint: #4a5664;
+    --rule: #29333f; --cite: #83a8ea; --marker: #f2cf4f; --marker-ink: #f2cf4f; --mark-band: 9%; --mark-pos: 100%;
+    color-scheme: dark;
+  }
+
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { background: var(--paper); color: var(--ink); font-family: var(--sans); margin: 0; }
+  .app {
+    height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 12px; padding-inline: 16px; padding-block: 12px;
+  }
+  .app:fullscreen { background: var(--paper); }
+
+  /* 16:9 stage, sized to the viewport; everything inside scales with it (cqi). */
+  .stage {
+    position: relative; width: min(100%, calc((100dvh - 120px) * 16 / 9)); aspect-ratio: 16 / 9;
+    max-width: 100%; container-type: inline-size; overflow: hidden; background: var(--paper);
+    cursor: pointer; user-select: none; -webkit-user-select: none;
+  }
+  .app:fullscreen .stage { width: min(100%, calc((100dvh - 64px) * 16 / 9)); }
+
+  /* Citation ruler: one tick per slide, a taller tick where a section starts. */
+  .ruler {
+    position: absolute; left: 5cqi; right: 5cqi; top: 3.2cqi; height: 1.4cqi;
+    display: flex; align-items: flex-end; gap: 0.28cqi; pointer-events: none;
+  }
+  .tick { flex: 1; height: 38%; background: var(--rule); border-radius: 1px; transition: background 200ms, height 200ms; }
+  .tick.sec { height: 70%; }
+  .tick.done { background: var(--ink); }
+  .tick.now { background: var(--marker); height: 100%; box-shadow: 0 0 0 0.12cqi var(--ink) inset; }
+
+  .foot {
+    position: absolute; left: 5cqi; right: 5cqi; bottom: 3cqi; display: flex; justify-content: space-between;
+    font: 400 1.25cqi/1 var(--mono); color: var(--muted); letter-spacing: 0.04em; pointer-events: none;
+  }
+  .foot .n { font-variant-numeric: tabular-nums; }
+
+  .slide {
+    position: absolute; inset: 7cqi 7cqi 7cqi; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; gap: 2.2cqi;
+  }
+  .slide[hidden] { display: none !important; }
+
+  /* Entrance: every [data-a] rises in, staggered by --i. The resting state is visible. */
+  .slide [data-a] { opacity: 1; transform: none; }
+  .slide.enter [data-a] { opacity: 0; transform: translateY(1.1cqi); }
+  .slide.on [data-a] {
+    opacity: 1; transform: none;
+    transition: opacity var(--t-enter) ease-out, transform var(--t-enter) cubic-bezier(.2,.7,.2,1);
+    transition-delay: calc(var(--i, 0) * var(--t-stagger));
+  }
+
+  /* Highlighter: a band across the lower two-thirds of the phrase, swept left to right. */
+  mark {
+    color: var(--marker-ink); background-color: transparent;
+    background-image: linear-gradient(var(--marker), var(--marker));
+    background-repeat: no-repeat; background-position: 0 var(--mark-pos); background-size: 100% var(--mark-band);
+    padding-inline: 0.12em; margin-inline: -0.12em; border-radius: 0.08em;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  }
+  .slide.enter mark { background-size: 0% var(--mark-band); }
+  .slide.on mark { background-size: 100% var(--mark-band); transition: background-size var(--t-mark) cubic-bezier(.3,.6,.2,1) var(--t-mark-delay); }
+
+  .eyebrow { font: 600 1.35cqi/1 var(--mono); color: var(--cite); letter-spacing: 0.14em; text-transform: uppercase; }
+  .big { font-weight: 700; font-size: 6.4cqi; line-height: 1.22; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
+  .sub { font-size: 2.2cqi; color: var(--muted); line-height: 1.5; margin: 0; text-wrap: balance; }
+
+  /* cover */
+  .k-cover .big { font-size: 9.6cqi; line-height: 1.1; }
+  .k-cover .meta { font: 400 1.4cqi/1.4 var(--mono); color: var(--muted); }
+
+  /* section */
+  .k-section .no { font: 600 4.6cqi/1 var(--mono); color: var(--cite); }
+  .k-section .big { font-size: 7.6cqi; }
+  .k-section .line { width: 8cqi; height: 0.28cqi; background: var(--ink); }
+
+  /* num */
+  .k-num .n { font-weight: 700; font-size: 17cqi; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+  .k-num .sub { font-size: 2.6cqi; color: var(--ink); }
+
+  /* vs */
+  .k-vs .bad { font-size: 3.4cqi; color: var(--muted); text-decoration: line-through; text-decoration-thickness: 0.18cqi; text-decoration-color: var(--faint); }
+  .k-vs .bad::before { content: "✕  "; text-decoration: none; display: inline-block; color: var(--faint); }
+  .k-vs .arrow { font: 400 2.4cqi/1 var(--mono); color: var(--faint); }
+
+  /* eq */
+  .k-eq .row { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 1.6cqi 3cqi; }
+  .k-eq .a { font: 600 9cqi/1 var(--mono); letter-spacing: -0.02em; }
+  .k-eq .arrow { font: 400 3cqi/1 var(--mono); color: var(--faint); }
+  .k-eq .b { font-weight: 700; font-size: 5.2cqi; }
+  .k-eq .sub { font-size: 1.9cqi; }
+
+  /* steps */
+  .k-steps .row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 1.6cqi 2.2cqi; }
+  .k-steps .step { display: flex; flex-direction: column; align-items: center; gap: 1cqi; }
+  .k-steps .step .i { font: 600 1.3cqi/1 var(--mono); color: var(--cite); }
+  .k-steps .step .w { font-weight: 700; font-size: 3.5cqi; white-space: nowrap; }
+  .k-steps .step:last-child .w { background: linear-gradient(var(--marker), var(--marker)) no-repeat 0 var(--mark-pos) / 100% var(--mark-band); color: var(--marker-ink); padding-inline: 0.12em; }
+  .k-steps .arrow { font: 400 2.6cqi/1 var(--mono); color: var(--faint); padding-top: 2cqi; }
+
+  /* list */
+  .k-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1.6cqi; align-items: center; }
+  .k-list li { font-weight: 700; font-size: 5cqi; line-height: 1.2; letter-spacing: -0.015em; }
+  .k-list li::before { content: "—"; font: 400 0.7em/1 var(--mono); color: var(--cite); margin-right: 0.5em; vertical-align: 0.12em; }
+
+  /* note — the one framed object: it is a file */
+  .k-note .file {
+    width: min(60cqi, 100%); text-align: left; background: var(--paper-2); border: 1px solid var(--rule);
+    border-radius: 0.6cqi; overflow: hidden;
+  }
+  .k-note .tab { font: 400 1.25cqi/1 var(--mono); color: var(--muted); padding: 1.1cqi 1.6cqi; border-bottom: 1px solid var(--rule); }
+  .k-note pre { margin: 0; padding: 1.3cqi 1.8cqi; font: 400 1.5cqi/1.5 var(--mono); color: var(--ink); white-space: pre-wrap; }
+  .k-note .dash { color: var(--faint); }
+  .k-note .key { color: var(--cite); }
+  .k-note .h { font-weight: 600; }
+  .k-note .dim { color: var(--muted); }
+
+  /* cite */
+  .k-cite .q { font-size: 2.4cqi; color: var(--muted); }
+  .k-cite .q b { font: 600 1.4cqi/1 var(--mono); color: var(--cite); margin-right: 0.8em; vertical-align: 0.25em; }
+  .k-cite .big { font-size: 4.4cqi; max-width: 62cqi; }
+  .k-cite .anchor {
+    font: 600 0.5em/1 var(--mono); color: var(--paper); background: var(--cite); border-radius: 0.3em;
+    padding: 0.28em 0.38em; margin-left: 0.18em; vertical-align: 0.4em;
+  }
+  .k-cite .src { list-style: none; margin: 0; padding: 0; font: 400 1.5cqi/1.7 var(--mono); color: var(--muted); }
+
+  /* funnel — widths to scale */
+  .k-funnel .rows { width: min(70cqi, 100%); display: flex; flex-direction: column; gap: 1.2cqi; }
+  .k-funnel .r { display: grid; grid-template-columns: 11cqi 1fr 9cqi; align-items: center; gap: 1.6cqi; }
+  .k-funnel .l { font-size: 1.9cqi; color: var(--muted); text-align: right; }
+  .k-funnel .track { height: 2.6cqi; }
+  .k-funnel .bar { height: 100%; background: var(--ink); border-radius: 0.2cqi; width: var(--w); min-width: 0.5cqi; }
+  .slide.enter.k-funnel .bar { width: 0; }
+  .slide.on.k-funnel .bar { width: var(--w); transition: width 700ms cubic-bezier(.3,.6,.2,1); transition-delay: calc(var(--i) * 140ms + 150ms); }
+  .k-funnel .r:last-child .bar { background: var(--marker); box-shadow: 0 0 0 0.12cqi var(--ink) inset; }
+  .k-funnel .v { font-weight: 700; font-size: 2.6cqi; text-align: left; font-variant-numeric: tabular-nums; }
+
+  /* url */
+  .k-url .u { font: 600 4.6cqi/1.2 var(--mono); letter-spacing: -0.02em; overflow-wrap: anywhere; }
+
+  /* qa */
+  .k-qa .big { font-size: 5cqi; }
+  .k-qa .sub { font-size: 2.5cqi; line-height: 1.6; }
+
+  /* end */
+  .k-end .big { font-size: 9cqi; }
+  .k-end .u { font: 400 2cqi/1 var(--mono); color: var(--cite); }
+
+  /* Controls under the stage */
+  .bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font: 500 13px/1 var(--sans); }
+  .bar button {
+    font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--rule);
+    border-radius: 999px; padding: 8px 14px; cursor: pointer;
+  }
+  .bar button:hover { border-color: var(--ink); }
+  .bar button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .bar button:focus-visible, .tile:focus-visible, .stage:focus-visible { outline: 2px solid var(--cite); outline-offset: 2px; }
+  .bar kbd { font: 400 11px/1 var(--mono); color: var(--muted); margin-left: 6px; }
+  .bar button[aria-pressed="true"] kbd { color: var(--faint); }
+
+  .notes {
+    width: min(100%, 880px); box-sizing: border-box; border-top: 1px solid var(--rule); padding-block: 10px 4px;
+    display: grid; gap: 6px; font-size: 15px; line-height: 1.6; max-height: 28dvh; overflow: auto;
+  }
+  .notes .meta { font: 400 12px/1.4 var(--mono); color: var(--muted); }
+
+  .grid {
+    position: fixed; inset: 0; z-index: 10; background: var(--paper); overflow: auto;
+    padding-inline: 16px; padding-block: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  .grid .head { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto 12px; font: 600 14px/1 var(--sans); }
+  .grid .tiles { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+  .tile {
+    text-align: left; font: 500 13px/1.4 var(--sans); color: var(--ink); background: var(--paper-2);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 10px; cursor: pointer; min-height: 72px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .tile .id { font: 400 11px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tile[aria-current="true"] { border-color: var(--ink); box-shadow: inset 0 -4px 0 var(--marker); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .slide.enter [data-a], .slide.enter mark, .slide.enter.k-funnel .bar { opacity: 1; transform: none; background-size: 100% var(--mark-band); width: var(--w); }
+    .slide.on [data-a], .slide.on mark, .slide.on.k-funnel .bar, .tick { transition: none !important; }
+  }
+</style>
+
+<div class="app" id="app">
+  <div class="stage" id="stage" tabindex="0" role="region" aria-roledescription="슬라이드" aria-live="polite">
+    <div class="ruler" id="ruler" aria-hidden="true"></div>
+    <div id="slides"></div>
+    <div class="foot" aria-hidden="true"><span id="where"></span><span class="n" id="count"></span></div>
+  </div>
+  <div class="bar" role="toolbar" aria-label="발표 조작">
+    <button type="button" id="prev">이전<kbd>←</kbd></button>
+    <button type="button" id="next">다음<kbd>→</kbd></button>
+    <button type="button" id="play" aria-pressed="false">자동 재생<kbd>P</kbd></button>
+    <button type="button" id="noteBtn" aria-pressed="false">대본<kbd>N</kbd></button>
+    <button type="button" id="gridBtn">전체 목록<kbd>G</kbd></button>
+    <button type="button" id="fs">전체 화면<kbd>F</kbd></button>
+  </div>
+  <div class="notes" id="notes" hidden>
+    <div class="meta" id="noteMeta"></div>
+    <div id="noteSay"></div>
+    <div class="meta" id="noteNext"></div>
+  </div>
+</div>
+<div class="grid" id="grid" hidden>
+  <div class="head"><span>전체 슬라이드</span><button type="button" id="gridClose" class="tile" style="min-height:0;flex-direction:row">닫기 · Esc</button></div>
+  <div class="tiles" id="tiles"></div>
+</div>
+
+<script>
+const SLIDES = [{"id": 1, "kind": "cover", "section": "표지", "title": "내 서재가\n답한다", "sub": "출처가 붙는 AI 논문 서재 — Obsidian 플러그인", "meta": "Academic Paper Citation Manager · v0.7.5", "say": "안녕하세요. 오늘은 제가 만든 Obsidian 플러그인, Academic Paper Citation Manager를 소개합니다. 한 문장으로 말하면, 내 논문 서재가 직접 답하는 도구입니다.", "sec": 17.2}, {"id": 2, "kind": "section", "section": "문제", "no": "1", "title": "문제", "say": "먼저 문제부터 보겠습니다.", "sec": 3.0}, {"id": 3, "kind": "say", "section": "문제", "text": "논문,\n몇 편이나 읽으세요?", "say": "질문 하나 드리겠습니다. 한 주제로 논문을 몇 편이나 읽어보셨나요?", "sec": 6.2}, {"id": 4, "kind": "num", "section": "문제", "n": "1,605", "label": "편 — 진료지침 하나에 검색된 논문", "say": "저는 최근 바이포탈 엔도스코피 진료지침을 만들었습니다. PubMed에서 검색된 논문이 1,605편이었습니다.", "sec": 10.4}, {"id": 5, "kind": "say", "section": "문제", "text": "다 읽을 수\n있을까요?", "hl": "다", "say": "이걸 사람이 다 읽을 수 있을까요? 솔직히 불가능합니다.", "sec": 5.2}, {"id": 6, "kind": "say", "section": "문제", "text": "그래서\nAI에게 묻습니다", "say": "그래서 요즘은 AI에게 물어봅니다.", "sec": 3.8}, {"id": 7, "kind": "say", "section": "문제", "text": "답은\n술술 나옵니다", "say": "답은 정말 술술 나옵니다. 문장도 매끄럽고, 인용까지 달려 있습니다.", "sec": 6.2}, {"id": 8, "kind": "say", "section": "문제", "text": "그 논문,\n실제로 있나요?", "hl": "실제로", "say": "그런데 그 인용된 논문을 찾아보면 없는 경우가 있습니다. 저자도 저널도 그럴듯한데, 존재하지 않는 논문입니다.", "sec": 9.8}, {"id": 9, "kind": "vs", "section": "문제", "bad": "그럴듯한 가짜 인용", "good": "내가 가진 진짜 논문", "say": "우리가 원하는 건 그럴듯한 가짜 인용이 아니라, 내가 가진 진짜 논문을 근거로 한 답입니다.", "sec": 8.0}, {"id": 10, "kind": "say", "section": "문제", "text": "문제가\n하나 더 있습니다", "say": "문제가 하나 더 있습니다.", "sec": 2.8}, {"id": 11, "kind": "say", "section": "문제", "text": "내 서재는\n뜻으로 못 찾는다", "hl": "뜻", "say": "Zotero나 EndNote에 논문을 천 편 넣어두어도, 단어가 정확히 맞지 않으면 찾지 못합니다. MI로 검색하면 myocardial infarction이 나오지 않죠.", "sec": 15.8}, {"id": 12, "kind": "say", "section": "문제", "text": "쌓아둔 논문이\n일하지 않는다", "say": "결국 쌓아둔 논문이 저를 위해 일하지 않습니다.", "sec": 4.6}, {"id": 13, "kind": "section", "section": "아이디어", "no": "2", "title": "아이디어", "say": "그래서 생각을 바꿨습니다.", "sec": 3.0}, {"id": 14, "kind": "say", "section": "아이디어", "text": "내 서재를\n검색 엔진으로", "hl": "검색 엔진", "say": "내 서재 자체를 검색 엔진으로 만들자.", "sec": 3.8}, {"id": 15, "kind": "say", "section": "아이디어", "text": "논문 1편 = 노트 1개", "say": "방법은 단순합니다. 논문 한 편이 Obsidian 노트 한 개가 됩니다.", "sec": 6.6}, {"id": 16, "kind": "note", "section": "아이디어", "lines": ["---", "title: Biportal endoscopic lumbar decompression…", "author: [Kim, Park, Lee]", "issued: 2023", "DOI: 10.xxxx/…", "PMID: \"3xxxxxxx\"", "tags: [spinal-stenosis, endoscopy]", "---", "## Summary", "Background · Methods · Results · Conclusions", "## Notes", "내 메모"], "say": "노트는 이렇게 생겼습니다. 맨 위에 저자, 연도, DOI, PMID가 표준 서지 형식으로 들어가고, 아래에 AI가 쓴 구조화 요약과 제 메모가 붙습니다.", "sec": 12.6}, {"id": 17, "kind": "say", "section": "아이디어", "text": "그냥\n텍스트 파일입니다", "say": "특별한 데이터베이스가 아닙니다. 그냥 텍스트 파일, 마크다운입니다.", "sec": 6.4}, {"id": 18, "kind": "list", "section": "아이디어", "items": ["서버 없음", "계정 없음", "내 폴더에 그대로"], "say": "서버도, 계정도 필요 없습니다. 논문 정보는 전부 내 컴퓨터 폴더에 남습니다. 프로그램을 지워도 파일은 그대로 남습니다.", "sec": 10.4}, {"id": 19, "kind": "say", "section": "아이디어", "text": "그 노트가\nAI 답의 근거", "hl": "근거", "say": "그리고 이 노트들이 그대로 AI가 답할 때의 근거가 됩니다.", "sec": 5.6}, {"id": 20, "kind": "section", "section": "흐름", "no": "3", "title": "흐름", "say": "한 편이 어떻게 들어가서 답이 되는지 따라가 보겠습니다.", "sec": 5.4}, {"id": 21, "kind": "steps", "section": "흐름", "items": ["DOI 붙여넣기", "노트 생성", "질문", "출처 달린 답"], "say": "DOI를 붙여넣으면 노트가 생기고, 질문하면 출처 달린 답이 나옵니다. 이게 전부입니다.", "sec": 8.0}, {"id": 22, "kind": "list", "section": "흐름", "title": "넣는 길", "items": ["DOI · PMID", "PubMed 검색", "PDF · Zotero 파일"], "say": "논문을 넣는 길은 여러 가지입니다. DOI나 PMID를 붙여넣거나, 플러그인 안에서 PubMed를 검색하거나, PDF를 넣거나, Zotero·EndNote에서 내보낸 파일을 그대로 가져옵니다.", "sec": 17.4}, {"id": 23, "kind": "say", "section": "흐름", "text": "넣으면\nAI가 요약합니다", "say": "넣으면 AI가 배경, 방법, 결과, 결론으로 나눠 요약합니다. 원문이 공개된 논문은 전문을, 아니면 초록을 읽습니다.", "sec": 9.8}, {"id": 24, "kind": "say", "section": "흐름", "text": "주제 태그는\nMeSH로", "hl": "MeSH", "say": "주제 태그는 PubMed의 MeSH 용어로 자동으로 붙습니다. 그래서 Obsidian 그래프에서 주제별로 뭉쳐 보입니다.", "sec": 11.4}, {"id": 25, "kind": "say", "section": "흐름", "text": "검색은\n단어와 뜻을 함께", "hl": "뜻", "say": "검색은 두 가지를 동시에 봅니다. 정확한 단어, 그리고 뜻입니다.", "sec": 5.8}, {"id": 26, "kind": "eq", "section": "흐름", "a": "MI", "b": "myocardial infarction", "say": "그래서 MI로 검색해도 myocardial infarction 논문이 잡힙니다.", "sec": 8.2}, {"id": 27, "kind": "cite", "section": "흐름", "q": "수술 후 합병증은 무엇이 보고됐나?", "a": "경막 파열과 수술 후 혈종이 주로 보고됐다 [1][2].", "src": ["[1] 내 서재의 노트 → 결과 구절", "[2] 내 서재의 노트 → 결과 구절"], "say": "질문하면 답의 문장마다 번호가 붙습니다. 그 번호를 누르면 내 서재에 있는 논문의 실제 구절로 갑니다. 화면은 예시입니다.", "sec": 10.6}, {"id": 28, "kind": "say", "section": "흐름", "text": "근거가 없으면\n없다고", "hl": "없다고", "say": "서재에 근거가 없으면 없다고 말하도록, 인용은 지어내지 않도록 지시되어 있습니다.", "sec": 7.6}, {"id": 29, "kind": "say", "section": "흐름", "text": "쓸 때는\n@ 한 번", "hl": "@", "say": "논문을 쓸 때는 골뱅이를 치면 인용이 자동완성됩니다.", "sec": 5.2}, {"id": 30, "kind": "say", "section": "흐름", "text": "저널 스타일은\n한 줄", "say": "참고문헌 형식은 저널 이름 한 줄로 바뀝니다. 만 개가 넘는 CSL 스타일을 자동으로 받아옵니다.", "sec": 8.6}, {"id": 31, "kind": "say", "section": "흐름", "text": "투고는\nWord로", "hl": "Word", "say": "그리고 투고용 Word 파일로 바로 내보냅니다.", "sec": 4.8}, {"id": 32, "kind": "say", "section": "흐름", "text": "놓친 논문도\n찾아줍니다", "hl": "놓친", "say": "마지막으로 인용 그래프입니다. 내 논문들이 여러 번 인용하는데 내 서재에는 없는 논문, 즉 제가 놓친 핵심 논문을 찾아줍니다.", "sec": 10.8}, {"id": 33, "kind": "section", "section": "실전", "no": "4", "title": "실전: 진료지침", "say": "이제 실제로 써본 이야기입니다.", "sec": 3.4}, {"id": 34, "kind": "say", "section": "실전", "text": "바이포탈 엔도스코피\n진료지침", "say": "바이포탈 엔도스코피 임상진료지침을 이 도구로 만들었습니다.", "sec": 6.0}, {"id": 35, "kind": "num", "section": "실전", "n": "1,605", "label": "편 검색", "say": "PubMed 검색으로 1,605편을 모았습니다. 월 단위로 나눠서, 사람이 아니라 스크립트가 넣었습니다.", "sec": 9.6}, {"id": 36, "kind": "num", "section": "실전", "n": "1,139", "label": "편 스크리닝", "say": "범위를 정리하고 1,139편을 스크리닝했습니다.", "sec": 5.0}, {"id": 37, "kind": "num", "section": "실전", "n": "830", "label": "편 포함", "say": "초록을 기준으로 830편을 포함했습니다.", "sec": 4.4}, {"id": 38, "kind": "num", "section": "실전", "n": "609", "label": "편 전문 요약", "say": "그중 전문을 구한 609편을 AI가 구조화해서 요약했습니다.", "sec": 6.0}, {"id": 39, "kind": "num", "section": "실전", "n": "1,366", "label": "줄 근거표", "say": "요약에서 근거표 1,366줄을 뽑았습니다.", "sec": 4.4}, {"id": 40, "kind": "num", "section": "실전", "n": "33", "label": "개 합의 질문", "say": "그리고 패널이 투표할 합의 질문 33개가 나왔습니다.", "sec": 5.2}, {"id": 41, "kind": "funnel", "section": "실전", "rows": [["1,605", "검색"], ["1,139", "스크리닝"], ["830", "포함"], ["609", "전문 요약"], ["33", "합의 질문"]], "say": "한눈에 보면 이렇습니다. 1,605편에서 33개 질문까지.", "sec": 5.6}, {"id": 42, "kind": "say", "section": "실전", "text": "PRISMA 흐름도도\n자동으로", "hl": "PRISMA", "say": "체계적 문헌고찰에 필요한 PRISMA 흐름도도 플러그인이 숫자를 세서 그려줍니다.", "sec": 8.0}, {"id": 43, "kind": "say", "section": "실전", "text": "스크리닝은\n키보드로 한 편씩", "say": "사람이 직접 스크리닝할 때는 한 편씩 초록을 보고, I는 포함, E는 제외, 키보드로 판정합니다.", "sec": 8.2}, {"id": 44, "kind": "say", "section": "실전", "text": "AI는 초안,\n결정은 사람", "hl": "사람", "say": "중요한 점은 이겁니다. AI가 만든 건 초안입니다. 포함 여부도, 권고도, 최종 결정은 패널이 합니다.", "sec": 8.6}, {"id": 45, "kind": "section", "section": "AI 동료", "no": "5", "title": "AI 동료", "say": "이번 작업에서 가장 크게 달라진 점입니다.", "sec": 4.2}, {"id": 46, "kind": "say", "section": "AI 동료", "text": "AI가\n서재를 직접 다룬다", "hl": "직접", "say": "Claude Code나 Codex 같은 AI 에이전트가 제 서재를 직접 읽고 쓸 수 있습니다.", "sec": 8.6}, {"id": 47, "kind": "steps", "section": "AI 동료", "items": ["AI가 찾고 요약", "플러그인이 저장", "내가 확인"], "say": "AI가 PubMed를 찾고 요약을 쓰면, 저장은 플러그인이 안전하게 하고, 저는 결과를 확인합니다.", "sec": 9.0}, {"id": 48, "kind": "say", "section": "AI 동료", "text": "내 컴퓨터 안에서만", "say": "이 연결은 내 컴퓨터 안에서만 열리고, 접속 토큰으로 보호됩니다. 노트를 고칠 때는 그 사이 바뀌지 않았는지 먼저 확인합니다.", "sec": 10.8}, {"id": 49, "kind": "say", "section": "AI 동료", "text": "API 키 없이\n로그인으로", "hl": "로그인", "say": "ChatGPT의 Codex나 OpenCode에 이미 로그인해 있다면, 별도 API 키 없이 그 로그인으로 요약과 채팅을 돌릴 수 있습니다.", "sec": 12.6}, {"id": 50, "kind": "section", "section": "비교", "no": "6", "title": "무엇이 다른가", "say": "그럼 기존 도구와 무엇이 다를까요.", "sec": 3.6}, {"id": 51, "kind": "say", "section": "비교", "text": "Zotero가 하던 일은\n그대로", "say": "Zotero나 EndNote가 하던 일은 그대로 합니다.", "sec": 5.8}, {"id": 52, "kind": "list", "section": "비교", "items": ["중복 병합", "철회 논문 표시", "무료 PDF 받기"], "say": "중복 논문을 합치고, 철회된 논문을 표시하고, 무료로 공개된 PDF를 한꺼번에 받습니다.", "sec": 8.0}, {"id": 53, "kind": "say", "section": "비교", "text": "그리고\n그 너머", "hl": "너머", "say": "그리고 그걸 넘어섭니다.", "sec": 2.8}, {"id": 54, "kind": "list", "section": "비교", "items": ["뜻으로 찾기", "출처 달린 답", "스크리닝 · PRISMA"], "say": "뜻으로 찾고, 출처가 달린 답을 받고, 스크리닝과 PRISMA까지 한 곳에서 합니다.", "sec": 7.6}, {"id": 55, "kind": "say", "section": "비교", "text": "언제든\n나갈 수 있습니다", "say": "그리고 언제든 나갈 수 있습니다. BibTeX, RIS, CSL-JSON으로 전부 내보냅니다. 데이터는 처음부터 제 파일이었으니까요.", "sec": 12.0}, {"id": 56, "kind": "section", "section": "시작", "no": "7", "title": "시작", "say": "시작하는 방법입니다.", "sec": 2.6}, {"id": 57, "kind": "steps", "section": "시작", "items": ["Obsidian 설치", "플러그인 추가", "키 하나"], "say": "세 단계입니다. Obsidian을 설치하고, 플러그인을 추가하고, OpenRouter 키 하나를 넣으면 됩니다.", "sec": 10.4}, {"id": 58, "kind": "url", "section": "시작", "url": "github.com/grotyx/rag-obsidian", "sub": "무료 · MIT 라이선스", "say": "모든 코드는 여기 공개돼 있습니다. 무료이고, MIT 라이선스입니다.", "sec": 6.4}, {"id": 59, "kind": "say", "section": "마무리", "text": "출처 없는 답은\n답이 아니다", "hl": "출처", "say": "마지막으로 한 문장만 기억해 주세요. 출처 없는 답은, 답이 아닙니다.", "sec": 6.2}, {"id": 60, "kind": "say", "section": "마무리", "text": "내 서재가\n답한다", "hl": "답한다", "say": "내 서재가, 진짜 출처와 함께 답합니다.", "sec": 3.8}, {"id": 61, "kind": "end", "section": "마무리", "text": "감사합니다", "sub": "github.com/grotyx/rag-obsidian", "say": "감사합니다. 질문 받겠습니다.", "sec": 3.2}, {"id": 62, "kind": "qa", "section": "부록", "q": "인터넷 없이도 되나요?", "a": "노트와 검색은 내 컴퓨터에서.\nAI 요약·채팅은 고른 제공자로 전송.\nOllama를 쓰면 전부 로컬.", "say": "노트와 검색 색인은 내 컴퓨터에 있습니다. AI 요약과 채팅은 제가 고른 제공자로 보내지고, Ollama를 쓰면 전부 로컬에서 돕니다.", "sec": 11.8}, {"id": 63, "kind": "qa", "section": "부록", "q": "내 데이터는 어디에 있나요?", "a": "vault 폴더의 마크다운 파일.\n서버·계정·사용 기록 전송 없음.", "say": "전부 제 vault 폴더의 마크다운 파일입니다. 플러그인에는 서버도, 계정도, 사용 기록 전송도 없습니다.", "sec": 9.4}, {"id": 64, "kind": "qa", "section": "부록", "q": "AI가 틀리면요?", "a": "답의 번호마다 원문 구절로 확인.\n최종 판단은 사람이.", "say": "답의 번호마다 원문 구절로 바로 확인할 수 있습니다. 그래도 최종 판단은 사람이 합니다.", "sec": 7.8}];
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const br = (s) => esc(s).replace(/\n/g, "<br>");
+function marked(text, hl) {
+  const html = br(text);
+  if (!hl) return html;
+  const h = esc(hl);
+  const at = html.indexOf(h);
+  return at < 0 ? html : html.slice(0, at) + "<mark>" + h + "</mark>" + html.slice(at + h.length);
+}
+let n = 0;
+const a = () => `data-a style="--i:${n++}"`;
+
+const KIND = {
+  cover: (s) => `<div class="eyebrow" ${a()}>${esc(s.meta)}</div>
+    <h1 class="big" ${a()}>${marked(s.title, "답한다")}</h1>
+    <p class="sub" ${a()}>${esc(s.sub)}</p>`,
+  section: (s) => `<div class="no" ${a()}>§${esc(s.no)}</div><div class="line" ${a()}></div><h2 class="big" ${a()}>${esc(s.title)}</h2>`,
+  say: (s) => `<p class="big" ${a()}>${marked(s.text, s.hl)}</p>${s.small ? `<p class="sub" ${a()}>${esc(s.small)}</p>` : ""}`,
+  num: (s) => `<div class="n" ${a()}>${esc(s.n)}</div><p class="sub" ${a()}>${esc(s.label)}</p>`,
+  vs: (s) => `<div class="bad" ${a()}>${esc(s.bad)}</div><div class="arrow" ${a()}>↓</div><p class="big" ${a()}><mark>${esc(s.good)}</mark></p>`,
+  eq: (s) => `<div class="row"><span class="a" ${a()}>${esc(s.a)}</span><span class="arrow" ${a()}>→</span><span class="b" ${a()}><mark>${esc(s.b)}</mark></span></div>
+    <p class="sub" ${a()}>단어가 달라도 뜻이 같으면 찾는다</p>`,
+  steps: (s) => `<div class="row">${s.items.map((it, i) => `${i ? `<span class="arrow" ${a()}>→</span>` : ""}<div class="step" ${a()}><span class="i">${i + 1}</span><span class="w">${esc(it)}</span></div>`).join("")}</div>`,
+  list: (s) => `${s.title ? `<div class="eyebrow" ${a()}>${esc(s.title)}</div>` : ""}<ul>${s.items.map((it) => `<li ${a()}>${esc(it)}</li>`).join("")}</ul>`,
+  note: (s) => {
+    let inFm = false;
+    const lines = s.lines.map((l) => {
+      if (l === "---") { inFm = !inFm; return `<span class="dash">---</span>`; }
+      if (inFm) { const m = l.match(/^([\w-]+):(.*)$/); return m ? `<span class="key">${esc(m[1])}:</span>${esc(m[2])}` : esc(l); }
+      if (l.startsWith("## ")) return `<span class="h">${esc(l)}</span>`;
+      return `<span class="dim">${esc(l)}</span>`;
+    });
+    return `<div class="eyebrow" ${a()}>노트 한 개</div><div class="file" ${a()}><div class="tab">References/kim2023biportal.md</div><pre>${lines.join("\n")}</pre></div>`;
+  },
+  cite: (s) => {
+    const ans = esc(s.a).replace(/\[(\d+)\]/g, '<span class="anchor">$1</span>');
+    return `<div class="eyebrow" ${a()}>예시 화면</div><p class="q" ${a()}><b>Q</b>${esc(s.q)}</p><p class="big" ${a()}>${ans}</p>
+      <ul class="src" ${a()}>${s.src.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+  },
+  funnel: (s) => {
+    const max = Math.max(...s.rows.map((r) => Number(String(r[0]).replace(/,/g, ""))));
+    const rows = s.rows.map((r, i) => {
+      const v = Number(String(r[0]).replace(/,/g, ""));
+      return `<div class="r"><span class="l">${esc(r[1])}</span><div class="track"><div class="bar" style="--w:${(v / max) * 100}%;--i:${i}"></div></div><span class="v">${esc(r[0])}</span></div>`;
+    }).join("");
+    return `<div class="eyebrow" ${a()}>바이포탈 엔도스코피 진료지침</div><div class="rows" ${a()}>${rows}</div>`;
+  },
+  url: (s) => `<div class="eyebrow" ${a()}>공개 저장소</div><div class="u" ${a()}><mark>${esc(s.url)}</mark></div><p class="sub" ${a()}>${esc(s.sub)}</p>`,
+  qa: (s) => `<div class="eyebrow" ${a()}>질문이 나오면</div><p class="big" ${a()}>${esc(s.q)}</p><p class="sub" ${a()}>${br(s.a)}</p>`,
+  end: (s) => `<p class="big" ${a()}>${esc(s.text)}</p><div class="u" ${a()}>${esc(s.sub)}</div>`,
+};
+
+const host = document.getElementById("slides");
+const els = SLIDES.map((s) => {
+  n = 0;
+  const el = document.createElement("section");
+  el.className = `slide k-${s.kind}`;
+  el.hidden = true;
+  el.setAttribute("aria-label", `${s.id} / ${SLIDES.length}`);
+  el.innerHTML = KIND[s.kind](s);
+  host.appendChild(el);
+  return el;
+});
+
+const ruler = document.getElementById("ruler");
+SLIDES.forEach((s, i) => {
+  const t = document.createElement("span");
+  t.className = "tick" + (i === 0 || s.section !== SLIDES[i - 1].section ? " sec" : "");
+  ruler.appendChild(t);
+});
+const ticks = [...ruler.children];
+
+const $ = (id) => document.getElementById(id);
+const tiles = $("tiles");
+SLIDES.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "tile";
+  const label = s.text || s.title || s.n && `${s.n} ${s.label}` || s.q || s.url || (s.items || []).join(" · ") || s.good || s.kind;
+  b.innerHTML = `<span class="id">${s.id} · ${esc(s.section)}</span><span>${esc(String(label).replace(/\n/g, " "))}</span>`;
+  b.addEventListener("click", () => { closeGrid(); go(i); });
+  tiles.appendChild(b);
+});
+
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let cur = -1;
+function go(i) {
+  i = Math.max(0, Math.min(SLIDES.length - 1, i));
+  if (i === cur) return;
+  if (cur >= 0) { els[cur].hidden = true; els[cur].classList.remove("on", "enter"); }
+  cur = i;
+  const el = els[cur];
+  el.classList.remove("on");
+  if (!reduce) el.classList.add("enter");
+  el.hidden = false;
+  if (!reduce) requestAnimationFrame(() => requestAnimationFrame(() => { el.classList.remove("enter"); el.classList.add("on"); }));
+  else el.classList.add("on");
+  ticks.forEach((t, k) => { t.classList.toggle("done", k < cur); t.classList.toggle("now", k === cur); });
+  const s = SLIDES[cur];
+  $("where").textContent = `§ ${s.section}`;
+  $("count").textContent = `${String(s.id).padStart(2, "0")} / ${SLIDES.length}`;
+  $("noteMeta").textContent = `${s.id} · ${s.section} · ${s.sec}초`;
+  $("noteSay").textContent = s.say;
+  const nx = SLIDES[cur + 1];
+  $("noteNext").textContent = nx ? `다음 → ${String(nx.text || nx.title || nx.n || nx.q || nx.url || (nx.items || []).join(" · ") || nx.kind).replace(/\n/g, " ")}` : "마지막 장";
+  [...tiles.children].forEach((t, k) => t.setAttribute("aria-current", k === cur ? "true" : "false"));
+  try { history.replaceState(null, "", `#s${s.id}`); } catch (e) {}
+  if (playing) schedule();
+}
+const next = () => go(cur + 1);
+const prev = () => go(cur - 1);
+
+let playing = false, timer = 0;
+function schedule() {
+  clearTimeout(timer);
+  if (!playing) return;
+  if (cur >= SLIDES.length - 1) { setPlaying(false); return; }
+  timer = setTimeout(next, SLIDES[cur].sec * 1000);
+}
+function setPlaying(v) {
+  playing = v; $("play").setAttribute("aria-pressed", String(v));
+  if (v) schedule(); else clearTimeout(timer);
+}
+function toggleNotes() {
+  const box = $("notes"); box.hidden = !box.hidden;
+  $("noteBtn").setAttribute("aria-pressed", String(!box.hidden));
+}
+function openGrid() { $("grid").hidden = false; (tiles.children[cur] || tiles.children[0]).focus(); }
+function closeGrid() { $("grid").hidden = true; $("stage").focus(); }
+async function toggleFs() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await $("app").requestFullscreen();
+  } catch (e) { /* fullscreen not available here */ }
+}
+
+$("prev").addEventListener("click", prev);
+$("next").addEventListener("click", next);
+$("play").addEventListener("click", () => setPlaying(!playing));
+$("noteBtn").addEventListener("click", toggleNotes);
+$("gridBtn").addEventListener("click", openGrid);
+$("gridClose").addEventListener("click", closeGrid);
+$("fs").addEventListener("click", toggleFs);
+$("stage").addEventListener("click", (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  (e.clientX - r.left < r.width * 0.3 ? prev : next)();
+});
+let tx = null;
+$("stage").addEventListener("touchstart", (e) => { tx = e.touches[0].clientX; }, { passive: true });
+$("stage").addEventListener("touchend", (e) => {
+  if (tx === null) return;
+  const dx = e.changedTouches[0].clientX - tx; tx = null;
+  if (Math.abs(dx) > 40) (dx < 0 ? next : prev)();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!$("grid").hidden) { if (e.key === "Escape" || e.key === "g" || e.key === "G") { e.preventDefault(); closeGrid(); } return; }
+  switch (e.key) {
+    case "ArrowRight": case "PageDown": case " ": e.preventDefault(); next(); break;
+    case "ArrowLeft": case "PageUp": e.preventDefault(); prev(); break;
+    case "Home": e.preventDefault(); go(0); break;
+    case "End": e.preventDefault(); go(SLIDES.length - 1); break;
+    case "p": case "P": setPlaying(!playing); break;
+    case "n": case "N": toggleNotes(); break;
+    case "g": case "G": openGrid(); break;
+    case "f": case "F": toggleFs(); break;
+  }
+});
+
+const start = Number((location.hash.match(/^#s(\d+)$/) || [])[1] || 1) - 1;
+go(Number.isFinite(start) ? start : 0);
+</script>
