@@ -1,4 +1,5 @@
 import { App, TFile, normalizePath } from "obsidian";
+import { text } from "../util/json";
 import { CSLItem, ScholarRagSettings } from "../types";
 import { buildNote, generateCitekey, generateFilename, BuildNoteOpts } from "./reference";
 import { resolvePdfLink } from "../ingest/pdfStash";
@@ -21,14 +22,6 @@ export interface RefEntry {
   retracted?: boolean;
   /** Screening decision (`include` frontmatter: include/exclude/pending). */
   include?: string;
-}
-
-/** `String()` on an `unknown` value trips no-base-to-string (a plain object's default
- *  `[object Object]` stringification is almost never what's wanted); frontmatter/CSL values here
- *  are always string or number in practice, so narrow to those and keep the "" fallback for
- *  anything else, same as before. */
-function primStr(v: unknown): string {
-  return typeof v === "string" || typeof v === "number" ? String(v) : "";
 }
 
 /** Citekey as used in a PDF file name: what the download commands write to `PDFs/`. */
@@ -266,7 +259,7 @@ export function matchKeys(item: { DOI?: unknown; PMID?: unknown; title?: unknown
   const keys: string[] = [];
   const doi = normDoi(item.DOI);
   if (doi) keys.push(`doi:${doi}`);
-  if (item.PMID) keys.push(`pmid:${primStr(item.PMID)}`);
+  if (item.PMID) keys.push(`pmid:${text(item.PMID)}`);
   const title = normTitle(item.title);
   if (title.length > 12) keys.push(`title:${title}`);
   return keys;
@@ -339,7 +332,7 @@ export function inScope(
 /** Normalize a DOI for comparison: lowercase, strip doi.org URL / "doi:" prefixes
  *  (CSL DOI casing and prefixing vary by source — Crossref vs PubMed vs pasted URLs). */
 export function normDoi(d: unknown): string {
-  return primStr(d || "")
+  return text(d || "")
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\/(dx\.)?doi\.org\//, "")
@@ -347,7 +340,7 @@ export function normDoi(d: unknown): string {
 }
 
 export function normTitle(t: unknown): string {
-  return primStr(t || "")
+  return text(t || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -359,9 +352,9 @@ function formatAuthors(author: unknown): string {
     .map((a) => {
       if (a && typeof a === "object") {
         const o = a as Record<string, unknown>;
-        return primStr(o.family) || primStr(o.literal);
+        return text(o.family) || text(o.literal);
       }
-      return primStr(a);
+      return text(a);
     })
     .filter(Boolean);
   if (names.length === 0) return "";

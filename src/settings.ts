@@ -57,7 +57,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("PubMed API key (optional)")
-      .setDesc("Ncbi e-utilities key — raises the rate limit from 3 to 10 requests/second.")
+      .setDesc("NCBI E-utilities key — raises the rate limit from 3 to 10 requests/second.")
       .addText((t) => {
         t.setValue(this.plugin.settings.pubmedApiKey).onChange(async (v) => {
           this.plugin.settings.pubmedApiKey = v.trim();
@@ -206,7 +206,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           .addOption("openai", "OpenAI / compatible")
           .addOption("ollama", "Ollama (local)");
         if (Platform.isDesktopApp) {
-          d.addOption("codex", "Codex CLI (chatgpt login)");
+          d.addOption("codex", "Codex CLI (ChatGPT login)");
           d.addOption("opencode", "OpenCode CLI (logged-in)");
         }
         d.setValue(this.plugin.settings.llmProvider).onChange(async (v) => {
@@ -283,7 +283,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     if (llm === "openai") {
       containerEl.createEl("p", {
         cls: "setting-item-description",
-        text: "Uses the OpenAI base URL + API key set under retrieval above.",
+        text: "Uses the OpenAI base URL + API key set under Retrieval above.",
       });
     }
 

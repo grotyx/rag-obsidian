@@ -2,7 +2,7 @@ import { requestUrl } from "obsidian";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
 import { resolveWork } from "../graph/openalex";
-import { str, rec, arr } from "../util/json";
+import { str, rec, arr, text } from "../util/json";
 
 /** Like `str`, but keeps a missing/non-string field as `undefined` rather than "" — for nested
  *  CSL fields (author names, dates) that must not gain a spurious empty-string property. */
@@ -129,9 +129,9 @@ async function fetchCrossref(doi: string): Promise<CSLItem> {
     }),
     "container-title": str(Array.isArray(ctRaw) ? ctRaw[0] : ctRaw),
     "container-title-short": str(Array.isArray(sctRaw) ? sctRaw[0] : sctRaw),
-    volume: str(m.volume),
-    issue: str(m.issue),
-    page: str(m.page),
+    volume: text(m.volume),
+    issue: text(m.issue),
+    page: text(m.page),
     DOI: str(m.DOI),
     URL: str(m.URL),
     publisher: str(m.publisher),
@@ -176,9 +176,9 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
     author: authors,
     "container-title": str(r.fulljournalname) || str(r.source),
     "container-title-short": str(r.source) || undefined,
-    volume: str(r.volume),
-    issue: str(r.issue),
-    page: str(r.pages),
+    volume: text(r.volume),
+    issue: text(r.issue),
+    page: text(r.pages),
     PMID: pmid,
     PMCID: pmc || undefined,
     DOI: doi || undefined,

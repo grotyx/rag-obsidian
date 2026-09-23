@@ -1,5 +1,5 @@
 /** The one writer of the extracted-PDF-text stash: the `## Full text (extracted)` section the
- *  indexer chunks along with the abstract and the note body. PDF import, "Index linked PDFs"
+ *  indexer chunks along with the abstract and the note body. PDF import, "Index linked PDF files"
  *  and the OA download all append through here so the marker and the cap stay in one place. */
 
 export const STASH_MARKER = "## Full text (extracted)";

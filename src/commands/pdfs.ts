@@ -13,7 +13,7 @@ import { startBatch } from "../ui/progress";
 const PDF_WIDTH = 2;
 
 /** The one way a reference note's PDF is located: the `pdf:` link first, then the
- *  `PDFs/<citekey>.pdf` the download command writes. Shared so "Index linked PDFs" and
+ *  `PDFs/<citekey>.pdf` the download command writes. Shared so "Index linked PDF files" and
  *  "Extract PDF highlights" can never disagree about which file a note points at. */
 export function findPdfFile(
   plugin: ScholarRagPlugin,
@@ -93,7 +93,7 @@ export async function indexLinkedPdfActive(plugin: ScholarRagPlugin): Promise<vo
 }
 
 /** Explicit `pdf:` link this note's frontmatter already resolves to, or null. Deliberately
- *  ignores the `PDFs/<citekey>.pdf` fallback `findPdfFile` also tries — "Link PDFs in a folder"
+ *  ignores the `PDFs/<citekey>.pdf` fallback `findPdfFile` also tries — "Link PDF files in a folder to references"
  *  exists precisely to turn that implicit fallback into a real frontmatter link. */
 function resolvedPdfLink(plugin: ScholarRagPlugin, pdfValue: unknown, notePath: string): TFile | null {
   const link = resolvePdfLink(pdfValue);
@@ -104,7 +104,7 @@ function resolvedPdfLink(plugin: ScholarRagPlugin, pdfValue: unknown, notePath: 
  *  Pass 1 matches by filename == citekey (no extraction). Pass 2 extracts the remaining PDFs'
  *  text (pool width `PDF_WIDTH`, same CPU-bound reasoning as `indexLinkedPdfs`) and matches by
  *  DOI / PMID / title via `matchPdf`. A note with no stashed text gets the pass-2 extraction
- *  stashed for free; pass-1 matches are left for "Index linked PDFs" to pick up. */
+ *  stashed for free; pass-1 matches are left for "Index linked PDF files" to pick up. */
 export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: string): Promise<void> {
   const entries = plugin.library.entries();
 

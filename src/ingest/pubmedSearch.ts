@@ -4,7 +4,7 @@ import { splitName, parsePubDate } from "./metadata";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
 import { parseMeshList } from "./summarize";
-import { str, rec, arr } from "../util/json";
+import { str, rec, arr, text, numLike } from "../util/json";
 
 /** One PubMed search hit: parsed CSL metadata plus identifiers for follow-up fetches. */
 export interface PubmedHit {
@@ -46,7 +46,7 @@ export async function searchPubmedPage(query: string, opts: PubmedSearchOpts = {
   const srJson: unknown = sr.json;
   const esearchresult = rec(srJson).esearchresult;
   const pmids = arr(rec(esearchresult).idlist).map((v) => str(v));
-  const total = Number(str(rec(esearchresult).count)) || 0;
+  const total = numLike(rec(esearchresult).count) ?? 0;
   if (!pmids.length) return { hits: [], total };
 
   await ncbiGate(!!opts.apiKey);
@@ -79,9 +79,9 @@ export async function searchPubmedPage(query: string, opts: PubmedSearchOpts = {
       author: authors,
       "container-title": str(d.fulljournalname) || str(d.source) || "",
       "container-title-short": str(d.source) || undefined,
-      volume: str(d.volume) || undefined,
-      issue: str(d.issue) || undefined,
-      page: str(d.pages) || undefined,
+      volume: text(d.volume) || undefined,
+      issue: text(d.issue) || undefined,
+      page: text(d.pages) || undefined,
       DOI: doi || undefined,
       PMID: uid,
       issued: parsePubDate(typeof d.pubdate === "string" ? d.pubdate : undefined),

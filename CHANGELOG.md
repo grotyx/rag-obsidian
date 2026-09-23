@@ -6,6 +6,35 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-09-23
+
+Prepared for the Obsidian Community directory review.
+
+### Changed
+
+- **Lint runs at the review's severity.** The type-safety rules (`no-unsafe-*`,
+  `no-base-to-string`, `restrict-template-expressions`) are no longer downgraded to warnings,
+  and all 574 findings are fixed: external JSON (Crossref, PubMed, OpenAlex, Unpaywall, LLM and
+  embedding responses, pdfjs, citeproc, Orama) is read as `unknown` and narrowed through small
+  helpers in `src/util/json.ts`, keeping every fallback value as it was. Seven warnings remain
+  on purpose: secretStorage feature detection and `setWarning` (both keep Obsidian 1.7.2
+  supported) and the advisory to adopt declarative settings.
+- UI text is sentence case. Command ids are unchanged, so hotkeys keep working; three visible
+  names changed: "Download open-access PDF files for references without one", "Index linked PDF
+  files", "Link PDF files in a folder to references".
+- Timers use `window.setTimeout` for popout-window compatibility.
+
+### Fixed
+
+- Values YAML reads as numbers survive: an unquoted `PMID: 12345678` still opens PubMed, a
+  numeric tag (`2024`) is kept when `add_reference` merges tags, and a quoted
+  `cited_by_count: "57"` still shows in the reading queue and dashboard (new `text()` /
+  `numLike()` helpers).
+- An OpenAI-compatible embeddings response without a numeric `embedding` array (e.g. base64)
+  now fails loudly instead of indexing empty vectors.
+- Text that names another label keeps that label's casing ("Contact e-mail", "Find open-access
+  PDF", ## References, `.ris`, NCBI E-utilities, ChatGPT).
+
 ## [0.7.1] — 2026-09-23
 
 ### Fixed

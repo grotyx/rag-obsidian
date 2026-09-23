@@ -18,3 +18,19 @@ export function rec(v: unknown): Record<string, unknown> {
 export function arr(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
 }
+
+/** A scalar as text: strings as-is, finite numbers stringified ("" otherwise). YAML reads an
+ *  unquoted `PMID: 12345678`, a year tag or a volume as a number — `str()` would drop those. */
+export function text(v: unknown): string {
+  return typeof v === "string" ? v : typeof v === "number" && Number.isFinite(v) ? String(v) : "";
+}
+
+/** A number from a number or a numeric string (frontmatter `cited_by_count: "57"`). */
+export function numLike(v: unknown): number | undefined {
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}

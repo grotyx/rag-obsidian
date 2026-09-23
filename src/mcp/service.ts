@@ -9,7 +9,7 @@ import { applyScreening, INCLUDE_VALUES, LEVELS, ScreeningFields } from "../data
 import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
-import { str } from "../util/json";
+import { text } from "../util/json";
 
 type JsonSchema = Record<string, unknown>;
 
@@ -68,7 +68,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "get_reference_source",
-    description: "Get the best text for an external AI to summarize: a linked PDF's extracted full text when substantial (e.g. from \"Index linked PDFs\"), else PMC open-access full text, else the PubMed or stored abstract. Never calls an LLM. Pass its hash and sourceType to save_reference_summary.",
+    description: "Get the best text for an external AI to summarize: a linked PDF's extracted full text when substantial (e.g. from \"Index linked PDF files\"), else PMC open-access full text, else the PubMed or stored abstract. Never calls an LLM. Pass its hash and sourceType to save_reference_summary.",
     inputSchema: objectSchema({ citekey: string("Exact citekey returned by another library tool.") }, ["citekey"]),
     annotations: { ...readOnly, openWorldHint: true },
   },
@@ -541,7 +541,7 @@ export class McpService {
           await this.plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
             const tagsVal: unknown = fm.tags;
             const existing = Array.isArray(tagsVal)
-              ? tagsVal.map((t: unknown) => str(t))
+              ? tagsVal.map((t: unknown) => text(t)).filter(Boolean)
               : typeof tagsVal === "string"
                 ? [tagsVal]
                 : [];

@@ -1,3 +1,4 @@
+import { text } from "../util/json";
 export interface Chunk {
   id: string;
   citekey: string;
@@ -42,20 +43,14 @@ export function yearFromIssued(issued: unknown): number {
   return 0;
 }
 
-/** `String()` on an `unknown` value trips no-base-to-string; author names in CSL data are
- *  always string or number in practice, so narrow to those (same "" fallback otherwise). */
-function primStr(v: unknown): string {
-  return typeof v === "string" || typeof v === "number" ? String(v) : "";
-}
-
 /** Author family names (or `literal`) out of a CSL `author` frontmatter value. */
 export function authorNames(author: unknown): string[] {
   if (!Array.isArray(author)) return [];
   return author
     .map((a) => {
-      if (!a || typeof a !== "object") return primStr(a);
+      if (!a || typeof a !== "object") return text(a);
       const n = a as Record<string, unknown>;
-      return primStr(n.family) || primStr(n.literal);
+      return text(n.family) || text(n.literal);
     })
     .map((s) => s.trim())
     .filter(Boolean);

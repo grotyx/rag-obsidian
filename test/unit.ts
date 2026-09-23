@@ -43,6 +43,7 @@ import {
   MergeSourceNote,
 } from "../src/data/merge";
 import { extractSummaryBlock, renameCiteKeys } from "../src/cite/bibliography";
+import { numLike, text } from "../src/util/json";
 import {
   getYear,
   firstAuthorFamily,
@@ -493,6 +494,14 @@ AID - 10.1000/xyz123 [doi]
   check(oc[0] === "/home/x/.opencode/bin/opencode", "cliCandidates: opencode's ~/.opencode/bin first");
   const codexWin = cliCandidates("codex", "C:\\Users\\x", "win32");
   check(codexWin[codexWin.length - 1] === "C:\\Users\\x\\AppData\\Roaming\\npm\\codex.exe", "cliCandidates: win32 appends .exe under %APPDATA%/npm");
+}
+
+// ---------- util/json.ts: text / numLike ----------
+{
+  check(text(12345678) === "12345678", "text: an unquoted YAML PMID (a number) keeps its digits");
+  check(text("2024") === "2024" && text(null) === "" && text({}) === "" && text(NaN) === "", "text: strings pass, non-scalars and NaN become empty");
+  check(numLike("57") === 57 && numLike(57) === 57, "numLike: a quoted count and a number both read as numbers");
+  check(numLike("") === undefined && numLike("n/a") === undefined && numLike(null) === undefined, "numLike: empty, non-numeric and null are undefined");
 }
 
 // ---------- llm/cli.ts: winQuote ----------

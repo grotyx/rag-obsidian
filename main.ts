@@ -48,7 +48,7 @@ import { FolderSuggestModal } from "./src/ui/FolderSuggestModal";
 import { McpVault } from "./src/mcp/vault";
 import { McpService, mcpToolsFor } from "./src/mcp/service";
 import { assertVaultPath, McpHttpServer, McpServerStatus } from "./src/mcp/http";
-import { str, rec } from "./src/util/json";
+import { str, rec, text } from "./src/util/json";
 import { compileMcpManuscript } from "./src/write/manuscript";
 
 const LEGACY_PLUGIN_ID = "rag-obsidian";
@@ -719,7 +719,7 @@ export default class ScholarRagPlugin extends Plugin {
     if (!r) return;
     const fm = r.fm;
     const doi = str(fm.DOI);
-    const pmid = str(fm.PMID);
+    const pmid = text(fm.PMID);
     const url = doi
       ? `https://doi.org/${doi}`
       : pmid

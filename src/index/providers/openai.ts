@@ -43,7 +43,12 @@ export class OpenAIProvider implements EmbeddingProvider {
     return data
       .map((d, i) => {
         const o = rec(d);
-        return { i: num(o.index) ?? i, embedding: arr(o.embedding) as number[] };
+        const embedding = arr(o.embedding);
+        // A base64 `encoding_format` string or a missing field must not become an empty vector.
+        if (!embedding.length || !embedding.every((x) => typeof x === "number")) {
+          throw new Error("unexpected embedding payload (no numeric `embedding` array)");
+        }
+        return { i: num(o.index) ?? i, embedding: embedding as number[] };
       })
       .sort((a, b) => a.i - b.i)
       .map((d) => d.embedding);

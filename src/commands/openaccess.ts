@@ -140,7 +140,7 @@ export async function downloadOaPdf(plugin: ScholarRagPlugin): Promise<void> {
     notice.hide();
   }
   if (res.status === "not-oa") {
-    new Notice("No open-access PDF found (try 'find open-access PDF' first)");
+    new Notice("No open-access PDF found (try 'Find open-access PDF' first)");
     return;
   }
   if (res.status === "error") {
@@ -185,7 +185,7 @@ export async function downloadOaPdf(plugin: ScholarRagPlugin): Promise<void> {
 export async function downloadOaPdfsAll(plugin: ScholarRagPlugin): Promise<void> {
   const mailto = plugin.settings.openalexMailto?.trim();
   if (!mailto) {
-    new Notice('Set "contact e-mail" in settings → retrieval first — Unpaywall requires it');
+    new Notice('Set "Contact e-mail" in Settings → Retrieval first — Unpaywall requires it');
     return;
   }
   const todo: Entry[] = [];
