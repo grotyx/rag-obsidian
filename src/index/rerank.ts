@@ -14,13 +14,6 @@ const SNIPPET = 400;
  *  on retrieval order. Measured: ~8s for 40 passages with thinking off, ~50s with it on. */
 const RERANK_TIMEOUT_MS = 30_000;
 
-// `window` exists in Obsidian's Electron renderer (correct timer context for popout windows);
-// the Node test harness that exercises chat/rerank directly has no `window`, so fall back to
-// the plain global captured here before anything in this module could shadow it.
-const nodeSetTimeout = setTimeout;
-function scheduleTimeout(cb: () => void, ms: number): ReturnType<typeof setTimeout> {
-  return typeof window !== "undefined" ? window.setTimeout(cb, ms) : nodeSetTimeout(cb, ms);
-}
 
 /**
  * Keep at most `maxPerRef` chunks per reference, then top the list back up to `k` from what was
@@ -159,7 +152,7 @@ export async function rerankHits(
     });
     const raw = await Promise.race([
       ranked,
-      new Promise<null>((r) => scheduleTimeout(() => r(null), RERANK_TIMEOUT_MS)),
+      new Promise<null>((r) => window.setTimeout(() => r(null), RERANK_TIMEOUT_MS)),
     ]);
     if (raw === null) return hits; // too slow — answer on retrieval order
     return parseRerankOrder(raw, hits.length).map((i) => hits[i]);

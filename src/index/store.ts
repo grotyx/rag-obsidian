@@ -309,7 +309,7 @@ export class VectorStore {
       text: d.text,
       embedding: Array.from(view.subarray(i * meta.dim, i * meta.dim + meta.dim)),
     }));
-    if (insertDocs.length) await insertMultiple(this.db, insertDocs);
+    if (insertDocs.length) await insertMultiple(this.db as AnyOrama, insertDocs);
     this.chunkIds = meta.chunkIds || {};
     this.paths = meta.paths || {};
     this.hashes = meta.hashes || {};

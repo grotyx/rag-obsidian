@@ -8,14 +8,6 @@ import { rec, arr, str } from "../util/json";
 const RETRY_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
 const MAX_ATTEMPTS = 4;
 
-// `window` exists in Obsidian's Electron renderer (correct timer context for popout windows);
-// the Node test harness that exercises retry/backoff directly has no `window`, so fall back to
-// the plain global captured here before anything in this module could shadow it.
-const nodeSetTimeout = setTimeout;
-function scheduleTimeout(cb: () => void, ms: number): ReturnType<typeof setTimeout> {
-  return typeof window !== "undefined" ? window.setTimeout(cb, ms) : nodeSetTimeout(cb, ms);
-}
-
 async function backoff(wait: number, res?: { headers?: Record<string, unknown> }): Promise<number> {
   const raw = res?.headers?.["retry-after"] ?? res?.headers?.["Retry-After"];
   const header = Number(raw);
@@ -23,7 +15,7 @@ async function backoff(wait: number, res?: { headers?: Record<string, unknown> }
   // together also wake together and reproduce the burst that caused it.
   const base = Number.isFinite(header) && header > 0 ? header * 1000 : wait;
   const delay = base * (0.5 + Math.random());
-  await new Promise((r) => scheduleTimeout(r, Math.min(delay, 30000)));
+  await new Promise((r) => window.setTimeout(r, Math.min(delay, 30000)));
   return wait * 2;
 }
 
