@@ -191,6 +191,9 @@ export async function runCli(
         }
         resolve(out);
       });
+      // A CLI that exits before reading its stdin (bad flag, missing login) raises EPIPE on the
+      // stream; unhandled, that would crash the renderer instead of surfacing the exit code.
+      child.stdin?.on("error", () => {});
       child.stdin?.write(prompt);
       child.stdin?.end();
     });
