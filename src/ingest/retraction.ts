@@ -1,5 +1,5 @@
 import { requestUrl } from "obsidian";
-import { normalizeDoi } from "../graph/openalex";
+import { normalizeDoi, shortId } from "../graph/openalex";
 import { CSLItem } from "../types";
 
 const OPENALEX = "https://api.openalex.org";
@@ -9,10 +9,13 @@ export interface RetractionResult {
   source: string;
 }
 
-/** Check whether a work is retracted, via OpenAlex `is_retracted` (by DOI, else PMID). */
+/** Check whether a work is retracted, via OpenAlex `is_retracted` (by OpenAlex id, else DOI,
+ *  else PMID — same priority as `graph/openalex.ts` resolveWork). */
 export async function checkRetraction(item: CSLItem, mailto = ""): Promise<RetractionResult | null> {
+  const oaId = typeof item.openalex_id === "string" ? shortId(item.openalex_id) : "";
   let url: string;
-  if (item.DOI) url = `${OPENALEX}/works/https://doi.org/${encodeURIComponent(normalizeDoi(String(item.DOI)))}`;
+  if (oaId) url = `${OPENALEX}/works/${oaId}`;
+  else if (item.DOI) url = `${OPENALEX}/works/https://doi.org/${encodeURIComponent(normalizeDoi(String(item.DOI)))}`;
   else if (item.PMID) url = `${OPENALEX}/works/pmid:${item.PMID}`;
   else return null;
   url += "?select=is_retracted,title" + (mailto ? `&mailto=${encodeURIComponent(mailto)}` : "");

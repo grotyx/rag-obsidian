@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { parseLibrary } from "../src/ingest/import";
 import { cleanDoi, detectId, splitName, parsePubDate } from "../src/ingest/metadata";
 import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
-import { findIdentifier } from "../src/ingest/pdf";
+import { findIdentifier, isPdfMagic } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, stashedText, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
 import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summarize";
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
@@ -170,6 +170,15 @@ AID - 10.1000/xyz123 [doi]
   check(arx?.kind === "arxiv" && arx?.value === "2101.12345", "findIdentifier: arXiv in head");
   check(findIdentifier("no identifiers here, just prose") === null, "findIdentifier: null when absent");
   check(findIdentifier("x".repeat(7000) + " 10.1038/nature14539") === null, "findIdentifier: ignores DOI past head window");
+}
+
+// ---------- ingest/pdf.ts: isPdfMagic ----------
+{
+  const pdfBytes = new TextEncoder().encode("%PDF-1.7\n...rest of file...").buffer;
+  check(isPdfMagic(pdfBytes), "isPdfMagic: true on a real %PDF- header");
+  const htmlBytes = new TextEncoder().encode("<!DOCTYPE html><html>landing page</html>").buffer;
+  check(!isPdfMagic(htmlBytes), "isPdfMagic: false on an HTML landing page");
+  check(!isPdfMagic(new ArrayBuffer(0)), "isPdfMagic: false on an empty buffer");
 }
 
 // ---------- ingest/pdfStash.ts ----------
