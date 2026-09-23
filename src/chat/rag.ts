@@ -111,7 +111,7 @@ export class RagChat {
     const cleanHistory: ChatMessage[] = history.map((m) => {
       if (m.role !== "assistant") return { role: m.role, content: m.content };
       const turnSources = m.sources;
-      const content = m.content.replace(/\[(\d+)\]/g, (match, d) => {
+      const content = m.content.replace(/\[(\d+)\]/g, (match: string, d: string) => {
         const n = parseInt(d, 10);
         if (n >= YEAR_BRACKET_MIN) return match;
         const ck = turnSources?.[n - 1];
@@ -134,7 +134,7 @@ export class RagChat {
 
     // Drop dangling anchors (n outside 1..sources) so the UI never maps them —
     // but keep year-like brackets (see YEAR_BRACKET_MIN).
-    const text = raw.replace(/\[(\d+)\]/g, (m, d) => {
+    const text = raw.replace(/\[(\d+)\]/g, (m: string, d: string) => {
       const n = parseInt(d, 10);
       if (n >= YEAR_BRACKET_MIN) return m;
       return n >= 1 && n <= order.length ? m : "";

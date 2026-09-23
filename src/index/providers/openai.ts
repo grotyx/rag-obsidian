@@ -1,6 +1,7 @@
 import { requestUrl } from "obsidian";
 import { ScholarRagSettings } from "../../types";
 import { EmbeddingProvider } from "../embedding";
+import { rec, arr, num } from "../../util/json";
 
 /** Embeddings via OpenAI or any OpenAI-compatible endpoint (set base URL + key).
  *  e.g. model `text-embedding-3-small` (1536-d) or `text-embedding-3-large` (3072-d). */
@@ -32,18 +33,18 @@ export class OpenAIProvider implements EmbeddingProvider {
     if (res.status >= 400) {
       throw new Error(`OpenAI error ${res.status}: ${res.text?.slice(0, 200)}`);
     }
-    const data = res.json?.data;
-    if (!Array.isArray(data) || data.length !== texts.length) {
+    const data = arr(rec(res.json as unknown).data);
+    if (data.length !== texts.length) {
       throw new Error("OpenAI returned unexpected embedding payload");
     }
     // Sort by `index` to be safe — but Gemini's OpenAI-compat endpoint OMITS index
     // for the first item (index 0), so fall back to array position when it's missing
     // (responses come back in input order). A NaN comparator would corrupt the order.
     return data
-      .map((d: { index?: number; embedding: number[] }, i: number) => ({
-        i: typeof d.index === "number" ? d.index : i,
-        embedding: d.embedding,
-      }))
+      .map((d, i) => {
+        const o = rec(d);
+        return { i: num(o.index) ?? i, embedding: arr(o.embedding) as number[] };
+      })
       .sort((a, b) => a.i - b.i)
       .map((d) => d.embedding);
   }

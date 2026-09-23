@@ -6,12 +6,14 @@ export function bridgeSource(): string {
 }
 
 function bridgeMain(): void {
-  const crypto = require("node:crypto");
-  const fs = require("node:fs");
-  const http = require("node:http");
-  const os = require("node:os");
-  const path = require("node:path");
-  const readline = require("node:readline");
+  // Type-only casts below (`as typeof import(...)`) are erased by the compiler and never
+  // appear in `bridgeMain.toString()` — they don't change the emitted standalone bridge.
+  const crypto = require("node:crypto") as typeof import("node:crypto");
+  const fs = require("node:fs") as typeof import("node:fs");
+  const http = require("node:http") as typeof import("node:http");
+  const os = require("node:os") as typeof import("node:os");
+  const path = require("node:path") as typeof import("node:path");
+  const readline = require("node:readline") as typeof import("node:readline");
 
   const at = process.argv.indexOf("--vault");
   if (at < 0 || !process.argv[at + 1]) {
@@ -45,7 +47,7 @@ function bridgeMain(): void {
   async function forward(line: string): Promise<void> {
     let request: { id?: string | number };
     try {
-      request = JSON.parse(line);
+      request = JSON.parse(line) as { id?: string | number };
     } catch {
       process.stdout.write(failure(null, "Invalid JSON from MCP client") + "\n");
       return;
@@ -64,7 +66,7 @@ function bridgeMain(): void {
         const owner = fs.statSync(discovery).uid;
         if (owner !== process.getuid()) throw new Error("discovery file is not ours");
       }
-      info = JSON.parse(fs.readFileSync(discovery, "utf8"));
+      info = JSON.parse(fs.readFileSync(discovery, "utf8")) as { port: number; token: string };
       if (!Number.isInteger(info.port) || typeof info.token !== "string") throw new Error("invalid discovery file");
     } catch {
       if (request.id !== undefined) {

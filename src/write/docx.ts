@@ -13,11 +13,11 @@ function loadDesktopNode(): {
   pathApi: typeof import("node:path");
 } {
   return {
-    cp: require("node:child_process"),
-    fs: require("node:fs/promises"),
-    fsSync: require("node:fs"),
-    os: require("node:os"),
-    pathApi: require("node:path"),
+    cp: require("node:child_process") as typeof import("node:child_process"),
+    fs: require("node:fs/promises") as typeof import("node:fs/promises"),
+    fsSync: require("node:fs") as typeof import("node:fs"),
+    os: require("node:os") as typeof import("node:os"),
+    pathApi: require("node:path") as typeof import("node:path"),
   };
 }
 

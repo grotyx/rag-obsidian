@@ -1,4 +1,5 @@
 import { requestUrl } from "obsidian";
+import { rec, arr, str } from "../util/json";
 
 /** Providers answer 429 when too many requests land at once — and the batch paths deliberately
  *  run 15 papers in parallel. Retry those (and transient 5xx) with exponential backoff, honouring
@@ -7,6 +8,14 @@ import { requestUrl } from "obsidian";
 const RETRY_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
 const MAX_ATTEMPTS = 4;
 
+// `window` exists in Obsidian's Electron renderer (correct timer context for popout windows);
+// the Node test harness that exercises retry/backoff directly has no `window`, so fall back to
+// the plain global captured here before anything in this module could shadow it.
+const nodeSetTimeout = setTimeout;
+function scheduleTimeout(cb: () => void, ms: number): ReturnType<typeof setTimeout> {
+  return typeof window !== "undefined" ? window.setTimeout(cb, ms) : nodeSetTimeout(cb, ms);
+}
+
 async function backoff(wait: number, res?: { headers?: Record<string, unknown> }): Promise<number> {
   const raw = res?.headers?.["retry-after"] ?? res?.headers?.["Retry-After"];
   const header = Number(raw);
@@ -14,7 +23,7 @@ async function backoff(wait: number, res?: { headers?: Record<string, unknown> }
   // together also wake together and reproduce the burst that caused it.
   const base = Number.isFinite(header) && header > 0 ? header * 1000 : wait;
   const delay = base * (0.5 + Math.random());
-  await new Promise((r) => setTimeout(r, Math.min(delay, 30000)));
+  await new Promise((r) => scheduleTimeout(r, Math.min(delay, 30000)));
   return wait * 2;
 }
 
@@ -97,10 +106,11 @@ export class LLMClient {
       throw: false,
     });
     if (res.status >= 400) throw new Error(`Anthropic ${res.status}: ${res.text?.slice(0, 200)}`);
-    const blocks = res.json?.content;
-    const text = Array.isArray(blocks)
-      ? blocks.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("")
-      : "";
+    const blocks = arr(rec(res.json as unknown).content).map((b) => rec(b));
+    const text = blocks
+      .filter((b) => b.type === "text")
+      .map((b) => str(b.text))
+      .join("");
     // Reasoning models against a low token cap return 200 with no text — surfacing that
     // beats saving an empty answer that looks like success.
     if (!text) throw new Error("Anthropic returned no text content (raise the token cap for reasoning models)");
@@ -132,7 +142,8 @@ export class LLMClient {
     if (res.status >= 400) throw new Error(`OpenAI ${res.status}: ${res.text?.slice(0, 200)}`);
     // Empty-text throw is Anthropic-only by design (reasoning-model token caps); the
     // OpenAI-compatible and Ollama paths keep the endpoint default here.
-    return res.json?.choices?.[0]?.message?.content ?? "";
+    const first = rec(arr(rec(res.json as unknown).choices)[0]);
+    return str(rec(first.message).content);
   }
 
   private async ollama(messages: ChatMessage[], system: string): Promise<string> {
@@ -148,6 +159,6 @@ export class LLMClient {
       throw: false,
     });
     if (res.status >= 400) throw new Error(`Ollama ${res.status}: ${res.text?.slice(0, 200)}`);
-    return res.json?.message?.content ?? "";
+    return str(rec(rec(res.json as unknown).message).content);
   }
 }

@@ -6,6 +6,20 @@ import type { ChatMessage, ChatOpts } from "./client";
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 
+/** `window` exists in Obsidian's Electron renderer (correct timer context for popout windows);
+ *  the Node test harness that exercises `runCli` directly has no `window`, so fall back to the
+ *  plain global captured here before anything in this module could shadow it. */
+type TimeoutHandle = ReturnType<typeof setTimeout>;
+const nodeSetTimeout = setTimeout;
+const nodeClearTimeout = clearTimeout;
+function scheduleTimeout(cb: () => void, ms: number): TimeoutHandle {
+  return typeof window !== "undefined" ? window.setTimeout(cb, ms) : nodeSetTimeout(cb, ms);
+}
+function cancelTimeout(handle: TimeoutHandle): void {
+  if (typeof window !== "undefined") window.clearTimeout(handle);
+  else nodeClearTimeout(handle);
+}
+
 /** Build the argv for one CLI round-trip. `lastMsgPath` (codex) is where the answer is written;
  *  opencode answers on stdout instead and ignores it. `noReasoning` only affects codex — opencode
  *  has no equivalent flag. */
@@ -46,7 +60,12 @@ export function parseOpencodeOutput(stdout: string): string {
     if (!trimmed) continue;
     let event: { type?: string; error?: unknown; message?: unknown; part?: { text?: unknown } };
     try {
-      event = JSON.parse(trimmed);
+      event = JSON.parse(trimmed) as {
+        type?: string;
+        error?: unknown;
+        message?: unknown;
+        part?: { text?: unknown };
+      };
     } catch {
       continue;
     }
@@ -179,7 +198,7 @@ export async function runCli(
       let out = "";
       let err = "";
       let settled = false;
-      const timer = setTimeout(() => {
+      const timer = scheduleTimeout(() => {
         settled = true;
         child.kill();
         reject(new Error(`${provider} timed out`));
@@ -189,13 +208,13 @@ export async function runCli(
       child.on("error", (e) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        cancelTimeout(timer);
         reject(e);
       });
       child.on("close", (code) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        cancelTimeout(timer);
         if (code !== 0) {
           reject(new Error(`${provider} exited ${code}: ${err.slice(-300)}`));
           return;

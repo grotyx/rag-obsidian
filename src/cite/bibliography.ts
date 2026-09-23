@@ -144,8 +144,8 @@ export function inTextLabel(item: CSLItem): string {
  *  for the plain-text and DOM renderers of its output. */
 export function decodeEntities(s: string): string {
   return s
-    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => safeCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_m, n) => safeCodePoint(parseInt(n, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m: string, h: string) => safeCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m: string, n: string) => safeCodePoint(parseInt(n, 10)))
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")

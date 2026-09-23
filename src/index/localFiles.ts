@@ -23,10 +23,10 @@ function loadNode(): {
   pathApi: typeof import("node:path");
 } {
   return {
-    fs: require("node:fs/promises"),
-    crypto: require("node:crypto"),
-    os: require("node:os"),
-    pathApi: require("node:path"),
+    fs: require("node:fs/promises") as typeof import("node:fs/promises"),
+    crypto: require("node:crypto") as typeof import("node:crypto"),
+    os: require("node:os") as typeof import("node:os"),
+    pathApi: require("node:path") as typeof import("node:path"),
   };
 }
 
