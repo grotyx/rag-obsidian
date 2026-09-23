@@ -46,7 +46,12 @@ export function parseOpencodeOutput(stdout: string): string {
     if (!trimmed) continue;
     let event: { type?: string; error?: unknown; message?: unknown; part?: { text?: unknown } };
     try {
-      event = JSON.parse(trimmed);
+      event = JSON.parse(trimmed) as {
+        type?: string;
+        error?: unknown;
+        message?: unknown;
+        part?: { text?: unknown };
+      };
     } catch {
       continue;
     }
@@ -179,7 +184,7 @@ export async function runCli(
       let out = "";
       let err = "";
       let settled = false;
-      const timer = setTimeout(() => {
+      const timer = window.setTimeout(() => {
         settled = true;
         child.kill();
         reject(new Error(`${provider} timed out`));
@@ -189,13 +194,13 @@ export async function runCli(
       child.on("error", (e) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        window.clearTimeout(timer);
         reject(e);
       });
       child.on("close", (code) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        window.clearTimeout(timer);
         if (code !== 0) {
           reject(new Error(`${provider} exited ${code}: ${err.slice(-300)}`));
           return;

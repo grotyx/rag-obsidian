@@ -6,8 +6,30 @@ import {
   getByID,
   search,
   MODE_HYBRID_SEARCH,
+  AnyOrama,
+  SearchParams,
 } from "@orama/orama";
 import { Chunk } from "./chunker";
+
+/** Orama's generics are driven by string-literal schema types (`"enum[]"`, `` `vector[${N}]` ``)
+ *  that aren't worth threading through a runtime-built dimension — this wraps it loosely
+ *  (`AnyOrama`) and describes only the document/hit shape actually read here. */
+interface StoredDoc {
+  id: string;
+  citekey: string;
+  title: string;
+  section: string;
+  year: number;
+  tags: string[];
+  author: string[];
+  text: string;
+  embedding: number[];
+}
+
+interface SearchHitRaw {
+  document: StoredDoc;
+  score: number;
+}
 
 /** Bump on any Orama schema change (or the on-disk persistence format): an index written
  *  under an older number cannot be restored into the new schema, so `IndexManager.restore`
@@ -61,7 +83,7 @@ export function describeFilters(f: SearchFilters): string {
 
 /** Thin wrapper over an Orama hybrid (BM25 + vector) index. */
 export class VectorStore {
-  private db: any = null;
+  private db: AnyOrama | null = null;
   dim = 0;
   modelId = "";
   chunkIds: Record<string, string[]> = {};
@@ -108,7 +130,7 @@ export class VectorStore {
         author: "enum[]",
         text: "string",
         embedding: `vector[${dim}]`,
-      } as any,
+      },
     });
   }
 
@@ -198,15 +220,16 @@ export class VectorStore {
       // on the passage text/vector, this only sways close calls).
       boost: { tagText: 1.5 },
       ...(Object.keys(where).length ? { where } : {}),
-    } as any);
-    return (res.hits as any[]).map((h) => ({
+    } as SearchParams<AnyOrama>);
+    const hits = res.hits as unknown as SearchHitRaw[];
+    return hits.map((h) => ({
       id: String(h.document.id),
       citekey: String(h.document.citekey),
       title: String(h.document.title),
       section: String(h.document.section),
       year: Number(h.document.year) || 0,
       text: String(h.document.text),
-      score: h.score as number,
+      score: h.score,
     }));
   }
 
@@ -224,7 +247,7 @@ export class VectorStore {
     const docs: Array<Record<string, unknown>> = [];
     const vectors = new Float32Array(ids.length * this.dim);
     ids.forEach((id, i) => {
-      const doc = getByID(this.db, id);
+      const doc = getByID(this.db as AnyOrama, id) as unknown as StoredDoc | undefined;
       if (!doc) throw new Error(`index/meta desync — rebuild required (missing doc ${id})`);
       docs.push({
         id: doc.id,
@@ -236,7 +259,7 @@ export class VectorStore {
         author: doc.author,
         text: doc.text,
       });
-      vectors.set(doc.embedding as number[], i * this.dim);
+      vectors.set(doc.embedding, i * this.dim);
     });
     const meta: StoredMeta = {
       modelId: this.modelId,
@@ -286,7 +309,7 @@ export class VectorStore {
       text: d.text,
       embedding: Array.from(view.subarray(i * meta.dim, i * meta.dim + meta.dim)),
     }));
-    if (insertDocs.length) await insertMultiple(this.db, insertDocs);
+    if (insertDocs.length) await insertMultiple(this.db as AnyOrama, insertDocs);
     this.chunkIds = meta.chunkIds || {};
     this.paths = meta.paths || {};
     this.hashes = meta.hashes || {};

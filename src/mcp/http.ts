@@ -41,11 +41,11 @@ export function loadDesktopNode(): {
   pathApi: typeof import("node:path");
 } {
   return {
-    crypto: require("node:crypto"),
-    fs: require("node:fs/promises"),
-    http: require("node:http"),
-    os: require("node:os"),
-    pathApi: require("node:path"),
+    crypto: require("node:crypto") as typeof import("node:crypto"),
+    fs: require("node:fs/promises") as typeof import("node:fs/promises"),
+    http: require("node:http") as typeof import("node:http"),
+    os: require("node:os") as typeof import("node:os"),
+    pathApi: require("node:path") as typeof import("node:path"),
   };
 }
 

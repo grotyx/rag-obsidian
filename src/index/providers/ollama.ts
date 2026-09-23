@@ -1,6 +1,7 @@
 import { requestUrl } from "obsidian";
 import { ScholarRagSettings } from "../../types";
 import { EmbeddingProvider } from "../embedding";
+import { rec, arr } from "../../util/json";
 
 /** Local embeddings via Ollama (https://ollama.com). Recommended local default.
  *  Setup: install Ollama, then `ollama pull nomic-embed-text`. */
@@ -28,8 +29,8 @@ export class OllamaProvider implements EmbeddingProvider {
         `Ollama error ${res.status}: ${res.text?.slice(0, 200) || "is Ollama running?"}`
       );
     }
-    const embeddings = res.json?.embeddings;
-    if (!Array.isArray(embeddings) || embeddings.length !== texts.length) {
+    const embeddings = arr(rec(res.json as unknown).embeddings) as number[][];
+    if (embeddings.length !== texts.length) {
       throw new Error("Ollama returned unexpected embedding payload");
     }
     return embeddings;

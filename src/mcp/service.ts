@@ -9,6 +9,7 @@ import { applyScreening, INCLUDE_VALUES, LEVELS, ScreeningFields } from "../data
 import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
+import { str } from "../util/json";
 
 type JsonSchema = Record<string, unknown>;
 
@@ -537,8 +538,13 @@ export class McpService {
         // the duplicate short-circuit otherwise silently drops tags the caller asked for.
         let tagsAdded: string[] = [];
         if (normalizedTags.length) {
-          await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
-            const existing = Array.isArray(fm.tags) ? fm.tags.map(String) : typeof fm.tags === "string" ? [fm.tags] : [];
+          await this.plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+            const tagsVal: unknown = fm.tags;
+            const existing = Array.isArray(tagsVal)
+              ? tagsVal.map((t: unknown) => str(t))
+              : typeof tagsVal === "string"
+                ? [tagsVal]
+                : [];
             tagsAdded = normalizedTags.filter((t) => !existing.includes(t));
             if (tagsAdded.length) fm.tags = [...existing, ...tagsAdded];
           });
@@ -582,7 +588,7 @@ export class McpService {
       if (current.hash !== expectedHash) throw new Error(`CONTENT_CHANGED: read ${file.path} again before changing it`);
 
       let result: ReturnType<typeof applyScreening> | undefined;
-      await this.plugin.app.fileManager.processFrontMatter(file, (fm) => {
+      await this.plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
         result = applyScreening(fm, screening);
       });
 

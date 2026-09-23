@@ -2,6 +2,25 @@ import { App, requestUrl, normalizePath } from "obsidian";
 import { CSLItem } from "../types";
 import * as CSL from "citeproc";
 
+/** citeproc-js ships no types (`src/citeproc.d.ts` declares the module as untyped) — describe
+ *  only the Engine surface this file actually calls. */
+interface CiteprocEngine {
+  updateItems(ids: string[]): void;
+  processCitationCluster(
+    citation: { citationID: string; citationItems: { id: string }[]; properties: { noteIndex: number } },
+    pre: [string, number][],
+    post: unknown[]
+  ): [unknown, [number, string, string][]];
+  makeBibliography(): [{ entry_ids?: string[][] }, string[]] | undefined;
+}
+interface CiteprocModule {
+  Engine: new (
+    sys: { retrieveLocale: (lang: string) => string; retrieveItem: (id: string) => unknown },
+    style: string
+  ) => CiteprocEngine;
+}
+const Citeproc = CSL as unknown as CiteprocModule;
+
 const RAW_STYLES = "https://raw.githubusercontent.com/citation-style-language/styles/master";
 const RAW_LOCALE = "https://raw.githubusercontent.com/citation-style-language/locales/master/locales-en-US.xml";
 
@@ -139,7 +158,7 @@ export class CiteEngine {
     const byId: Record<string, unknown> = {};
     for (const it of items) byId[it.id] = it;
     const sys = { retrieveLocale: () => localeXml, retrieveItem: (id: string) => byId[id] };
-    const engine = new CSL.Engine(sys, styleXml);
+    const engine = new Citeproc.Engine(sys, styleXml);
     engine.updateItems(items.map((i) => i.id));
 
     // In-text: process each citation as a cluster in document order so numbering increments.
@@ -152,13 +171,13 @@ export class CiteEngine {
         pre.slice(),
         []
       );
-      for (const u of res[1] as [number, string, string][]) if (u[2] === cid) inText[it.id] = u[1];
+      for (const u of res[1]) if (u[2] === cid) inText[it.id] = u[1];
       pre.push([cid, 0]);
     });
 
     const bibRes = engine.makeBibliography();
-    const ids: string[] = ((bibRes?.[0]?.entry_ids as string[][] | undefined) ?? []).map((a) => a[0]);
-    const entries = ((bibRes?.[1] as string[] | undefined) ?? [])
+    const ids: string[] = (bibRes?.[0]?.entry_ids ?? []).map((a) => a[0]);
+    const entries = (bibRes?.[1] ?? [])
       .map((h, i) => ({ id: ids[i] ?? "", text: htmlToMarkdown(h) }))
       .filter((e) => e.text);
     // `bibliography[i]` is the entry for citekey `entryIds[i]` (style's own order).
@@ -174,8 +193,8 @@ function htmlToMarkdown(html: string): string {
     .replace(/<sup>([\s\S]*?)<\/sup>/gi, "$1")
     .replace(/<sub>([\s\S]*?)<\/sub>/gi, "$1")
     .replace(/<[^>]+>/g, "")
-    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h) => cp(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_m, n) => cp(parseInt(n, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m: string, h: string) => cp(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m: string, n: string) => cp(parseInt(n, 10)))
     .replace(/&ndash;/g, "–")
     .replace(/&mdash;/g, "—")
     .replace(/&nbsp;/g, " ")

@@ -23,6 +23,14 @@ export interface RefEntry {
   include?: string;
 }
 
+/** `String()` on an `unknown` value trips no-base-to-string (a plain object's default
+ *  `[object Object]` stringification is almost never what's wanted); frontmatter/CSL values here
+ *  are always string or number in practice, so narrow to those and keep the "" fallback for
+ *  anything else, same as before. */
+function primStr(v: unknown): string {
+  return typeof v === "string" || typeof v === "number" ? String(v) : "";
+}
+
 /** Citekey as used in a PDF file name: what the download commands write to `PDFs/`. */
 export function safePdfName(citekey: string): string {
   return citekey.replace(/[^A-Za-z0-9._-]/g, "").replace(/^\.+/, "");
@@ -227,7 +235,7 @@ export class Library {
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
       if (!fm || !fm.citekey) continue;
       const citekey = String(fm.citekey);
-      const citedByRaw = fm.cited_by_count;
+      const citedByRaw: unknown = fm.cited_by_count;
       const citedBy =
         citedByRaw === undefined || citedByRaw === null || citedByRaw === "" ? undefined : Number(citedByRaw);
       const hasPdf = this.pdfFile(fm.pdf, file.path, citekey) !== null;
@@ -258,7 +266,7 @@ export function matchKeys(item: { DOI?: unknown; PMID?: unknown; title?: unknown
   const keys: string[] = [];
   const doi = normDoi(item.DOI);
   if (doi) keys.push(`doi:${doi}`);
-  if (item.PMID) keys.push(`pmid:${String(item.PMID)}`);
+  if (item.PMID) keys.push(`pmid:${primStr(item.PMID)}`);
   const title = normTitle(item.title);
   if (title.length > 12) keys.push(`title:${title}`);
   return keys;
@@ -331,7 +339,7 @@ export function inScope(
 /** Normalize a DOI for comparison: lowercase, strip doi.org URL / "doi:" prefixes
  *  (CSL DOI casing and prefixing vary by source — Crossref vs PubMed vs pasted URLs). */
 export function normDoi(d: unknown): string {
-  return String(d || "")
+  return primStr(d || "")
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\/(dx\.)?doi\.org\//, "")
@@ -339,7 +347,7 @@ export function normDoi(d: unknown): string {
 }
 
 export function normTitle(t: unknown): string {
-  return String(t || "")
+  return primStr(t || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -351,9 +359,9 @@ function formatAuthors(author: unknown): string {
     .map((a) => {
       if (a && typeof a === "object") {
         const o = a as Record<string, unknown>;
-        return String(o.family || o.literal || "");
+        return primStr(o.family) || primStr(o.literal);
       }
-      return String(a);
+      return primStr(a);
     })
     .filter(Boolean);
   if (names.length === 0) return "";
