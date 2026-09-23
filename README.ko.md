@@ -298,6 +298,13 @@ node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled 
   discovery 파일은 vault 밖의 운영체제 임시 폴더에 저장됩니다. 둘 다 노트 내용이나 provider
   API key를 담지 않습니다. MCP를 켠 동안에만 외부 AI가 vault Markdown을 읽고 변경할 수
   있습니다. [MCP 보안 규칙](docs/MCP.ko.md#수정과-삭제의-안전-규칙)을 확인하세요.
+- **로컬 프로그램 실행(데스크톱, 선택).** 두 기능은 사용할 때만 이미 설치된 프로그램을 실행합니다.
+  **Codex CLI / OpenCode CLI** LLM 제공자(프롬프트와 원문이 그 CLI로 가고, CLI가 사용자 로그인으로
+  자기 제공자에게 보냅니다. 플러그인은 키를 저장하지 않고 CLI의 사용자 설정을 건너뜁니다)와
+  **Word로 내보내기**(Pandoc을 로컬에서 실행)입니다. 플러그인이 이 프로그램들을 내려받거나 설치하지 않습니다.
+- **vault 밖 파일(데스크톱, 선택).** "Keep the search index outside the vault"를 켜면 인덱스를
+  운영체제 캐시 폴더(`~/Library/Caches`, `%LOCALAPPDATA%`, `~/.cache` 아래
+  `academic-paper-citation-manager/`)에 씁니다. CLI와 Pandoc 호출은 매번 지워지는 임시 폴더를 씁니다.
 
 ## 👤 저자
 

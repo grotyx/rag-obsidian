@@ -315,6 +315,16 @@ See [`docs/MCP.md`](./docs/MCP.md) for external-AI setup,
   vault); both contain connection data, never note contents or provider API keys. MCP tools can
   read and change vault Markdown only when you enable MCP access. See [the MCP security
   model](docs/MCP.md#editing-and-deletion-safeguards).
+- **Local programs (desktop, opt-in).** Two features run a program already installed on your
+  computer, and only when you use them: the **Codex CLI / OpenCode CLI** LLM providers (the prompt
+  and source text go to that CLI, which sends them to its own provider under your login; the
+  plugin stores no key and skips the CLI's user config) and **Export manuscript to Word**
+  (Pandoc, run locally on the compiled manuscript). The plugin never downloads or installs
+  either program.
+- **Files outside the vault (desktop, opt-in).** With "Keep the search index outside the vault"
+  on, the index is written to the operating system's cache folder
+  (`~/Library/Caches`, `%LOCALAPPDATA%` or `~/.cache`, under `academic-paper-citation-manager/`).
+  CLI and Pandoc calls use a temporary folder that is deleted after each call.
 
 ## 👤 Author
 

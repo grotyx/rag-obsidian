@@ -12,7 +12,7 @@ submission requires the maintainer's Obsidian and GitHub sign-in.
 | Repository | `grotyx/rag-obsidian` |
 | Version | `0.7.1` |
 | Minimum Obsidian version | `1.7.2` |
-| Desktop-only | `true` (the bundle contains an optional Node-based MCP server) |
+| Desktop-only | `true` (optional Node-based MCP server, local CLI providers, Pandoc export) |
 | GitHub release tag | `0.7.1` — exactly the manifest version, without a `v` prefix |
 | Required release assets | `main.js`, `manifest.json`, `styles.css` |
 
@@ -45,7 +45,10 @@ Community website.
   README.
 - MCP never calls the plugin's chat, summary, or reranking LLM. Mutating tools require current
   content hashes, and deletion uses Obsidian's recoverable trash.
-- The plugin uses Node APIs only for desktop MCP and therefore declares `isDesktopOnly: true`.
+- The plugin uses Node APIs on desktop only — for MCP, the optional Codex/OpenCode CLI providers,
+  Pandoc for Word export, and the optional out-of-vault index cache — and therefore declares
+  `isDesktopOnly: true`. Each is off until the user turns it on or runs the command, and each is
+  disclosed in the README's "Network and privacy" section.
 - PDF.js is pinned and bundled with dynamic evaluation disabled at build time; the production
   build fails if runtime code evaluation or executable CDN imports reappear. The former
   experimental CDN-loaded Transformers.js provider is removed.
