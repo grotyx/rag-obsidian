@@ -35,8 +35,9 @@ export default defineConfig([
     rules: { "obsidianmd/no-unsupported-api": "warn" },
   },
   {
-    // MCP is desktop-only and dynamically loaded behind Platform.isDesktopApp.
-    files: ["src/mcp/bridge.ts", "src/mcp/http.ts"],
+    // MCP and the codex/opencode CLI providers are desktop-only and dynamically loaded behind
+    // Platform.isDesktopApp.
+    files: ["src/mcp/bridge.ts", "src/mcp/http.ts", "src/llm/cli.ts"],
     rules: { "obsidianmd/no-nodejs-modules": "off" },
   },
   {

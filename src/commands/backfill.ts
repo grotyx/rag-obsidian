@@ -6,7 +6,7 @@ import { summarizeSource, suggestMeshTerms } from "../ingest/summarize";
 import { summaryBlock } from "../data/reference";
 import { BackfillScope, inScope } from "../data/library";
 import { LLMClient } from "../llm/client";
-import { mapPool, POOL_WIDTH } from "../util/pool";
+import { mapPool, poolWidth } from "../util/pool";
 import { startBatch } from "../ui/progress";
 
 /** Write the AI summary and MeSH tags into references that were added without them —
@@ -51,7 +51,7 @@ export async function backfillSummaries(
   let outcome = "Filling gaps failed (see console)";
   try {
     // Network + LLM in parallel; the vault writes below stay sequential.
-    const prepared = await mapPool(todo, POOL_WIDTH, async (e) => {
+    const prepared = await mapPool(todo, poolWidth(plugin.settings), async (e) => {
       try {
         const pmid = e.item.PMID ? String(e.item.PMID) : "";
         const noteAbstract = (typeof e.item.abstract === "string" && e.item.abstract) || "";

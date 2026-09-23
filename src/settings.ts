@@ -1,7 +1,8 @@
 import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type ScholarRagPlugin from "../main";
-import { EmbeddingProviderId, LLMProviderId, CiteStyle } from "./types";
+import { DEFAULT_SETTINGS, EmbeddingProviderId, LLMProviderId, CiteStyle } from "./types";
 import { BUNDLED_STYLES } from "./cite/csl";
+import { LLMClient } from "./llm/client";
 
 export class ScholarRagSettingTab extends PluginSettingTab {
   private plugin: ScholarRagPlugin;
@@ -177,18 +178,31 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("LLM provider")
-      .addDropdown((d) =>
-        d
-          .addOption("anthropic", "Anthropic (Claude)")
+      .addDropdown((d) => {
+        d.addOption("anthropic", "Anthropic (Claude)")
           .addOption("openai", "OpenAI / compatible")
-          .addOption("ollama", "Ollama (local)")
-          .setValue(this.plugin.settings.llmProvider)
-          .onChange(async (v) => {
-            this.plugin.settings.llmProvider = v as LLMProviderId;
-            await this.plugin.saveSettings();
-            this.display();
-          })
-      );
+          .addOption("ollama", "Ollama (local)");
+        if (Platform.isDesktopApp) {
+          d.addOption("codex", "Codex CLI (ChatGPT login)");
+          d.addOption("opencode", "OpenCode CLI (logged-in)");
+        }
+        d.setValue(this.plugin.settings.llmProvider).onChange(async (v) => {
+          const prev = this.plugin.settings.llmProvider;
+          const next = v as LLMProviderId;
+          this.plugin.settings.llmProvider = next;
+          if (next === "codex" || next === "opencode") {
+            // A leftover OpenRouter-style id (e.g. "deepseek/...") would make the CLI fail —
+            // empty means "use the CLI's own default".
+            this.plugin.settings.llmModel = "";
+            this.plugin.settings.chatModel = "";
+          } else if (next === "openai" && (prev === "codex" || prev === "opencode") && !this.plugin.settings.llmModel) {
+            this.plugin.settings.llmModel = DEFAULT_SETTINGS.llmModel;
+            this.plugin.settings.chatModel = DEFAULT_SETTINGS.chatModel;
+          }
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      });
 
     const llm = this.plugin.settings.llmProvider;
 
@@ -199,7 +213,11 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           ? "e.g. claude-haiku-4-5-20251001, claude-sonnet-4-6"
           : llm === "openai"
             ? "On OpenRouter: deepseek/deepseek-v4-flash-0731, openai/gpt-5.1. Straight to OpenAI: gpt-4o-mini."
-            : "any local Ollama chat model, e.g. gemma3:4b, qwen2.5:32b") +
+            : llm === "codex"
+              ? "Empty = your Codex default. e.g. gpt-5.1-codex"
+              : llm === "opencode"
+                ? "Empty = your OpenCode default. Format provider/model, e.g. opencode-go/muse-spark-1.3-contributor"
+                : "any local Ollama chat model, e.g. gemma3:4b, qwen2.5:32b") +
           " — used for paper summaries and PDF metadata extraction."
       )
       .addText((t) =>
@@ -240,23 +258,65 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       });
     }
 
-    new Setting(containerEl)
-      .setName("Max answer tokens")
-      .setDesc(
-        "Anthropic only (OpenAI-compatible and Ollama endpoints use their own default). " +
-          "Reasoning models spend this budget on thinking before the answer, so keep it high — " +
-          "too low returns an empty reply."
-      )
-      .addSlider((s) =>
-        s
-          .setLimits(1024, 32768, 1024)
-          .setDynamicTooltip()
-          .setValue(this.plugin.settings.llmMaxTokens)
-          .onChange(async (v) => {
-            this.plugin.settings.llmMaxTokens = v;
-            await this.plugin.saveSettings();
+    if (llm === "codex" || llm === "opencode") {
+      new Setting(containerEl)
+        .setName("CLI executable")
+        .setDesc(
+          "Leave empty to look in the usual install folders. Uses your existing CLI login — " +
+            "no API key is stored by this plugin. Calls run in the background, a few at a time."
+        )
+        .addText((t) =>
+          t
+            .setPlaceholder("Auto-detect")
+            .setValue(this.plugin.settings.cliPath)
+            .onChange(async (v) => {
+              this.plugin.settings.cliPath = v.trim();
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName("Test connection")
+        .setDesc("Sends a one-line prompt through the CLI and reports the reply or error.")
+        .addButton((b) =>
+          b.setButtonText("Test").onClick(async () => {
+            b.setDisabled(true).setButtonText("Testing…");
+            const started = Date.now();
+            const elapsed = () => ((Date.now() - started) / 1000).toFixed(1);
+            try {
+              const reply = await new LLMClient(this.plugin.settings).chat(
+                [{ role: "user", content: "Reply with exactly: OK" }],
+                "You are a test."
+              );
+              new Notice(`${llm} replied in ${elapsed()}s: ${reply.slice(0, 200)}`);
+            } catch (e) {
+              new Notice(`${llm} test failed after ${elapsed()}s: ${e instanceof Error ? e.message : String(e)}`);
+            } finally {
+              b.setDisabled(false).setButtonText("Test");
+            }
           })
-      );
+        );
+    }
+
+    if (llm !== "codex" && llm !== "opencode") {
+      new Setting(containerEl)
+        .setName("Max answer tokens")
+        .setDesc(
+          "Anthropic only (OpenAI-compatible and Ollama endpoints use their own default). " +
+            "Reasoning models spend this budget on thinking before the answer, so keep it high — " +
+            "too low returns an empty reply."
+        )
+        .addSlider((s) =>
+          s
+            .setLimits(1024, 32768, 1024)
+            .setDynamicTooltip()
+            .setValue(this.plugin.settings.llmMaxTokens)
+            .onChange(async (v) => {
+              this.plugin.settings.llmMaxTokens = v;
+              await this.plugin.saveSettings();
+            })
+        );
+    }
 
     const FIXED_SUMMARY_LANGS = ["en", "ko", "en+ko"];
     new Setting(containerEl)

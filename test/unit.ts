@@ -19,6 +19,7 @@ import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
 import { requestWithRetry } from "../src/llm/client";
+import { buildCliArgs, cliCandidates, parseOpencodeOutput, promptFromMessages } from "../src/llm/cli";
 import {
   duplicateGroups,
   inScope,
@@ -379,6 +380,93 @@ AID - 10.1000/xyz123 [doi]
     return okRes(n429 === 1 ? 429 : 200);
   }) as any);
   check(r3.status === 200 && n429 === 2, "requestWithRetry: 429 is retried, then succeeds");
+}
+
+// ---------- llm/cli.ts ----------
+{
+  check(
+    JSON.stringify(buildCliArgs("codex", "", "/tmp/last.txt", false)) ===
+      JSON.stringify([
+        "exec",
+        "--ignore-user-config",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--sandbox",
+        "read-only",
+        "--color",
+        "never",
+        "-o",
+        "/tmp/last.txt",
+        "-",
+      ]),
+    "buildCliArgs: codex, no model, no reasoning flag"
+  );
+  check(
+    JSON.stringify(buildCliArgs("codex", "gpt-5.1-codex", "/tmp/last.txt", true)) ===
+      JSON.stringify([
+        "exec",
+        "--ignore-user-config",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--sandbox",
+        "read-only",
+        "--color",
+        "never",
+        "-o",
+        "/tmp/last.txt",
+        "-m",
+        "gpt-5.1-codex",
+        "-c",
+        'model_reasoning_effort="low"',
+        "-",
+      ]),
+    "buildCliArgs: codex with model + noReasoning"
+  );
+  check(
+    JSON.stringify(buildCliArgs("opencode", "", "/tmp/last.txt", false)) ===
+      JSON.stringify(["run", "--pure", "--format", "json"]),
+    "buildCliArgs: opencode, no model"
+  );
+  check(
+    JSON.stringify(buildCliArgs("opencode", "opencode-go/muse-spark-1.3-contributor", "/tmp/last.txt", true)) ===
+      JSON.stringify(["run", "--pure", "--format", "json", "--model", "opencode-go/muse-spark-1.3-contributor"]),
+    "buildCliArgs: opencode with model (noReasoning has no opencode flag)"
+  );
+
+  const ndjson = [
+    '{"type":"step_start"}',
+    "",
+    'not json at all',
+    '{"type":"text","part":{"type":"text","text":"PO"}}',
+    '{"type":"text","part":{"type":"text","text":"NG"}}',
+    '{"type":"step_finish"}',
+  ].join("\n");
+  check(parseOpencodeOutput(ndjson) === "PONG", "parseOpencodeOutput: concatenates text parts, skips junk lines");
+
+  let threwMsg = "";
+  try {
+    parseOpencodeOutput('{"type":"text","part":{"type":"text","text":"partial"}}\n{"type":"error","error":{"message":"boom"}}');
+  } catch (e) {
+    threwMsg = String(e);
+  }
+  check(/boom/.test(threwMsg), "parseOpencodeOutput: error event throws with its message");
+
+  const prompt = promptFromMessages(
+    [
+      { role: "user", content: "first" },
+      { role: "assistant", content: "reply" },
+      { role: "user", content: "second" },
+    ],
+    "sys prompt"
+  );
+  check(prompt.startsWith("sys prompt\n\n"), "promptFromMessages: system first");
+  check(prompt.endsWith("User: second"), "promptFromMessages: ends on the last user message");
+  check(prompt.includes("Assistant: reply"), "promptFromMessages: assistant turn labelled");
+
+  const oc = cliCandidates("opencode", "/home/x", "darwin");
+  check(oc[0] === "/home/x/.opencode/bin/opencode", "cliCandidates: opencode's ~/.opencode/bin first");
+  const codexWin = cliCandidates("codex", "C:\\Users\\x", "win32");
+  check(codexWin[codexWin.length - 1] === "C:\\Users\\x\\AppData\\Roaming\\npm\\codex.exe", "cliCandidates: win32 appends .exe under %APPDATA%/npm");
 }
 
 console.log(`unit: all ${passed} assertions passed`);
