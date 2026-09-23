@@ -46,20 +46,6 @@ export default defineConfig([
   },
   ...obsidianmd.configs.recommended,
   {
-    // External JSON (Crossref, PubMed, OpenAlex, LLM providers) is read untyped; typing every
-    // response shape is a refactor, not a review fix. Keep these visible as warnings so
-    // `npm run lint` fails only on findings the store review would actually block on.
-    rules: {
-      "@typescript-eslint/no-unsafe-member-access": "warn",
-      "@typescript-eslint/no-unsafe-assignment": "warn",
-      "@typescript-eslint/no-unsafe-argument": "warn",
-      "@typescript-eslint/no-unsafe-call": "warn",
-      "@typescript-eslint/no-unsafe-return": "warn",
-      "@typescript-eslint/no-base-to-string": "warn",
-      "@typescript-eslint/restrict-template-expressions": "warn",
-    },
-  },
-  {
     // Extend (not replace) the recommended sentence-case allowlist with names the default
     // brands/acronyms lists don't cover: citation/metadata sources and export formats, and the
     // desktop CLI providers.
