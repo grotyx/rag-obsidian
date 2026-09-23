@@ -6,6 +6,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-09-23
+
+### Fixed
+
+- **Link PDFs in a folder** no longer extracts every orphan PDF when no reference is left to
+  link. One PDF whose name held `#`, `|`, `[`, `]` or `^` bypassed the early exit, so a fully
+  linked library still ran pdfjs over the whole folder and reported every file as unmatched.
+
 ## [0.7.0] — 2026-09-23
 
 Driven by running the plugin on a 1,265-reference library for a clinical guideline, and by a
