@@ -19,6 +19,7 @@ import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
 import { requestWithRetry } from "../src/llm/client";
+import { cacheRoot } from "../src/index/localFiles";
 import {
   duplicateGroups,
   inScope,
@@ -335,6 +336,23 @@ AID - 10.1000/xyz123 [doi]
     return okRes(n429 === 1 ? 429 : 200);
   }) as any);
   check(r3.status === 200 && n429 === 2, "requestWithRetry: 429 is retried, then succeeds");
+}
+
+// ---------- index/localFiles.ts: cacheRoot (pure — platform/env/home injected) ----------
+{
+  const home = "/Users/kim";
+  check(cacheRoot("darwin", {}, home) === `${home}/Library/Caches`, "cacheRoot: darwin → Library/Caches");
+  check(
+    cacheRoot("win32", { LOCALAPPDATA: "C:\\Users\\kim\\AppData\\Local" }, "C:\\Users\\kim") ===
+      "C:\\Users\\kim\\AppData\\Local",
+    "cacheRoot: win32 → %LOCALAPPDATA%"
+  );
+  check(
+    cacheRoot("win32", {}, "C:\\Users\\kim") === "C:\\Users\\kim/AppData/Local",
+    "cacheRoot: win32 without LOCALAPPDATA falls back to ~/AppData/Local"
+  );
+  check(cacheRoot("linux", { XDG_CACHE_HOME: "/xdg-cache" }, home) === "/xdg-cache", "cacheRoot: linux → $XDG_CACHE_HOME");
+  check(cacheRoot("linux", {}, home) === `${home}/.cache`, "cacheRoot: linux without XDG_CACHE_HOME falls back to ~/.cache");
 }
 
 console.log(`unit: all ${passed} assertions passed`);

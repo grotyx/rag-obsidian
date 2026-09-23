@@ -173,6 +173,23 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           })
       );
 
+    if (Platform.isDesktopApp) {
+      new Setting(containerEl)
+        .setName("Keep the search index outside the vault")
+        .setDesc(
+          "Stores the index in this computer's cache folder instead of the plugin folder, so OneDrive / " +
+            "iCloud / Obsidian Sync don't re-upload it after every change. Each device then builds its own index."
+        )
+        .addToggle((t) =>
+          t.setValue(this.plugin.settings.indexLocal).onChange(async (v) => {
+            this.plugin.settings.indexLocal = v;
+            await this.plugin.saveSettings();
+            await this.plugin.indexManager.relocate();
+            new Notice(v ? "Search index moved to the local cache folder." : "Search index moved back into the vault.");
+          })
+        );
+    }
+
     new Setting(containerEl).setName("Chat (citation-grounded answers)").setHeading();
 
     new Setting(containerEl)
