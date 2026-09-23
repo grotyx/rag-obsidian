@@ -19,7 +19,16 @@ import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
 import { requestWithRetry } from "../src/llm/client";
-import { buildCliArgs, cliCandidates, parseOpencodeOutput, promptFromMessages, winQuote } from "../src/llm/cli";
+import {
+  buildCliArgs,
+  cliCandidates,
+  parseOpencodeOutput,
+  promptFromMessages,
+  shouldUseShell,
+  spawnInvocation,
+  winQuote,
+} from "../src/llm/cli";
+import { windowsCliShimChecks } from "./windows";
 import { cacheRoot } from "../src/index/localFiles";
 import { pandocCandidates } from "../src/write/pandoc";
 import { stripFrontmatter } from "../src/index/chunker";
@@ -510,6 +519,28 @@ AID - 10.1000/xyz123 [doi]
   check(winQuote("model_reasoning_effort=\"low\"") === '"model_reasoning_effort=""low"""', "winQuote: inner quotes doubled, whole arg wrapped");
   check(winQuote("C:\\Temp dir\\last.txt") === '"C:\\Temp dir\\last.txt"', "winQuote: a path with a space stays one argument");
 }
+
+// ---------- llm/cli.ts: shouldUseShell / spawnInvocation ----------
+{
+  check(shouldUseShell("win32", "C:\\npm\\codex.cmd"), "shouldUseShell: win32 + .cmd → true");
+  check(shouldUseShell("win32", "C:\\npm\\codex.bat"), "shouldUseShell: win32 + .bat → true");
+  check(!shouldUseShell("win32", "C:\\npm\\codex.exe"), "shouldUseShell: win32 + .exe → false");
+  check(!shouldUseShell("darwin", "/usr/local/bin/codex"), "shouldUseShell: darwin → always false, even if named .cmd");
+  check(!shouldUseShell("darwin", "/usr/local/bin/codex.cmd"), "shouldUseShell: extension alone doesn't matter off win32");
+
+  const noShell = spawnInvocation("/usr/local/bin/codex", ["exec", "-"], false);
+  check(noShell.command === "/usr/local/bin/codex" && noShell.args.join(",") === "exec,-", "spawnInvocation: no shell → argv passed through untouched");
+
+  const shimmed = spawnInvocation("C:\\npm\\codex.cmd", ["exec", 'model_reasoning_effort="low"'], true);
+  check(shimmed.command === '"C:\\npm\\codex.cmd"', "spawnInvocation: shell → command itself is cmd.exe-quoted");
+  check(
+    JSON.stringify(shimmed.args) === JSON.stringify(['"exec"', '"model_reasoning_effort=""low"""']),
+    "spawnInvocation: shell → every argument is winQuote'd"
+  );
+}
+
+// ---------- llm/cli.ts: real .cmd shim spawn — win32 only, no-op elsewhere ----------
+await windowsCliShimChecks();
 
 // ---------- index/localFiles.ts: cacheRoot (pure — platform/env/home injected) ----------
 {

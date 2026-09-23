@@ -1,0 +1,30 @@
+# Cross-platform CI: lint, build, and the offline unit/MCP suites on every push to main and every
+# PR. Deliberately not the live integration suite (test/integration.ts) — it hits real network
+# APIs (Crossref, PubMed, OpenAlex) and would trip PubMed's rate limits running three times over.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run test:unit
+      - run: npm run test:mcp

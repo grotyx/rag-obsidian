@@ -702,12 +702,29 @@ async function httpChecks(): Promise<void> {
   fs.mkdirSync(pluginPath, { recursive: true });
   fs.writeFileSync(path.join(vaultPath, "inside.md"), "inside");
   fs.writeFileSync(path.join(root, "outside.md"), "outside");
-  fs.symlinkSync(path.join(root, "outside.md"), path.join(vaultPath, "linked.md"));
+  // Creating a file symlink on Windows needs SeCreateSymbolicLinkPrivilege (admin or Developer
+  // Mode) — not guaranteed on every runner. Skip the symlink-dependent containment checks rather
+  // than failing the whole suite on a privilege error that has nothing to do with the code under
+  // test; everything else in this function still runs.
+  let symlinksWork = true;
+  try {
+    fs.symlinkSync(path.join(root, "outside.md"), path.join(vaultPath, "linked.md"));
+  } catch (error) {
+    symlinksWork = false;
+    console.log(`  (skipping symlink containment checks: cannot create symlinks here — ${(error as Error).message})`);
+  }
   const bridgeTarget = path.join(root, "bridge-target.cjs");
   fs.writeFileSync(bridgeTarget, "do not overwrite");
-  fs.symlinkSync(bridgeTarget, path.join(pluginPath, "mcp-bridge.cjs"));
+  if (symlinksWork) {
+    try {
+      fs.symlinkSync(bridgeTarget, path.join(pluginPath, "mcp-bridge.cjs"));
+    } catch (error) {
+      symlinksWork = false;
+      console.log(`  (skipping symlink bridge-overwrite check: cannot create symlinks here — ${(error as Error).message})`);
+    }
+  }
   await assertVaultPath(vaultPath, "inside.md", false);
-  await assert.rejects(() => assertVaultPath(vaultPath, "linked.md", false), /outside vault/i);
+  if (symlinksWork) await assert.rejects(() => assertVaultPath(vaultPath, "linked.md", false), /outside vault/i);
   await assertVaultPath(vaultPath, "new/future.md", true);
   const setup = mcpSetupSnippets("/Vault With Space", "/Plugin Path/mcp-bridge.cjs");
   assert.match(setup.claudeCode, /'\/Plugin Path\/mcp-bridge\.cjs'/);
@@ -726,10 +743,18 @@ async function httpChecks(): Promise<void> {
   const info = await server.start();
   try {
     assert.equal(info.running, true);
-    assert.equal(fs.statSync(info.discoveryPath).mode & 0o777, 0o600);
+    // Windows has no POSIX permission bits — fs.stat().mode there reflects only the read-only
+    // attribute, never a specific 0o600, so this assertion is meaningless off POSIX platforms.
+    if (process.platform === "win32") {
+      console.log("  (skipping discovery-file 0o600 mode check on Windows: no POSIX permission bits)");
+    } else {
+      assert.equal(fs.statSync(info.discoveryPath).mode & 0o777, 0o600);
+    }
     assert.equal(fs.statSync(info.bridgePath).isFile(), true);
-    assert.equal(fs.lstatSync(info.bridgePath).isSymbolicLink(), false);
-    assert.equal(fs.readFileSync(bridgeTarget, "utf8"), "do not overwrite");
+    if (symlinksWork) {
+      assert.equal(fs.lstatSync(info.bridgePath).isSymbolicLink(), false);
+      assert.equal(fs.readFileSync(bridgeTarget, "utf8"), "do not overwrite");
+    }
 
     const unauthorized = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
       method: "POST", headers: { "content-type": "application/json" }, body: "{}",
