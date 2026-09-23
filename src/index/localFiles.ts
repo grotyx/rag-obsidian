@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Obsidian on Windows cannot dynamically import node: built-ins */
+import { nodeRequire, type CryptoModuleLike, type FsPromisesLike, type OsModuleLike, type PathModuleLike } from "../util/nodeTypes";
 
 /** Minimal file interface the vault's `DataAdapter` already satisfies structurally
  *  (exists/mkdir/read/write/readBinary/writeBinary/remove/rename), so `IndexManager` can
@@ -17,16 +17,16 @@ export interface FileIO {
 /** Load Node built-ins only when called, exactly like `mcp/http.ts`'s `loadDesktopNode`
  *  (a top-level `require` would still get bundled into main.js and break on mobile). */
 function loadNode(): {
-  fs: typeof import("node:fs/promises");
-  crypto: typeof import("node:crypto");
-  os: typeof import("node:os");
-  pathApi: typeof import("node:path");
+  fs: FsPromisesLike;
+  crypto: CryptoModuleLike;
+  os: OsModuleLike;
+  pathApi: PathModuleLike;
 } {
   return {
-    fs: require("node:fs/promises") as typeof import("node:fs/promises"),
-    crypto: require("node:crypto") as typeof import("node:crypto"),
-    os: require("node:os") as typeof import("node:os"),
-    pathApi: require("node:path") as typeof import("node:path"),
+    fs: nodeRequire<FsPromisesLike>("node:fs/promises"),
+    crypto: nodeRequire<CryptoModuleLike>("node:crypto"),
+    os: nodeRequire<OsModuleLike>("node:os"),
+    pathApi: nodeRequire<PathModuleLike>("node:path"),
   };
 }
 
@@ -86,4 +86,3 @@ export async function localIndexDir(vaultBasePath: string): Promise<string> {
   const key = crypto.createHash("sha256").update(real).digest("hex").slice(0, 24);
   return pathApi.join(cacheRoot(process.platform, process.env, os.homedir()), "academic-paper-citation-manager", key, "index");
 }
-/* eslint-enable @typescript-eslint/no-require-imports -- end desktop-only Node loader */

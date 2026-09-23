@@ -1,23 +1,30 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Obsidian on Windows cannot dynamically import node: built-ins */
 /* global process -- desktop-only, runs in Electron's Node.js context */
 import { Platform } from "obsidian";
 import template from "../../styles/manuscript-reference.docx";
 import { pandocCandidates } from "./pandoc";
+import {
+  nodeRequire,
+  type ChildProcessModuleLike,
+  type FsPromisesLike,
+  type FsSyncLike,
+  type OsModuleLike,
+  type PathModuleLike,
+} from "../util/nodeTypes";
 
 /** Load Node built-ins only after the desktop guard, like `mcp/http.ts`'s `loadDesktopNode`. */
 function loadDesktopNode(): {
-  cp: typeof import("node:child_process");
-  fs: typeof import("node:fs/promises");
-  fsSync: typeof import("node:fs");
-  os: typeof import("node:os");
-  pathApi: typeof import("node:path");
+  cp: ChildProcessModuleLike;
+  fs: FsPromisesLike;
+  fsSync: FsSyncLike;
+  os: OsModuleLike;
+  pathApi: PathModuleLike;
 } {
   return {
-    cp: require("node:child_process") as typeof import("node:child_process"),
-    fs: require("node:fs/promises") as typeof import("node:fs/promises"),
-    fsSync: require("node:fs") as typeof import("node:fs"),
-    os: require("node:os") as typeof import("node:os"),
-    pathApi: require("node:path") as typeof import("node:path"),
+    cp: nodeRequire<ChildProcessModuleLike>("node:child_process"),
+    fs: nodeRequire<FsPromisesLike>("node:fs/promises"),
+    fsSync: nodeRequire<FsSyncLike>("node:fs"),
+    os: nodeRequire<OsModuleLike>("node:os"),
+    pathApi: nodeRequire<PathModuleLike>("node:path"),
   };
 }
 
@@ -70,4 +77,3 @@ export async function exportDocx(
     await fs.rm(tmp, { recursive: true, force: true });
   }
 }
-/* eslint-enable @typescript-eslint/no-require-imports -- end desktop-only Node loader */
