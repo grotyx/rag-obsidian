@@ -32,6 +32,7 @@ import {
 import { CiteEngine } from "./src/cite/csl";
 import { ImportModal } from "./src/ui/ImportModal";
 import { TagRenameModal } from "./src/ui/TagRenameModal";
+import { MergeDuplicatesModal } from "./src/ui/MergeDuplicatesModal";
 import { BackfillScopeModal } from "./src/ui/BackfillScopeModal";
 import { normalizePath } from "obsidian";
 import * as libraryCmd from "./src/commands/library";
@@ -212,6 +213,11 @@ export default class ScholarRagPlugin extends Plugin {
       id: "find-duplicates",
       name: "Find duplicate references",
       callback: () => void libraryCmd.findDuplicates(this),
+    });
+    this.addCommand({
+      id: "merge-duplicates",
+      name: "Merge duplicate references…",
+      callback: () => new MergeDuplicatesModal(this.app, this).open(),
     });
     this.addCommand({
       id: "open-reference-online",
