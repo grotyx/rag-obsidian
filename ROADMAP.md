@@ -29,6 +29,7 @@ OpenRouter.
 > widen its candidate pool with citation-graph-coupled papers the text search missed
 > (`index/rerank.ts`'s `coupledCandidates`). Phase 4 still waits for a library that needs it.
 
+
 > **Update (2026-09-23, v0.7.0):** Phase 4's trigger arrived — a 1,265-reference library grew a 512 MB
 > `orama.json`. Instead of sqlite-vec, the index is now persisted as `docs.json` + raw Float32
 > vectors (~8.6× smaller) and can live outside a synced vault; sqlite-vec stays deferred. 0.7.0 also
@@ -42,6 +43,10 @@ OpenRouter.
 > built and attested by GitHub Actions. 0.7.6 adopted the declarative settings API with a
 > fallback renderer for 1.11–1.12. Open: `setDestructive` (1.13 only) replaces `setWarning` when
 > `minAppVersion` moves to 1.13.
+
+> **Update (2026-09-24, v0.7.7):** the plugin is **published** in the Obsidian Community directory
+> (<https://community.obsidian.md/plugins/academic-paper-citation-manager>); the store submission is
+> no longer an open step.
 
 ## Phase 1 — things that bite during normal use (do first)
 
@@ -88,7 +93,8 @@ OpenRouter.
     right now you cannot *see* it.
 11. **Community-directory release.** Shipped in 0.6.0: compliant plugin id, desktop declaration,
     current web-submission guide, network/privacy disclosures, migration docs, and an exact
-    unprefixed release contract. The maintainer's signed-in submission is the remaining external step.
+    unprefixed release contract. Submitted from 0.7.1 on; **published** in the Community directory
+    by 2026-09-24.
 12. **Mobile support.** Paused in 0.6.0. The shipped bundle includes Node-based MCP, so the manifest
     correctly declares the whole plugin desktop-only; see `docs/MOBILE.md`.
 

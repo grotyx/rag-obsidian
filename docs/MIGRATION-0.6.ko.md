@@ -32,7 +32,8 @@ Transformers.js 선택은 기본 OpenAI 호환 embedding provider로 이전됩�
 
 ## 새 설치
 
-이전 작업은 필요 없습니다. `<vault>/.obsidian/plugins/academic-paper-citation-manager/`에
-설치하거나 Community 등록 승인 뒤 directory에서 설치하세요.
+이전 작업은 필요 없습니다. **설정 → 커뮤니티 플러그인 → 탐색**에서 "Academic Paper Citation
+Manager"를 검색해 설치하거나, 릴리스 파일을
+`<vault>/.obsidian/plugins/academic-paper-citation-manager/`에 넣으세요.
 
 0.6.0은 선택적 live MCP 기능에 Node API가 포함되어 데스크톱 전용입니다.

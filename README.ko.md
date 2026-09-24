@@ -69,21 +69,23 @@
 
 ## 📦 설치
 
-> Community directory 심사 전에는 BRAT 또는 수동 릴리스를 사용하세요. 0.6.0에서 플러그인
-> id가 바뀌므로 기존 0.5.x 사용자는 [마이그레이션 안내](docs/MIGRATION-0.6.ko.md)를 한 번
-> 따라야 합니다.
+> **Obsidian Community directory에 등록되었습니다:**
+> [community.obsidian.md/plugins/academic-paper-citation-manager](https://community.obsidian.md/plugins/academic-paper-citation-manager).
+> 0.6.0에서 플러그인 id가 바뀌었으므로 아직 0.5.x를 쓰는 분은
+> [마이그레이션 안내](docs/MIGRATION-0.6.ko.md)를 한 번 따라 주세요.
 
-### 방법 A — BRAT (권장: 설치와 자동 업데이트)
+### 방법 A — 커뮤니티 플러그인 (권장)
 
-[BRAT](https://github.com/TfTHacker/obsidian42-brat)은 GitHub에서 바로 플러그인을 설치하고
-새 릴리스가 나오면 자동으로 갱신해 줍니다.
+1. Obsidian → **설정 → 커뮤니티 플러그인** → 제한 모드가 켜져 있으면 끕니다.
+2. **탐색** → **Academic Paper Citation Manager** 검색 → **설치** → **활성화**
 
-1. Obsidian → **설정 → 커뮤니티 플러그인** → 탐색 → **BRAT** 설치 후 활성화
-2. 명령 팔레트(`Ctrl/Cmd-P`) → **BRAT: Add a beta plugin for testing**
-3. `grotyx/rag-obsidian` 붙여넣기 → **Add plugin**
-4. **설정 → 커뮤니티 플러그인**에서 **Academic Paper Citation Manager** 활성화
+업데이트는 다른 플러그인처럼 **설정 → 커뮤니티 플러그인 → 업데이트 확인**으로 받습니다.
+데스크톱 전용입니다(Obsidian 1.11.4 이상).
 
-### 방법 B — 릴리스 파일 내려받기 (터미널·BRAT 없이)
+예전에 **BRAT**으로 설치했다면 플러그인 id와 폴더가 같아서 설정과 검색 색인은 그대로
+남습니다. BRAT 목록에서만 빼고, 이후 업데이트는 커뮤니티 플러그인에서 받으세요.
+
+### 방법 B — 릴리스 파일 내려받기 (수동)
 
 [최신 릴리스](https://github.com/grotyx/rag-obsidian/releases/latest)에서 `main.js`,
 `manifest.json`, `styles.css` 세 파일을 받아 아래 폴더에 넣습니다(없으면 만드세요).

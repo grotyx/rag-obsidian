@@ -75,23 +75,23 @@ no account, no backend — just your vault.
 
 ## 📦 Installation
 
-> Community-directory submission is pending. Until it is approved, use BRAT or a manual release.
-> Version 0.6.0 changes the plugin id; existing 0.5.x users must follow the
+> **Published in the Obsidian Community directory:**
+> [community.obsidian.md/plugins/academic-paper-citation-manager](https://community.obsidian.md/plugins/academic-paper-citation-manager).
+> Version 0.6.0 changed the plugin id; anyone still on 0.5.x follows the
 > [migration guide](docs/MIGRATION-0.6.md) once.
 
-### Option A — BRAT (recommended: installs and auto-updates)
+### Option A — Community plugins (recommended)
 
-[BRAT](https://github.com/TfTHacker/obsidian42-brat) installs plugins straight from GitHub and
-keeps them updated.
+1. Obsidian → **Settings → Community plugins** → turn off Restricted mode if it is on.
+2. **Browse** → search **Academic Paper Citation Manager** → **Install** → **Enable**.
 
-1. Obsidian → **Settings → Community plugins** → Browse → install and enable **BRAT**.
-2. Command palette (`Ctrl/Cmd-P`) → **BRAT: Add a beta plugin for testing**.
-3. Paste `grotyx/rag-obsidian` → **Add plugin**.
-4. **Settings → Community plugins** → enable **Academic Paper Citation Manager**.
+Obsidian updates it like any other plugin (**Settings → Community plugins → Check for updates**).
+Desktop only (Obsidian 1.11.4+).
 
-BRAT then pulls each new release for you.
+Installed earlier through **BRAT**? The plugin id and folder are the same, so your settings and
+index stay: remove the plugin from BRAT's list and keep updating through Community plugins.
 
-### Option B — Download a release (no terminal, no BRAT)
+### Option B — Download a release (manual)
 
 From the [latest release](https://github.com/grotyx/rag-obsidian/releases/latest), download
 `main.js`, `manifest.json` and `styles.css` into

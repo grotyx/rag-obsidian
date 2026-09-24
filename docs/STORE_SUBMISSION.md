@@ -1,7 +1,9 @@
 # Obsidian Community directory submission
 
-This repository is prepared for the current web-based Community directory process. The final
-submission requires the maintainer's Obsidian and GitHub sign-in.
+**Status: published** (listed by 2026-09-24 at
+<https://community.obsidian.md/plugins/academic-paper-citation-manager>). New releases reach the
+listing from the GitHub release the tag workflow publishes; this file stays as the record of the
+release contract and the review requirements every release must keep meeting.
 
 ## Release contract
 

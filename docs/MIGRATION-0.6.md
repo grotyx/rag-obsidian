@@ -32,8 +32,8 @@ the directory back; the legacy SecretStorage copies are deliberately retained.
 
 ## Fresh installation
 
-No migration is needed. Install into
-`<vault>/.obsidian/plugins/academic-paper-citation-manager/` or use the Community directory after
-the listing is approved.
+No migration is needed. Install from **Settings → Community plugins → Browse** (search
+"Academic Paper Citation Manager"), or copy a release into
+`<vault>/.obsidian/plugins/academic-paper-citation-manager/`.
 
 Version 0.6.0 is desktop-only because its optional live MCP integration includes Node APIs.
