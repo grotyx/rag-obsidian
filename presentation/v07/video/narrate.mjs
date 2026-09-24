@@ -2,14 +2,14 @@
 // an audio model judge each clip against the script (nothing missing, added, cut off, or turned into
 // a different word). A clip that fails, or is far shorter than the script, is regenerated (up to 3
 // tries) and reported if it still fails. The transcript similarity is recorded for reference only.
-//   MODEL=minimax/speech-2.8-hd VOICE=Korean_ReliableYouth node narrate.mjs [--force]
+//   MODEL=minimax/speech-2.8-hd VOICE=Korean_CalmGentleman node narrate.mjs [--force]
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 const MODEL = process.env.MODEL || "minimax/speech-2.8-hd";
-const VOICE = process.env.VOICE || "Korean_ReliableYouth";
+const VOICE = process.env.VOICE || "Korean_CalmGentleman";
 const FORCE = process.argv.includes("--force");
 const SLIDES = JSON.parse(fs.readFileSync(path.join(HERE, "..", "slides.json"), "utf8")).filter((s) => s.section !== "부록");
 fs.mkdirSync(path.join(HERE, "audio"), { recursive: true });
@@ -28,7 +28,7 @@ await js(fs.readFileSync(path.join(HERE, "speech-page.js"), "utf8"));
 const SPOKEN = [["1,605편", "천육백오 편"], ["1,139편", "천백삼십구 편"], ["830편", "팔백삼십 편"], ["609편", "육백구 편"],
   ["1,366줄", "천삼백육십육 줄"], ["33개", "서른세 개"],
   // MiniMax sometimes spells "PubMed" out ("팝 엠이디"); with a space it reads it as two words.
-  ["PubMed", "Pub Med"], ["OpenRouter", "Open Router"], ["Community plugins", "커뮤니티 플러그인"]];
+  ["PubMed", "Pub Med"], ["OpenRouter", "Open Router"], ["Community plugins", "커뮤니티 플러그인"], ["MeSH", "메쉬"]];
 const spoken = (say) => SPOKEN.reduce((t, [a, b]) => t.split(a).join(b), say);
 const ONLY = (process.env.ONLY || "").split(",").filter(Boolean).map(Number);
 

@@ -175,7 +175,7 @@ def main() -> None:
         "",
         "## 영상 (video/)",
         "",
-        "- `video/narrate.mjs`: 본편 대본을 OpenRouter의 MiniMax Speech 2.8 HD(Korean_ReliableYouth)로 읽힌다. 요청은 "
+        "- `video/narrate.mjs`: 본편 대본을 OpenRouter의 MiniMax Speech 2.8 HD(Korean_CalmGentleman)로 읽힌다. 요청은 "
         "실행 중인 Obsidian 안에서 플러그인이 가진 키로 보내므로 키가 밖으로 나오지 않는다. 숫자는 한글로 풀어 읽히고"
         "(1,139 → 천백삼십구), PubMed·OpenRouter는 띄어 써서 보낸다. 화면과 자막은 원래 표기 그대로.",
         "- 장마다 Gemini로 받아써서 대본과 대조한다(판정: 빠짐·덧붙임·잘림·다른 단어로 들리는 발음). 통과할 때까지 최대 3번 다시 생성, "
