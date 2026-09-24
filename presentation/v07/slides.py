@@ -177,17 +177,19 @@ SLIDES = [
     # ── 7 · 시작 ─────────────────────────────────────────────────────────────
     dict(kind="section", section="시작", no="7", title="시작",
          say="시작하는 방법입니다."),
-    dict(kind="steps", section="시작", items=["Obsidian 설치", "플러그인 추가", "키 하나"],
-         say="세 단계면 됩니다. Obsidian을 설치하고 플러그인을 추가한 다음 OpenRouter 키 하나만 넣으면 끝이에요."),
-    dict(kind="url", section="시작", url="github.com/grotyx/rag-obsidian", sub="무료 · MIT 라이선스",
-         say="모든 코드는 여기 공개돼 있습니다. 무료고 MIT 라이선스예요."),
+    dict(kind="steps", section="시작", items=["Obsidian 설치", "플러그인 검색", "키 하나"],
+         say="세 단계면 됩니다. Obsidian을 설치하고 Community plugins에서 이 플러그인을 검색해 설치한 다음 OpenRouter 키 하나만 넣으면 끝이에요."),
+    dict(kind="url", section="시작", eyebrow="Community plugins",
+         url="community.obsidian.md/plugins/\nacademic-paper-citation-manager",
+         sub="코드: github.com/grotyx/rag-obsidian · 무료 · MIT 라이선스",
+         say="Obsidian 공식 Community plugins에 올라가 있습니다. 코드는 GitHub에 전부 공개돼 있고 무료, MIT 라이선스예요."),
 
     # ── 8 · 마무리 ────────────────────────────────────────────────────────────
     dict(kind="say", section="마무리", text="출처 없는 답은\n답이 아니다", hl="출처",
          say="마지막으로 한 문장만 기억해 주세요. 출처 없는 답은, 답이 아닙니다."),
     dict(kind="say", section="마무리", text="내 서재가\n답한다", hl="답한다",
          say="내 서재가 진짜 출처와 함께 답합니다."),
-    dict(kind="end", section="마무리", text="감사합니다", sub="github.com/grotyx/rag-obsidian",
+    dict(kind="end", section="마무리", text="감사합니다", sub="community.obsidian.md/plugins/academic-paper-citation-manager",
          say="감사합니다. 질문 받을게요."),
 
     # ── 부록 · 질문이 나오면 ───────────────────────────────────────────────────

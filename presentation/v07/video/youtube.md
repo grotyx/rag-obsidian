@@ -1,6 +1,6 @@
 # YouTube 업로드 자료
 
-- 영상: `talk.mp4` (1920×1080, 30fps, 7분 03초, 음량 −14 LUFS)
+- 영상: `talk.mp4` (1920×1080, 30fps, 7분 10초, 음량 −14 LUFS)
 - 자막: `captions.srt` (한국어) — 업로드 후 "자막 → 파일 업로드 → 타이밍 포함"
 - 썸네일: `thumbnail-1280.jpg` (1280×720)
 - 음성: MiniMax Speech 2.8 HD · Korean_ReliableYouth (OpenRouter). 문장마다 Gemini로 받아써서 대본과 대조 — `narration-check.json`
@@ -15,7 +15,8 @@ AI에게 물으면 답은 술술 나오지만 인용된 논문이 실제로 없�
 
 Biportal endoscopy guideline을 만들며 1,605편을 검색하고 830편을 포함해 합의 질문 33개까지 간 과정을 실제 숫자로 보여 드립니다.
 
-- 코드와 설치: https://github.com/grotyx/rag-obsidian (MIT 라이선스)
+- 설치: https://community.obsidian.md/plugins/academic-paper-citation-manager (Obsidian → 설정 → Community plugins에서 검색)
+- 코드: https://github.com/grotyx/rag-obsidian (MIT 라이선스)
 - DOI·PMID·PubMed로 추가, AI 구조화 요약과 MeSH 태그
 - 단어와 뜻을 함께 보는 검색, 출처 번호가 붙는 답
 - Screening 창과 PRISMA flow diagram, 중복 병합, 철회 논문 표시, Word 내보내기
@@ -31,7 +32,7 @@ Biportal endoscopy guideline을 만들며 1,605편을 검색하고 830편을 포
 5:12 AI 동료
 5:52 무엇이 다른가
 6:31 시작
-6:48 마무리
+6:55 마무리
 
 ## 태그
 

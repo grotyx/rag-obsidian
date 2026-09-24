@@ -32,9 +32,9 @@ Academic Paper Citation Manager 0.7 소개 발표. 대본은 [script.md](script.
 | 실전 | 12 | 75 | Guideline 하나를 실제 숫자로 — 그리고 결정은 사람 |
 | AI 동료 | 5 | 40 | AI 에이전트가 서재를 직접, 안전하게 다룬다 |
 | 비교 | 6 | 39 | Zotero가 하던 일 + 그 너머, 언제든 나갈 수 있음 |
-| 시작 | 3 | 18 | 세 단계와 주소 |
+| 시작 | 3 | 24 | 세 단계와 주소 |
 | 마무리 | 3 | 14 | 한 문장 |
-| **합계** | **61** | **425** | 말하는 시간 약 7분 — 전환·호흡을 더해 10–12분 |
+| **합계** | **61** | **431** | 말하는 시간 약 7분 — 전환·호흡을 더해 10–12분 |
 
 ## 슬라이드
 
@@ -96,8 +96,9 @@ Academic Paper Citation Manager 0.7 소개 발표. 대본은 [script.md](script.
 | 54 | 비교 | list | 뜻으로 찾기 · 출처 달린 답 · Screening · PRISMA | 7.5 |
 | 55 | 비교 | say | 언제든 나갈 수 있습니다 | 11.5 |
 | 56 | 시작 | section | §7 시작 | 2.7 |
-| 57 | 시작 | steps | Obsidian 설치 · 플러그인 추가 · 키 하나 | 9.1 |
-| 58 | 시작 | url | github.com/grotyx/rag-obsidian | 5.7 |
+| 57 | 시작 | steps | Obsidian 설치 · 플러그인 검색 · 키 하나 | 11.3 |
+| 58 | 시작 | url | community.obsidian.md/plugins/
+academic-paper-citation-manager | 10.2 |
 | 59 | 마무리 | say | 출처 없는 답은 답이 아니다 | 6.3 |
 | 60 | 마무리 | say | 내 서재가 답한다 | 4.7 |
 | 61 | 마무리 | end | 감사합니다 | 3.3 |

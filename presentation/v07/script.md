@@ -244,13 +244,14 @@ Zotero나 EndNote가 하던 일은 그대로 합니다.
 
 시작하는 방법입니다.
 
-**57. Obsidian 설치 · 플러그인 추가 · 키 하나** · 9.1초
+**57. Obsidian 설치 · 플러그인 검색 · 키 하나** · 11.3초
 
-세 단계면 됩니다. Obsidian을 설치하고 플러그인을 추가한 다음 OpenRouter 키 하나만 넣으면 끝이에요.
+세 단계면 됩니다. Obsidian을 설치하고 Community plugins에서 이 플러그인을 검색해 설치한 다음 OpenRouter 키 하나만 넣으면 끝이에요.
 
-**58. github.com/grotyx/rag-obsidian** · 5.7초
+**58. community.obsidian.md/plugins/
+academic-paper-citation-manager** · 10.2초
 
-모든 코드는 여기 공개돼 있습니다. 무료고 MIT 라이선스예요.
+Obsidian 공식 Community plugins에 올라가 있습니다. 코드는 GitHub에 전부 공개돼 있고 무료, MIT 라이선스예요.
 
 ## 마무리
 

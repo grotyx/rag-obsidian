@@ -28,7 +28,7 @@ await js(fs.readFileSync(path.join(HERE, "speech-page.js"), "utf8"));
 const SPOKEN = [["1,605편", "천육백오 편"], ["1,139편", "천백삼십구 편"], ["830편", "팔백삼십 편"], ["609편", "육백구 편"],
   ["1,366줄", "천삼백육십육 줄"], ["33개", "서른세 개"],
   // MiniMax sometimes spells "PubMed" out ("팝 엠이디"); with a space it reads it as two words.
-  ["PubMed", "Pub Med"], ["OpenRouter", "Open Router"]];
+  ["PubMed", "Pub Med"], ["OpenRouter", "Open Router"], ["Community plugins", "커뮤니티 플러그인"]];
 const spoken = (say) => SPOKEN.reduce((t, [a, b]) => t.split(a).join(b), say);
 const ONLY = (process.env.ONLY || "").split(",").filter(Boolean).map(Number);
 

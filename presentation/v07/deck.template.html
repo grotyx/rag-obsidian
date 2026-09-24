@@ -334,7 +334,7 @@ const KIND = {
     }).join("");
     return `<div class="eyebrow" ${a()}>Biportal endoscopy guideline</div><div class="rows" ${a()}>${rows}</div>`;
   },
-  url: (s) => `<div class="eyebrow" ${a()}>공개 저장소</div><div class="u" ${a()}><mark>${esc(s.url)}</mark></div><p class="sub" ${a()}>${esc(s.sub)}</p>`,
+  url: (s) => `<div class="eyebrow" ${a()}>${esc(s.eyebrow || "공개 저장소")}</div><div class="u" ${a()}>${s.url.split("\n").map((l) => `<mark>${esc(l)}</mark>`).join("<br>")}</div><p class="sub" ${a()}>${esc(s.sub)}</p>`,
   qa: (s) => `<div class="eyebrow" ${a()}>질문이 나오면</div><p class="big" ${a()}>${esc(s.q)}</p><p class="sub" ${a()}>${br(s.a)}</p>`,
   end: (s) => `<p class="big" ${a()}>${esc(s.text)}</p><div class="u" ${a()}>${esc(s.sub)}</div>`,
 };
