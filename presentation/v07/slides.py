@@ -35,7 +35,7 @@ SLIDES = [
 
     # ── 1 · 문제 ─────────────────────────────────────────────────────────────
     dict(kind="section", section="문제", no="1", title="문제",
-         say="먼저 문제부터 보겠습니다."),
+         say="먼저 문제부터 볼게요."),
     dict(kind="say", section="문제", text="논문,\n몇 편이나 읽으세요?",
          say="질문 하나 드리겠습니다. 한 주제로 논문을 몇 편이나 읽어보셨어요?"),
     dict(kind="num", section="문제", n="1,605", label="편 — guideline 하나에 검색된 논문",
@@ -82,11 +82,11 @@ SLIDES = [
          ],
          say="노트는 이렇게 생겼습니다. 맨 위에 저자, 연도, DOI, PMID가 표준 서지 형식으로 들어갑니다. 그 아래로 AI가 쓴 structured summary와 제 메모."),
     dict(kind="say", section="아이디어", text="그냥\n텍스트 파일입니다",
-         say="특별한 데이터베이스가 아닙니다. 그냥 텍스트 파일, 마크다운이에요."),
+         say="그냥 텍스트 파일, 마크다운이에요. 특별한 데이터베이스는 쓰지 않습니다."),
     dict(kind="list", section="아이디어", items=["서버 없음", "계정 없음", "내 폴더에 그대로"],
          say="서버도 계정도 필요 없습니다. 논문 정보는 전부 내 컴퓨터 폴더에 남아요. 프로그램을 지워도 파일은 그대로입니다."),
     dict(kind="say", section="아이디어", text="그 노트가\nAI 답의 근거", hl="근거",
-         say="이 노트들이 그대로 AI가 답할 때의 근거가 됩니다."),
+         say="이 노트들이 그대로 AI가 답할 때의 근거가 되죠."),
 
     # ── 3 · 흐름 ─────────────────────────────────────────────────────────────
     dict(kind="section", section="흐름", no="3", title="흐름",
@@ -112,13 +112,13 @@ SLIDES = [
     dict(kind="say", section="흐름", text="근거가 없으면\n없다고", hl="없다고",
          say="서재에 근거가 없으면 없다고 말하도록, 인용은 지어내지 않도록 지시되어 있습니다."),
     dict(kind="say", section="흐름", text="쓸 때는\n@ 한 번", hl="@",
-         say="논문을 쓸 때는 골뱅이를 치면 인용이 자동완성됩니다."),
+         say="논문을 쓸 때는 골뱅이를 치면 인용이 자동완성돼요."),
     dict(kind="say", section="흐름", text="저널 스타일은\n한 줄",
          say="참고문헌 형식은 저널 이름 한 줄로 바뀝니다. 만 개가 넘는 CSL 스타일을 알아서 받아오죠."),
     dict(kind="say", section="흐름", text="투고는\nWord로", hl="Word",
          say="투고용 Word 파일로도 바로 내보냅니다."),
     dict(kind="say", section="흐름", text="놓친 논문도\n찾아줍니다", hl="놓친",
-         say="마지막은 인용 그래프입니다. 내 논문들이 여러 번 인용하는데 내 서재에는 없는 논문, 제가 놓친 핵심 논문을 찾아줍니다."),
+         say="마지막은 인용 그래프입니다. 내 논문들이 여러 번 인용하는데 내 서재에는 없는 논문, 제가 놓친 핵심 논문을 찾아줘요."),
 
     # ── 4 · 실전 ─────────────────────────────────────────────────────────────
     dict(kind="section", section="실전", no="4", title="실전: Guideline",
@@ -149,7 +149,7 @@ SLIDES = [
 
     # ── 5 · AI 동료 ───────────────────────────────────────────────────────────
     dict(kind="section", section="AI 동료", no="5", title="AI 동료",
-         say="이번 작업에서 가장 크게 달라진 점입니다."),
+         say="이번 작업에서 가장 크게 달라진 점이에요."),
     dict(kind="say", section="AI 동료", text="AI가\n서재를 직접 다룬다", hl="직접",
          say="Claude Code나 Codex 같은 AI 에이전트가 제 서재를 직접 읽고 쓸 수 있습니다."),
     dict(kind="steps", section="AI 동료", items=["AI가 찾고 요약", "플러그인이 저장", "내가 확인"],
@@ -165,7 +165,7 @@ SLIDES = [
     dict(kind="say", section="비교", text="Zotero가 하던 일은\n그대로",
          say="Zotero나 EndNote가 하던 일은 그대로 합니다."),
     dict(kind="list", section="비교", items=["중복 병합", "철회 논문 표시", "무료 PDF 받기"],
-         say="중복 논문을 합치고 철회된 논문을 표시하고 무료로 공개된 PDF를 한꺼번에 받아옵니다."),
+         say="중복 논문을 합치고 철회된 논문을 표시하고 무료로 공개된 PDF를 한꺼번에 받아와요."),
     dict(kind="say", section="비교", text="그리고\n그 너머", hl="너머",
          say="그리고 그걸 넘어섭니다."),
     dict(kind="list", section="비교", items=["뜻으로 찾기", "출처 달린 답", "Screening · PRISMA"],
@@ -188,7 +188,7 @@ SLIDES = [
     dict(kind="say", section="마무리", text="내 서재가\n답한다", hl="답한다",
          say="내 서재가 진짜 출처와 함께 답합니다."),
     dict(kind="end", section="마무리", text="감사합니다", sub="github.com/grotyx/rag-obsidian",
-         say="감사합니다. 질문 받겠습니다."),
+         say="감사합니다. 질문 받을게요."),
 
     # ── 부록 · 질문이 나오면 ───────────────────────────────────────────────────
     dict(kind="qa", section="부록", q="인터넷 없이도 되나요?",
