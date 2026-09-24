@@ -28,10 +28,10 @@ dural tear, abstract, full text, evidence table, guideline, systematic review.
 SLIDES = [
     # ── 0 · 표지 ─────────────────────────────────────────────────────────────
     dict(kind="cover", section="표지",
-         title="내 서재가\n답한다",
+         title="내 서재를\nevidence database로",
          sub="출처가 붙는 AI 논문 서재 — Obsidian 플러그인",
          meta="Academic Paper Citation Manager · v0.7.7",
-         say="안녕하세요. 오늘은 제가 만든 Obsidian 플러그인 Academic Paper Citation Manager를 소개합니다. 한 문장으로 줄이면 내 논문 서재가 직접 답하는 도구입니다."),
+         say="안녕하세요. 오늘은 제가 만든 Obsidian 플러그인 Academic Paper Citation Manager를 소개합니다. 한 문장으로 줄이면 내 논문 서재를 evidence database로 만들어, AI가 내 논문을 근거로 답하게 하는 도구입니다."),
 
     # ── 1 · 문제 ─────────────────────────────────────────────────────────────
     dict(kind="section", section="문제", no="1", title="문제",
@@ -170,8 +170,8 @@ SLIDES = [
          say="그리고 그걸 넘어섭니다."),
     dict(kind="list", section="비교", items=["뜻으로 찾기", "출처 달린 답", "Screening · PRISMA"],
          say="뜻으로 찾고 출처 달린 답을 받습니다. Screening과 PRISMA까지 한 곳에서 하죠."),
-    dict(kind="say", section="비교", text="언제든\n나갈 수 있습니다",
-         say="그리고 언제든 나갈 수 있습니다. BibTeX, RIS, CSL-JSON으로 전부 내보냅니다. 데이터는 처음부터 "
+    dict(kind="say", section="비교", text="언제든\n내보낼 수 있습니다",
+         say="그리고 언제든 내보낼 수 있습니다. BibTeX, RIS, CSL-JSON 형식을 모두 지원합니다. 데이터는 처음부터 "
              "제 파일이었으니까요."),
 
     # ── 7 · 시작 ─────────────────────────────────────────────────────────────
@@ -185,12 +185,12 @@ SLIDES = [
          say="Obsidian 공식 Community plugins에 올라가 있습니다. 코드는 GitHub에 전부 공개돼 있고 무료, MIT 라이선스예요."),
 
     # ── 8 · 마무리 ────────────────────────────────────────────────────────────
-    dict(kind="say", section="마무리", text="출처 없는 답은\n답이 아니다", hl="출처",
-         say="마지막으로 한 문장만 기억해 주세요. 출처 없는 답은, 답이 아닙니다."),
-    dict(kind="say", section="마무리", text="내 서재가\n답한다", hl="답한다",
-         say="내 서재가 진짜 출처와 함께 답합니다."),
+    dict(kind="say", section="마무리", text="출처 없는 문장은\n정확하지 않습니다", hl="출처",
+         say="마지막으로 한 문장만 기억해 주세요. 출처 없는 문장은 정확하지 않습니다."),
+    dict(kind="say", section="마무리", text="내 서재를\nevidence database로", hl="evidence database",
+         say="이 플러그인은 내 서재를 evidence database로 만들어 정확한 근거를 찾게 합니다."),
     dict(kind="end", section="마무리", text="감사합니다", sub="community.obsidian.md/plugins/academic-paper-citation-manager",
-         say="감사합니다. 질문 받을게요."),
+         say="감사합니다."),
 
     # ── 부록 · 질문이 나오면 ───────────────────────────────────────────────────
     dict(kind="qa", section="부록", q="인터넷 없이도 되나요?",

@@ -86,7 +86,7 @@ def main() -> None:
 
     # script.md — what is said, slide by slide
     out = [
-        "# 대본 — 내 서재가 답한다",
+        "# 대본 — 내 서재를 evidence database로",
         "",
         f"본편 {len(main_slides)}장 · 말하는 시간 약 {total / 60:.0f}분 (쉬는 시간 빼고). "
         f"부록 {len(slides) - len(main_slides)}장은 질문이 나올 때만.",
@@ -108,14 +108,14 @@ def main() -> None:
     for s in main_slides:
         by_section.setdefault(s["section"], []).append(s)
     plan = [
-        "# 발표 내용 — 내 서재가 답한다",
+        "# 발표 내용 — 내 서재를 evidence database로",
         "",
         "Academic Paper Citation Manager 0.7 소개 발표. 대본은 [script.md](script.md), 화면은 "
         "[deck.html](deck.html), 원본 데이터는 [slides.py](slides.py).",
         "",
         "## 한 문장",
         "",
-        "> **출처 없는 답은 답이 아니다 — 내 서재가 진짜 출처와 함께 답한다.**",
+        "> **출처 없는 문장은 정확하지 않다 — 내 서재를 evidence database로 만들어 정확한 근거를 찾게 한다.**",
         "",
         "## 청중",
         "",
@@ -145,7 +145,7 @@ def main() -> None:
         "흐름": "넣기 → 요약 → 찾기 → 묻기 → 쓰기 → 놓친 논문",
         "실전": "Guideline 하나를 실제 숫자로 — 그리고 결정은 사람",
         "AI 동료": "AI 에이전트가 서재를 직접, 안전하게 다룬다",
-        "비교": "Zotero가 하던 일 + 그 너머, 언제든 나갈 수 있음",
+        "비교": "Zotero가 하던 일 + 그 너머, 언제든 내보내기",
         "시작": "세 단계와 주소",
         "마무리": "한 문장",
     }

@@ -1,13 +1,13 @@
 # YouTube 업로드 자료
 
-- 영상: `talk.mp4` (1920×1080, 30fps, 6분 47초, 음량 −14 LUFS)
+- 영상: `talk.mp4` (1920×1080, 30fps, 6분 52초, 음량 −14 LUFS)
 - 자막: `captions.srt` (한국어) — 업로드 후 "자막 → 파일 업로드 → 타이밍 포함"
 - 썸네일: `thumbnail-1280.jpg` (1280×720)
 - 음성: MiniMax Speech 2.8 HD · Korean_CalmGentleman (OpenRouter). 문장마다 Gemini로 받아써서 대본과 대조 — `narration-check.json`
 
 ## 제목
 
-내 서재가 답한다 — 출처가 붙는 AI 논문 서재 (Obsidian 플러그인)
+내 서재를 evidence database로 — 출처가 붙는 AI 논문 서재 (Obsidian 플러그인)
 
 ## 설명
 
@@ -25,14 +25,14 @@ Biportal endoscopy guideline을 만들며 1,605편을 검색하고 830편을 포
 ## 챕터
 
 0:00 들어가며
-0:12 문제
-1:18 아이디어
-2:04 흐름
-3:46 실전: Guideline
-4:56 AI 동료
-5:32 무엇이 다른가
-6:08 시작
-6:32 마무리
+0:15 문제
+1:21 아이디어
+2:08 흐름
+3:49 실전: Guideline
+5:00 AI 동료
+5:37 무엇이 다른가
+6:13 시작
+6:36 마무리
 
 ## 태그
 
