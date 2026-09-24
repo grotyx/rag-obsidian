@@ -20,3 +20,6 @@ styles/cache/
 # Claude Code worktrees / session files
 .claude/
 .worktrees/
+
+# Local presentation bundles (large; the video lives outside git)
+presentation/*.zip
