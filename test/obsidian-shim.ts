@@ -79,6 +79,7 @@ export class App {}
 
 export class Plugin {}
 export class WorkspaceLeaf {}
+export class MarkdownView {}
 export class TAbstractFile {}
 export class TFolder extends TAbstractFile {}
 export class FileSystemAdapter {}

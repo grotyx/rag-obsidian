@@ -201,5 +201,5 @@ Every command is in the command palette (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>). Type
 
 ---
 
-<sub>Screenshots: plugin v0.7.7 on a test vault of 56 papers. Chat answers are unedited model
+<sub>Screenshots: plugin v0.7.8 on a test vault of 56 papers. Chat answers are unedited model
 output. Maintainers regenerate the screenshots with `python scripts/manual/capture.py en`.</sub>

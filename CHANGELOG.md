@@ -6,6 +6,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.7.8] — 2026-09-27
+
 ### Added
 
 - **User guide** in English, Korean, Chinese, Japanese and Spanish (`docs/manual/`), with numbered screenshots from the

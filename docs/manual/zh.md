@@ -166,4 +166,4 @@
 
 ---
 
-<sub>截图：插件 v0.7.7，测试库共 56 篇论文。聊天回答为模型原始输出，未经编辑。维护者用 `python scripts/manual/capture.py zh` 重新生成截图。</sub>
+<sub>截图：插件 v0.7.8，测试库共 56 篇论文。聊天回答为模型原始输出，未经编辑。维护者用 `python scripts/manual/capture.py zh` 重新生成截图。</sub>
