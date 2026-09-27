@@ -6,6 +6,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **User guide** in English and Korean (`docs/manual/`), with numbered screenshots from the
+  real plugin, linked from both READMEs. `scripts/manual/capture.py <lang>` reshoots the
+  screenshots by driving Obsidian, so the guide can follow UI changes and new languages.
+
+### Fixed
+
+- **Citation styles renamed in the CSL repository** resolve again: `csl: vancouver` (now
+  `nlm-citation-sequence`) used to fail and fall back to APA. Unknown ids are looked up in the
+  repository's `renamed-styles.json`.
+- **Reading view** re-renders a note's citations when its `csl:` style or numbering changes;
+  paragraphs whose text had not changed kept their old labels until the note was reopened.
+- **Superscript styles** (Spine, AMA) keep superscript citations through Compile manuscript
+  (`text<sup>1</sup>`, with no space before the number) and Export to Word; the compiled copy
+  showed "text 1" and the Word file lost the superscript.
+
 ## [0.7.7] — 2026-09-24
 
 ### Fixed
