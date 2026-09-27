@@ -8,7 +8,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Added
 
-- **User guide** in English and Korean (`docs/manual/`), with numbered screenshots from the
+- **User guide** in English, Korean, Chinese, Japanese and Spanish (`docs/manual/`), with numbered screenshots from the
   real plugin, linked from both READMEs. `scripts/manual/capture.py <lang>` reshoots the
   screenshots by driving Obsidian, so the guide can follow UI changes and new languages.
 

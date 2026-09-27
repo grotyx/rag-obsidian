@@ -19,7 +19,7 @@ no account, no backend — just your vault.
 ## 📖 User guide
 
 A step-by-step guide with screenshots, from adding papers to exporting a Word manuscript:
-**[English](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md)** · [한국어](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md)
+**[English](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md)** · [한국어](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md) · [中文](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/zh.md) · [日本語](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ja.md) · [Español](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/es.md)
 
 [![Citations and a generated bibliography in Obsidian](https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/en/08-bibliography.png)](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md)
 

@@ -4,6 +4,9 @@
 |---|---|
 | English | [en.md](en.md) |
 | 한국어 | [ko.md](ko.md) |
+| 中文 | [zh.md](zh.md) |
+| 日本語 | [ja.md](ja.md) |
+| Español | [es.md](es.md) |
 
 ## Adding a language
 

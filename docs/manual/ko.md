@@ -1,6 +1,6 @@
 # 사용 설명서 — Academic Paper Citation Manager
 
-[English](en.md) · **한국어**
+[English](en.md) · **한국어** · [中文](zh.md) · [日本語](ja.md) · [Español](es.md)
 
 논문을 모으는 것부터 Word 원고로 내보내기까지 순서대로 설명합니다. 모든 화면은 실제
 플러그인을 조작하면서 찍었습니다. 화면의 빨간 번호는 그 아래 설명의 번호와 같습니다.

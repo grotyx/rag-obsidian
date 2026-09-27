@@ -31,7 +31,7 @@ QUESTION = {
     'en': 'How does the complication rate of biportal endoscopic discectomy change over the learning curve?',
     'ko': 'Biportal endoscopic discectomy의 합병증 발생률은 learning curve에 따라 어떻게 달라지나?',
     'ja': 'Biportal endoscopic discectomy の合併症率はラーニングカーブに沿ってどう変わりますか?',
-    'zh': 'Biportal endoscopic discectomy 的并发症发生率如何随学习曲线变化?',
+    'zh': '双通道内镜椎间盘切除术 (biportal endoscopic discectomy) 的并发症发生率如何随学习曲线变化?请用中文回答。',
     'es': '¿Cómo cambia la tasa de complicaciones de la discectomía endoscópica biportal a lo largo de la curva de aprendizaje?',
 }
 DRAFT = ('---\ncsl: spine\n---\n# Draft — Biportal endoscopy for lumbar stenosis\n\n'

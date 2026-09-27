@@ -18,7 +18,7 @@
 ## 📖 사용 설명서
 
 논문 추가부터 Word 원고 내보내기까지 화면과 함께 설명합니다:
-[English](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md) · **[한국어](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md)**
+[English](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md) · **[한국어](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md)** · [中文](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/zh.md) · [日本語](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ja.md) · [Español](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/es.md)
 
 [![Obsidian에서 인용과 참고문헌을 만든 화면](https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/ko/08-bibliography.png)](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md)
 
