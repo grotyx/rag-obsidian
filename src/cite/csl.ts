@@ -22,6 +22,7 @@ interface CiteprocModule {
 const Citeproc = CSL as unknown as CiteprocModule;
 
 const RAW_STYLES = "https://raw.githubusercontent.com/citation-style-language/styles/master";
+const RENAMED_STYLES = `${RAW_STYLES}/renamed-styles.json`;
 const RAW_LOCALE = "https://raw.githubusercontent.com/citation-style-language/locales/master/locales-en-US.xml";
 
 // Style ids come from note frontmatter and flow into vault paths + URLs:
@@ -101,7 +102,20 @@ export class CiteEngine {
         /* try the dependent path next */
       }
     }
+    // Old ids (e.g. "vancouver" → "nlm-citation-sequence") live on only in renamed-styles.json.
+    const renamed = await this.renamedId(id);
+    if (renamed) return this.fetchStyle(renamed);
     throw new Error(`Citation style "${id}" not found (not bundled, not in the CSL repo).`);
+  }
+
+  private async renamedId(id: string): Promise<string | null> {
+    try {
+      const r = await requestUrl({ url: RENAMED_STYLES });
+      const to = (r.json as Record<string, unknown>)[id];
+      return typeof to === "string" && to !== id && SAFE_STYLE_ID.test(to) ? to : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Frontmatter keys the plugin manages. They share the note with the CSL-JSON fields, and

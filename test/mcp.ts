@@ -654,6 +654,15 @@ async function manuscriptChecks(): Promise<void> {
   assert.deepEqual(rendered.cited, ["known", "unknown"]);
   assert.deepEqual(rendered.missing, ["unknown"]);
 
+  const superscript = await renderCompiledManuscript({
+    content: "Finding [@known].",
+    styleId: "spine",
+    citeStyle: "apa",
+    getItem: (key) => items[key] ?? null,
+    renderStyle: async () => ({ bibliography: ["1. Known"], inText: { known: "<sup>1</sup>" } }),
+  });
+  assert.match(superscript.content, /Finding<sup>1<\/sup>\./); // kept as superscript, no space before it
+
   const fallback = await renderCompiledManuscript({
     content: "Finding [@known].",
     styleId: "broken",

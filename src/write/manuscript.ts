@@ -34,6 +34,16 @@ function plainText(html: string): string {
   return decodeEntities(html.replace(/<[^>]+>/g, ""));
 }
 
+/** Marks a superscript citation so the space before it can be dropped ("text¹", not "text ¹"). */
+const SUP_MARK = "\u0000";
+
+/** A CSL in-text label as Markdown: superscript styles keep `<sup>` (Obsidian renders it; the
+ *  Word export turns it into Pandoc `^…^`), everything else becomes plain text. */
+function markdownLabel(html: string): string {
+  const sup = html.match(/^\s*<sup>([\s\S]*?)<\/sup>\s*$/i);
+  return sup ? `${SUP_MARK}<sup>${plainText(sup[1])}</sup>` : plainText(html);
+}
+
 function lightweightBibliography(keys: string[], getItem: (citekey: string) => CSLItem | null, style: CiteStyle): string {
   return keys
     .map(getItem)
@@ -57,7 +67,8 @@ export async function renderCompiledManuscript(input: CompileInput): Promise<Com
   if (input.styleId) {
     try {
       const rendered = await input.renderStyle(input.styleId, keys, input.getItem);
-      body = replace(input.content, (key) => rendered.inText[key] ? plainText(rendered.inText[key]) : null);
+      body = replace(input.content, (key) => rendered.inText[key] ? markdownLabel(rendered.inText[key]) : null)
+        .replace(new RegExp(`[ \\t]*${SUP_MARK}`, "g"), "");
       references = rendered.bibliography.join("\n\n");
     } catch {
       // A style failure uses the same lightweight fallback as the Obsidian command.

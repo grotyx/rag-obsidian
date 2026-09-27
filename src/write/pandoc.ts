@@ -10,3 +10,9 @@ export function pandocCandidates(home: string, platform: string, localAppData = 
   }
   return ["/opt/homebrew/bin/pandoc", "/usr/local/bin/pandoc", `${home}/.local/bin/pandoc`];
 }
+
+/** Pandoc's Markdown reader keeps inline `<sup>` as raw HTML, which the docx writer drops —
+ *  rewrite compiled superscript citations as Pandoc `^…^` (spaces escaped, as it requires). */
+export function pandocSuperscripts(markdown: string): string {
+  return markdown.replace(/<sup>([^<^]*)<\/sup>/gi, (_m: string, s: string) => `^${s.replace(/ /g, "\\ ")}^`);
+}

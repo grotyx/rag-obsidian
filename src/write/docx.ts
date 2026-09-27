@@ -1,7 +1,7 @@
 /* global process -- desktop-only, runs in Electron's Node.js context */
 import { Platform } from "obsidian";
 import template from "../../styles/manuscript-reference.docx";
-import { pandocCandidates } from "./pandoc";
+import { pandocCandidates, pandocSuperscripts } from "./pandoc";
 import {
   nodeRequire,
   type ChildProcessModuleLike,
@@ -61,7 +61,7 @@ export async function exportDocx(
   try {
     const inPath = pathApi.join(tmp, "in.md");
     const templatePath = pathApi.join(tmp, "reference.docx");
-    await fs.writeFile(inPath, markdown, "utf8");
+    await fs.writeFile(inPath, pandocSuperscripts(markdown), "utf8");
     await fs.writeFile(templatePath, template);
     await new Promise<void>((resolve, reject) => {
       cp.execFile(

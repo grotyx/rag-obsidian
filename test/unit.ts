@@ -30,7 +30,7 @@ import {
 } from "../src/llm/cli";
 import { windowsCliShimChecks } from "./windows";
 import { cacheRoot } from "../src/index/localFiles";
-import { pandocCandidates } from "../src/write/pandoc";
+import { pandocCandidates, pandocSuperscripts } from "../src/write/pandoc";
 import { stripFrontmatter } from "../src/index/chunker";
 import {
   duplicateGroups,
@@ -780,6 +780,12 @@ await windowsCliShimChecks();
     "filterAndSort: text matches citekey, case-insensitive"
   );
 }
+
+// ---------- write/pandoc.ts: pandocSuperscripts ----------
+check(
+  pandocSuperscripts("text<sup>1</sup> and <SUP>2, 3</SUP>.") === "text^1^ and ^2,\\ 3^.",
+  "pandocSuperscripts: <sup> becomes Pandoc ^…^ with spaces escaped"
+);
 
 // ---------- write/pandoc.ts: pandocCandidates ----------
 {

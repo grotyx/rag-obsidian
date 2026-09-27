@@ -7,6 +7,7 @@ import {
   SecretStorage,
   Platform,
   FileSystemAdapter,
+  MarkdownView,
 } from "obsidian";
 import { ScholarRagSettings, DEFAULT_SETTINGS, SECRET_FIELDS, SecretField } from "./src/types";
 import { ScholarRagSettingTab } from "./src/settings";
@@ -397,7 +398,7 @@ export default class ScholarRagPlugin extends Plugin {
         if (file.path.startsWith(this.library.folder() + "/")) {
           this.citeCache.clear(); // reference data changed
           this.library.invalidateKeyCache();
-        } else this.citeCache.delete(file.path); // citation numbering in this note may have shifted
+        } else void this.refreshCitations(file.path); // style or numbering in this note may have changed
       })
     );
     this.registerEvent(
@@ -592,6 +593,20 @@ export default class ScholarRagPlugin extends Plugin {
     return this.settings.cslStyleId;
   }
 
+  /** Reading view keeps rendered paragraphs whose text didn't change, so a new `csl:` style or
+   *  shifted numbering stayed stale until reopen; re-render the note's open views when its labels change. */
+  private async refreshCitations(path: string): Promise<void> {
+    const old = this.citeCache.get(path);
+    this.citeCache.delete(path);
+    if (!old) return; // never rendered in reading view
+    const [before, after] = await Promise.all([old.catch(() => ({})), this.citeMapFor(path)]);
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (view instanceof MarkdownView && view.file?.path === path) view.previewMode.rerender(true);
+    }
+  }
+
   /** Whole-note CSL in-text labels for a file (numbered styles need document order). */
   citeMapFor(sourcePath: string): Promise<Record<string, string>> {
     let p = this.citeCache.get(sourcePath);
@@ -643,7 +658,10 @@ export default class ScholarRagPlugin extends Plugin {
           return item || label ? { key: k, item, label } : null;
         });
         if (!resolved) continue; // unknown key, or not a citation (an e-mail in brackets)
-        if (m.index > last) frag.appendChild(document.createTextNode(value.slice(last, m.index)));
+        // A superscript citation sits on the word ("text¹"), so drop the space typed before it.
+        const sup = /^\s*<sup>/i.test((cslMap && cslMap[resolved[0].key]) || "");
+        const before = value.slice(last, m.index);
+        if (before) frag.appendChild(document.createTextNode(sup ? before.replace(/[ \t]+$/, "") : before));
         resolved.forEach(({ key: k, item, label }, i) => {
           if (i) frag.appendChild(document.createTextNode("; "));
           const span = createSpan({ cls: "srag-cite" });
