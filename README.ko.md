@@ -13,7 +13,7 @@
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
-<p align="center"><a href="#-설치">설치</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md">사용 설명서</a> · <a href="#-기능">기능</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/MCP.ko.md">Claude Code / Codex</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/CHANGELOG.md">변경 기록</a></p>
+<p align="center"><a href="#-설치">설치</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md">사용 설명서</a> · <a href="#-기능">기능</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/MCP.ko.md">Claude Code / Codex</a> · <a href="#manuwright">manuwright</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/CHANGELOG.md">변경 기록</a></p>
 
 <p align="center"><a href="README.md">English</a> · <b>한국어</b></p>
 
@@ -195,6 +195,38 @@ provider를 사용할 수 있습니다.
 클라이언트가 `add_reference` → `get_reference_source` → `save_reference_summary` 순서로
 진행합니다. PMC 원문을 우선 사용하고 없으면 초록을 사용하며, 최신 노트 hash가 맞지 않으면
 사용자의 동시 수정을 덮어쓰지 않고 중단합니다.
+
+---
+
+<a id="manuwright"></a>
+
+## 🖋️ manuwright로 논문 쓰기
+
+[**manuwright**](https://github.com/grotyx/Academic_writing_c_claudecode)는 같은 저자가 만든 자매 프로젝트입니다. AI 에이전트(Claude Code, Codex,
+Antigravity, opencode, Muse)로 의학 논문을 쓰는 작업 흐름으로, 에이전트가 계획을 승인받기 전에는
+쓰지 못하게 하고, 등록된 근거만 인용하게 하고, 모든 숫자를 결과 파일에서 가져오게 하며, 투고 전에
+검증 관문을 통과하게 합니다. 참고문헌 라이브러리로는 이 플러그인의 MCP 서버를 씁니다.
+
+- **라이브러리를 모든 에이전트가 함께 씁니다.** `manuwright obsidian connect`가 이 플러그인의 MCP
+  서버(`rag-obsidian`)를 설치된 에이전트마다 등록하므로, 어느 에이전트든 원고를 쓰면서 내 논문을
+  검색합니다. `manuwright obsidian install`로 볼트에 플러그인을 설치하고 MCP 접근까지 켤 수도 있습니다.
+- **찾는 것은 Obsidian, 인용할 수 있는지는 manuwright가 정합니다.** `manuwright evidence
+  import-obsidian <citekey>`는 레퍼런스 노트를 논문의 `knowledge/evidence.md`로 옮깁니다. CSL 필드는
+  인용 정보가 되고, 플러그인의 AI 요약은 요약 칸을 채우며, citekey는 `[EVID:citekey]` ID가 됩니다.
+  가져온 항목은 전문을 읽기 전까지 *abstract-only*로 표시됩니다.
+
+```sh
+uv tool install git+https://github.com/grotyx/Academic_writing_c_claudecode
+manuwright obsidian status          # 플러그인이 있는 볼트와 연결된 에이전트 확인
+manuwright obsidian connect         # 에이전트에 rag-obsidian MCP 서버 추가
+manuwright evidence import-obsidian lv2024efficacy
+```
+
+<p align="center"><img src="https://raw.githubusercontent.com/grotyx/Academic_writing_c_claudecode/main/docs/images/manual/43_obsidian_import_evidence.png" width="720" alt="Obsidian 라이브러리의 레퍼런스를 evidence.md로 가져오는 manuwright"></p>
+
+manuwright는 선택 사항입니다. 플러그인은 혼자서도 쓸 수 있고, manuwright도 Obsidian 없이 동작합니다.
+에이전트가 라이브러리를 쓰는 동안에는 Obsidian을 열어 두고 MCP 접근을 켜 두세요. 자세한 내용은
+[manuwright 설명서](https://github.com/grotyx/Academic_writing_c_claudecode/blob/main/docs/manual.ko.md)를 보세요.
 
 ---
 

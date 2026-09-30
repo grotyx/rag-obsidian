@@ -13,7 +13,7 @@
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
-<p align="center"><a href="#-installation">Install</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md">User guide</a> · <a href="#-features">Features</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/MCP.md">Claude Code / Codex</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/CHANGELOG.md">Changelog</a></p>
+<p align="center"><a href="#-installation">Install</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md">User guide</a> · <a href="#-features">Features</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/MCP.md">Claude Code / Codex</a> · <a href="#manuwright">manuwright</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/CHANGELOG.md">Changelog</a></p>
 
 <p align="center"><b>English</b> · <a href="README.ko.md">한국어</a></p>
 
@@ -199,6 +199,41 @@ embedding provider.
 For a complete import, ask the client to add and summarize the paper. It will follow
 `add_reference` → `get_reference_source` → `save_reference_summary`: PMC full text is preferred,
 an abstract is the fallback, and a current note hash prevents overwriting concurrent edits.
+
+---
+
+<a id="manuwright"></a>
+
+## 🖋️ Write the paper with manuwright
+
+[**manuwright**](https://github.com/grotyx/Academic_writing_c_claudecode) is a companion project by the same author: a medical-manuscript
+workflow for AI agents (Claude Code, Codex, Antigravity, opencode, Muse). It makes the agent
+plan before it writes, cite only registered sources, take every number from your results files,
+and pass verification gates before submission. It uses this plugin's MCP server as its
+reference library:
+
+- **The library is shared with every agent.** `manuwright obsidian connect` registers this
+  plugin's MCP server (`rag-obsidian`) with each installed agent, so any of them can search your
+  papers while it drafts. `manuwright obsidian install` can also install the plugin into a vault
+  and turn on MCP access for you.
+- **Obsidian finds papers; manuwright decides what can be cited.** `manuwright evidence
+  import-obsidian <citekey>` copies a reference note into the paper's `knowledge/evidence.md`: the
+  CSL fields become the citation, the plugin's AI summary fills the summary fields, and the
+  citekey becomes the `[EVID:citekey]` id. Imported entries start as *abstract-only* until you
+  have read the full text.
+
+```sh
+uv tool install git+https://github.com/grotyx/Academic_writing_c_claudecode
+manuwright obsidian status          # vaults with this plugin, and which agents are connected
+manuwright obsidian connect         # add the rag-obsidian MCP server to your agents
+manuwright evidence import-obsidian lv2024efficacy
+```
+
+<p align="center"><img src="https://raw.githubusercontent.com/grotyx/Academic_writing_c_claudecode/main/docs/images/manual/43_obsidian_import_evidence.png" width="720" alt="manuwright importing a reference from the Obsidian library into evidence.md"></p>
+
+manuwright is optional: the plugin works on its own, and manuwright works without Obsidian.
+Keep Obsidian open with MCP access enabled while agents use the library. See the
+[manuwright manual](https://github.com/grotyx/Academic_writing_c_claudecode/blob/main/docs/manual.md#3b-your-obsidian-library-optional-recommended).
 
 ---
 
