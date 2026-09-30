@@ -1,14 +1,32 @@
-# Academic Paper Citation Manager
+<p align="center">
+  <img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/assets/logo.svg" width="128" alt="Academic Paper Citation Manager logo">
+</p>
 
-[![version](https://img.shields.io/badge/version-0.7.8-blue)](./CHANGELOG.md)
-[![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![Obsidian](https://img.shields.io/badge/Obsidian-1.11.4%2B-7c3aed)](https://obsidian.md)
+<h1 align="center">Academic Paper Citation Manager</h1>
 
-**English** · [한국어](README.ko.md)
+<p align="center">Your markdown notes <b>are</b> the reference library.<br>Search PubMed, get AI summaries, cite in any journal style — a Zotero / EndNote replacement inside Obsidian.</p>
 
-> A standalone, AI-native **citation manager for Obsidian** — search PubMed, get AI
-> summaries, auto-tag by topic, and cite in any journal style. A Zotero / EndNote
-> replacement where your **markdown notes are the database**.
+<p align="center">
+  <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.7.8-8b5cf6"></a>
+  <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
+</p>
+
+<p align="center"><a href="#-installation">Install</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md">User guide</a> · <a href="#-features">Features</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/MCP.md">Claude Code / Codex</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/CHANGELOG.md">Changelog</a></p>
+
+<p align="center"><b>English</b> · <a href="README.ko.md">한국어</a></p>
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/en/03-pubmed-search.png" alt="Add papers from PubMed"><br><b>Add papers from PubMed</b></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/en/07-cite-suggest.png" alt="Cite with @"><br><b>Cite with @</b></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/en/10-chat.png" alt="Chat with your library"><br><b>Chat with your library</b></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/en/12-related.png" alt="Citation map"><br><b>Citation map</b></td>
+  </tr>
+</table>
 
 Every reference is a plain `.md` note with [CSL-JSON](https://citationstyles.org/)
 frontmatter, so your library stays portable, future-proof, and yours. No external app,
@@ -100,7 +118,8 @@ Desktop only (Obsidian 1.11.4+).
 Installed earlier through **BRAT**? The plugin id and folder are the same, so your settings and
 index stay: remove the plugin from BRAT's list and keep updating through Community plugins.
 
-### Option B — Download a release (manual)
+<details>
+<summary><b>Option B — Download a release (manual)</b></summary>
 
 From the [latest release](https://github.com/grotyx/rag-obsidian/releases/latest), download
 `main.js`, `manifest.json` and `styles.css` into
@@ -112,7 +131,11 @@ From the [latest release](https://github.com/grotyx/rag-obsidian/releases/latest
 (create the folder if it does not exist), then reload Obsidian and enable the plugin under
 **Settings → Community plugins**. Updating means downloading the three files again.
 
-### Option C — Build it yourself
+
+</details>
+
+<details>
+<summary><b>Option C — Build it yourself</b></summary>
 
 Requires [Node.js 18+](https://nodejs.org) and [git](https://git-scm.com).
 
@@ -129,11 +152,18 @@ npm run deploy              # builds + copies the plugin into your vault
 
 Then in Obsidian: **Settings → Community plugins → enable the plugin** → reload (`Ctrl/Cmd-R`).
 
-### Option D — Cloud-synced vault (no build on the 2nd machine)
+
+</details>
+
+<details>
+<summary><b>Option D — Cloud-synced vault (no build on the 2nd machine)</b></summary>
 
 If your vault is in OneDrive / iCloud / Dropbox / Obsidian Sync, the built plugin travels
 **inside** the vault (`<vault>/.obsidian/plugins/academic-paper-citation-manager/`). On another machine just
 open the synced vault and enable the plugin — no Node, no build.
+
+
+</details>
 
 ---
 

@@ -1,13 +1,32 @@
-# Academic Paper Citation Manager
+<p align="center">
+  <img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/assets/logo.svg" width="128" alt="Academic Paper Citation Manager logo">
+</p>
 
-[![version](https://img.shields.io/badge/version-0.7.8-blue)](./CHANGELOG.md)
-[![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![Obsidian](https://img.shields.io/badge/Obsidian-1.11.4%2B-7c3aed)](https://obsidian.md)
+<h1 align="center">Academic Paper Citation Manager</h1>
 
-[English](README.md) · **한국어**
+<p align="center"><b>마크다운 노트가 곧 참고문헌 라이브러리</b>입니다.<br>PubMed 검색, AI 요약, 저널 스타일 인용까지 — Obsidian 안의 Zotero / EndNote 대체.</p>
 
-> Obsidian용 AI 네이티브 **인용 관리 도구** — PubMed 검색, AI 요약, 주제 자동 태깅,
-> 저널 스타일 인용까지. **마크다운 노트가 곧 데이터베이스**인 Zotero / EndNote 대체.
+<p align="center">
+  <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.7.8-8b5cf6"></a>
+  <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
+</p>
+
+<p align="center"><a href="#-설치">설치</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md">사용 설명서</a> · <a href="#-기능">기능</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/MCP.ko.md">Claude Code / Codex</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/CHANGELOG.md">변경 기록</a></p>
+
+<p align="center"><a href="README.md">English</a> · <b>한국어</b></p>
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/ko/03-pubmed-search.png" alt="PubMed로 논문 추가"><br><b>PubMed로 논문 추가</b></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/ko/07-cite-suggest.png" alt="@로 인용"><br><b>@로 인용</b></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/ko/10-chat.png" alt="라이브러리와 대화"><br><b>라이브러리와 대화</b></td>
+    <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/ko/12-related.png" alt="인용 지도"><br><b>인용 지도</b></td>
+  </tr>
+</table>
 
 모든 레퍼런스는 [CSL-JSON](https://citationstyles.org/) frontmatter를 가진 평범한 `.md`
 노트라, 라이브러리가 이식성 있고 미래에도 안전하며 온전히 내 것입니다. 외부 앱·계정·
@@ -94,7 +113,8 @@
 예전에 **BRAT**으로 설치했다면 플러그인 id와 폴더가 같아서 설정과 검색 색인은 그대로
 남습니다. BRAT 목록에서만 빼고, 이후 업데이트는 커뮤니티 플러그인에서 받으세요.
 
-### 방법 B — 릴리스 파일 내려받기 (수동)
+<details>
+<summary><b>방법 B — 릴리스 파일 내려받기 (수동)</b></summary>
 
 [최신 릴리스](https://github.com/grotyx/rag-obsidian/releases/latest)에서 `main.js`,
 `manifest.json`, `styles.css` 세 파일을 받아 아래 폴더에 넣습니다(없으면 만드세요).
@@ -106,7 +126,11 @@
 Obsidian을 새로고침한 뒤 **설정 → 커뮤니티 플러그인**에서 활성화합니다. 업데이트하려면
 세 파일을 다시 받으면 됩니다.
 
-### 방법 C — 직접 빌드
+
+</details>
+
+<details>
+<summary><b>방법 C — 직접 빌드</b></summary>
 
 [Node.js 18+](https://nodejs.org) 와 [git](https://git-scm.com) 필요.
 
@@ -123,11 +147,18 @@ npm run deploy              # 빌드 + 플러그인을 vault로 복사
 
 이후 Obsidian: **Settings → Community plugins → 플러그인 활성화** → 다시 로드(`Ctrl/Cmd-R`).
 
-### 방법 D — 클라우드 동기화 vault (둘째 PC는 빌드 불필요)
+
+</details>
+
+<details>
+<summary><b>방법 D — 클라우드 동기화 vault (둘째 PC는 빌드 불필요)</b></summary>
 
 vault가 OneDrive / iCloud / Dropbox / Obsidian Sync에 있으면 빌드된 플러그인이 vault
 **안에**(`<vault>/.obsidian/plugins/academic-paper-citation-manager/`) 같이 따라옵니다. 다른 PC에선 동기화된
 vault를 열고 활성화만 — Node·빌드 불필요.
+
+
+</details>
 
 ---
 
