@@ -109,7 +109,7 @@
 1. 閲覧モードでは、各 `[@citekey]` が雑誌のスタイル（ここでは上付き数字）で表示されます。
 2. ノートの末尾に雑誌の形式で **References** セクションが書き込まれます。引用を追加・削除したら、コマンドを再実行して更新します。
 
-> **雑誌スタイル**：`spine`、`apa`、`american-medical-association`、`elsevier-vancouver`、`springer-basic-brackets` は内蔵されています。それ以外の [CSLスタイルリポジトリ](https://github.com/citation-style-language/styles) のスタイルID（`vancouver` や `nature` など）は、初めて使うときに自動でダウンロードされます。
+> **雑誌スタイル**：`spine`、`apa`、`american-medical-association`、`elsevier-vancouver`、`springer-basic-brackets` は内蔵されています。それ以外の [CSLスタイルリポジトリ](https://github.com/citation-style-language/styles) のスタイルID（`vancouver` や `nature` など）は、初めて使うときに自動でダウンロードされます。IDがわからないときは **Choose citation style…** コマンドで雑誌名を入力します。
 
 ## 7. セマンティック検索
 

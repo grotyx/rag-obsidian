@@ -415,3 +415,24 @@
   width: 100%;
   margin-bottom: 8px;
 }
+
+/* Live Preview citation widget + hover reference */
+.cm-content .srag-cite {
+  cursor: pointer;
+  color: var(--text-accent);
+}
+.srag-cite-tip {
+  max-width: 420px;
+  padding: 6px 10px;
+  white-space: pre-line;
+  font-size: var(--font-ui-small);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+}
+.srag-cite-tip-item + .srag-cite-tip-item {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--background-modifier-border);
+}

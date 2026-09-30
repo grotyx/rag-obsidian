@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 
 import { parseLibrary } from "../src/ingest/import";
+import { parseCollections, parseCslPage } from "../src/ingest/zotero";
 import { cleanDoi, detectId, splitName, parsePubDate, esummaryToItem } from "../src/ingest/metadata";
 import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
 import { findIdentifier, isPdfMagic, extractPdfHighlights, setPdfjsLoader } from "../src/ingest/pdf";
@@ -32,6 +33,8 @@ import { windowsCliShimChecks } from "./windows";
 import { cacheRoot } from "../src/index/localFiles";
 import { pandocCandidates, pandocSuperscripts } from "../src/write/pandoc";
 import { stripFrontmatter } from "../src/index/chunker";
+import { referenceProblems, refcheckReport } from "../src/write/refcheck";
+import { parseStyleIndex } from "../src/cite/styleIndex";
 import {
   duplicateGroups,
   inScope,
@@ -55,6 +58,8 @@ import {
   MergeSourceNote,
 } from "../src/data/merge";
 import { extractSummaryBlock, renameCiteKeys } from "../src/cite/bibliography";
+import { citeTooltip } from "../src/cite/format";
+import { citeClusters } from "../src/cite/clusters";
 import { isNumberArray, numLike, text } from "../src/util/json";
 import {
   getYear,
@@ -82,6 +87,34 @@ function check(cond: boolean, label: string): void {
 }
 
 async function main(): Promise<void> {
+// ---------- write/refcheck.ts + cite/styleIndex.ts ----------
+{
+  const good = { type: "article-journal", title: "T", author: [{ family: "A" }], issued: { "date-parts": [[2020]] },
+    "container-title": "J", volume: "1", page: "1-2", DOI: "10.1/x" };
+  check(referenceProblems(good, {}).length === 0, "refcheck: complete reference has no problems");
+  check(referenceProblems(null, {})[0] === "not in the library", "refcheck: missing item");
+  check(referenceProblems(good, { retracted: true }).includes("retracted"), "refcheck: retracted flag");
+  check(referenceProblems({ ...good, DOI: undefined }, {}).includes("no DOI or PMID"), "refcheck: no DOI");
+  check(referenceProblems({ ...good, DOI: undefined, PMID: "1" }, {}).length === 0, "refcheck: PMID suffices");
+  check(referenceProblems({ ...good, title: undefined }, {}).includes("missing title"), "refcheck: title");
+  check(referenceProblems({ ...good, author: [] }, {}).includes("missing authors"), "refcheck: authors");
+  check(referenceProblems({ ...good, issued: undefined }, {}).includes("missing year"), "refcheck: year");
+  check(referenceProblems({ ...good, "container-title": undefined }, {}).includes("missing journal"), "refcheck: journal");
+  check(referenceProblems({ ...good, volume: undefined, page: undefined }, {}).includes("incomplete: volume, pages"), "refcheck: volume/pages");
+  check(referenceProblems({ ...good, type: "book", volume: undefined, "container-title": undefined }, {}).length === 0, "refcheck: volume only for journal articles");
+  const rep = refcheckReport("ms", [{ key: "a", problems: [] }, { key: "b", problems: ["no DOI or PMID"] }], ["note x"]);
+  check(rep.includes("2 cited, 1 with problems") && rep.includes("| `b` | no DOI or PMID |") && !rep.includes("`a`") && rep.includes("- note x"), "refcheckReport: table of problem rows only");
+  check(refcheckReport("ms", [{ key: "a", problems: [] }]).includes("All 1 references look complete."), "refcheckReport: all complete");
+
+  const idx = parseStyleIndex([
+    { title: "Spine", titleShort: "Spine", name: "spine", dependent: 0, categories: { format: "numeric", fields: [] } },
+    { title: "Nature", titleShort: "Nat", name: "nature", categories: { format: "numeric" } },
+    { title: "", name: "bad" }, "junk", { title: "No id" },
+  ]);
+  check(idx.length === 2 && idx[0].short === undefined && idx[1].short === "Nat" && idx[1].format === "numeric", "parseStyleIndex: reduces, drops bad rows and redundant short titles");
+  check(parseStyleIndex({}).length === 0 && parseStyleIndex(null).length === 0, "parseStyleIndex: non-array → []");
+}
+
 // ---------- ingest/import.ts: parseLibrary ----------
 {
   check(JSON.stringify(parseLibrary("")) === "[]", "parseLibrary: empty string → []");
@@ -1250,6 +1283,44 @@ check(
   // No row may set both a control and a custom renderer (mirrors the real API's mutual exclusion).
   const bothSet = allRows.filter((r: { control?: unknown; render?: unknown }) => r.control && r.render);
   check(bothSet.length === 0, "settings: no row sets both control and render");
+}
+
+// ---------- ingest/zotero.ts ----------
+{
+  const cols = parseCollections([
+    { key: "B", data: { key: "B", name: "Child", parentCollection: "A" } },
+    { key: "A", data: { key: "A", name: "Parent", parentCollection: false } },
+  ]);
+  assert.deepEqual(cols.map((c) => c.path), ["Parent", "Parent / Child"]);
+  assert.deepEqual(parseCollections("nope"), []);
+  const page = parseCslPage({ items: [{ id: "x", title: "T" }] });
+  assert.equal(page.length, 1);
+  assert.equal(page[0].title, "T");
+  assert.equal("id" in page[0], false);
+  assert.deepEqual(parseCslPage(null), []);
+  assert.deepEqual(parseCslPage({ items: "x" }), []);
+  passed += 8;
+}
+
+// ---------- cite/format.ts: citeTooltip ----------
+{
+  const base = { type: "article-journal", title: "Efficacy of X.", "container-title": "Oper Neurosurg", issued: { "date-parts": [[2024]] } };
+  assert.equal(
+    citeTooltip({ ...base, author: [{ family: "Lv", given: "Zhen" }, { family: "Zhang", given: "Yu" }] }),
+    "Lv Z, Zhang Y (2024)\nEfficacy of X.\nOper Neurosurg"
+  );
+  assert.equal(
+    citeTooltip({ ...base, author: ["A", "B", "C", "D"].map((f) => ({ family: f, given: "Q" })) }),
+    "A Q, B Q, C Q, et al. (2024)\nEfficacy of X.\nOper Neurosurg"
+  );
+  assert.equal(citeTooltip({ type: "book" }), "(n.d.)");
+  assert.equal(citeTooltip({ type: "book", title: "T", author: [{ literal: "WHO" }] }), "WHO (n.d.)\nT");
+  const t = "a [@k1; @k2] `[@x]`\n```\n[@y]\n```\nb [@z]";
+  assert.deepEqual(citeClusters(t).map((c) => [t.slice(c.from, c.to), c.keys.join(",")]), [
+    ["[@k1; @k2]", "k1,k2"],
+    ["[@z]", "z"],
+  ]);
+  passed += 6;
 }
 
 console.log(`unit: all ${passed} assertions passed`);

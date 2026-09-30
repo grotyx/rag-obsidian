@@ -80,6 +80,10 @@ export class App {}
 export class Plugin {}
 export class WorkspaceLeaf {}
 export class MarkdownView {}
+// Editor-only APIs: the CodeMirror extension is registered but never runs under Node.
+export const editorInfoField = {};
+export const editorLivePreviewField = {};
+export function setTooltip(): void {}
 export class TAbstractFile {}
 export class TFolder extends TAbstractFile {}
 export class FileSystemAdapter {}

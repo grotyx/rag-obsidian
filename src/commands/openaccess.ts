@@ -17,7 +17,7 @@ type Entry = ReturnType<Library["entries"]>[number];
 
 /** OpenAlex is a polite pool (not an LLM) — width matches `checkRetractionAll`'s Notice budget,
  *  not `POOL_WIDTH`. */
-const RETRACTION_POOL_WIDTH = 8;
+export const RETRACTION_POOL_WIDTH = 8;
 /** Unpaywall + a PDF download per item; a handful in flight, not the LLM pool's fifteen. */
 const OA_DOWNLOAD_POOL_WIDTH = 4;
 

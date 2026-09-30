@@ -6,6 +6,29 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.7.9] — 2026-09-30
+
+### Added
+
+- **Citations in Live Preview.** `[@citekey]` now shows as its styled label (superscript number,
+  `[1]` or author–date) while you edit, the same as in reading view; put the cursor on it to edit
+  the source. Turned off together with reading-view rendering by the existing setting.
+- **Hover a citation** in any view to see its authors, year, title and journal.
+- **Choose citation style…**: search about 10,000 journal styles by journal name. Picking one sets
+  the open manuscript's `csl:` (or the default style when no manuscript is open). The style list is
+  downloaded once from the Zotero style repository and cached for 30 days.
+- **Check references in this manuscript**: a report of every cited reference that is missing from
+  the library, retracted (checked live against OpenAlex), without a DOI/PMID, or missing title,
+  authors, year, journal, volume or pages.
+- **Import straight from Zotero 7**: *Import references → From Zotero* reads the whole library or
+  one collection from a running Zotero (enable *Allow other applications on this computer to
+  communicate with Zotero* in Zotero's advanced settings). Duplicates are skipped as with files.
+
+### Changed
+
+- The MCP *Stop server* button no longer uses the deprecated `setWarning()` (same look on every
+  supported Obsidian version).
+
 ## [0.7.8] — 2026-09-27
 
 ### Added

@@ -25,7 +25,7 @@ export function parseLibrary(text: string): CSLItem[] {
 }
 
 // ---------- CSL-JSON ----------
-function parseCslJson(text: string): CSLItem[] {
+export function parseCslJson(text: string): CSLItem[] {
   const data: unknown = JSON.parse(text);
   const list = Array.isArray(data) ? data : [data];
   return list.map((raw) => {

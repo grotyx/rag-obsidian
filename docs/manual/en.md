@@ -134,7 +134,8 @@ Put the journal style in the note's properties (`csl: spine`), then run
 > **Journal styles**: `spine`, `apa`, `american-medical-association`, `elsevier-vancouver`
 > and `springer-basic-brackets` are built in. Any other style ID from the
 > [CSL style repository](https://github.com/citation-style-language/styles), such as
-> `vancouver` or `nature`, is downloaded on first use.
+> `vancouver` or `nature`, is downloaded on first use. Don't know the ID? Run **Choose citation
+> style…** and type the journal name.
 
 ## 7. Semantic search
 

@@ -11,6 +11,12 @@ import { formatCitation } from "../cite/format";
 import { renderCompiledManuscript } from "../write/manuscript";
 import { exportDocx, findPandoc } from "../write/docx";
 import { stripFrontmatter } from "../index/chunker";
+import { StyleSuggestModal } from "../ui/StyleSuggestModal";
+import { referenceProblems, refcheckReport } from "../write/refcheck";
+import { checkRetraction } from "../ingest/retraction";
+import { mapPool } from "../util/pool";
+import { RETRACTION_POOL_WIDTH } from "./openaccess";
+import { rec } from "../util/json";
 
 /** Scan the active note for [@citekey] and insert/refresh a "## References" section. */
 export async function updateBibliography(plugin: ScholarRagPlugin): Promise<void> {
@@ -302,4 +308,48 @@ function extractSummary(content: string): string {
   if (en && en[1].trim()) return en[1].trim();
   const kr = content.match(/##\s+요약 \(KR\)\s*\n([\s\S]*?)(?=\n#{1,2}\s|$)/);
   return kr ? kr[1].trim() : "";
+}
+
+/** "Choose citation style…": fuzzy picker over bundled + Zotero/CSL styles. */
+export function openStylePicker(plugin: ScholarRagPlugin): void {
+  new StyleSuggestModal(plugin.app, plugin).open();
+}
+
+/** Check every [@citekey] of the active note (library presence, metadata gaps, retraction) → report note. */
+export async function checkManuscriptReferences(plugin: ScholarRagPlugin): Promise<void> {
+  const file = plugin.app.workspace.getActiveFile();
+  if (!file) {
+    new Notice("No active note");
+    return;
+  }
+  const keys = extractCitekeys(await plugin.app.vault.read(file));
+  if (!keys.length) {
+    new Notice("No citations in this note");
+    return;
+  }
+  const byKey = new Map(plugin.library.entries().map((e) => [e.citekey, e]));
+  const fmOf = (k: string): Record<string, unknown> => {
+    const f = byKey.get(k)?.file;
+    return f ? rec(plugin.app.metadataCache.getFileCache(f)?.frontmatter) : {};
+  };
+  const rows = keys.map((key) => ({ key, problems: referenceProblems(byKey.get(key)?.item ?? null, fmOf(key)) }));
+  const toCheck = rows.filter((r) => byKey.has(r.key) && !r.problems.includes("retracted"));
+  const notice = new Notice(`Checking ${keys.length} references…`, 0);
+  let failed = 0;
+  try {
+    await mapPool(toCheck, RETRACTION_POOL_WIDTH, async (r) => {
+      try {
+        const res = await checkRetraction(byKey.get(r.key)!.item, plugin.settings.openalexMailto);
+        if (!res) failed++; // no identifier OpenAlex knows, or the lookup failed (429/5xx)
+        else if (res.retracted) r.problems.unshift("retracted");
+      } catch {
+        failed++;
+      }
+    });
+  } finally {
+    notice.hide();
+  }
+  const notes = failed ? [`Retraction status could not be checked for ${failed} reference(s).`] : [];
+  const folder = file.parent && file.parent.path !== "/" ? file.parent.path + "/" : "";
+  await plugin.writeAndOpen(`${folder}${file.basename} (reference check).md`, refcheckReport(file.basename, rows, notes));
 }

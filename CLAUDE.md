@@ -3,7 +3,7 @@
 > Display name: **Academic Paper Citation Manager** · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.7.8 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.7.9 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [User guide](docs/manual/README.md) (screenshots, en/ko/zh/ja/es; `scripts/manual/capture.py` reshoots them) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -69,6 +69,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `ingest/unpaywall.ts` | `findOpenAccess` — scans every `oa_locations` entry for a PDF; requires a contact e-mail |
 | `ingest/retraction.ts` | `checkRetraction` via OpenAlex `is_retracted` (+ "RETRACTED:" title guard) |
 | `ingest/import.ts` | BibTeX / RIS / `.nbib` / CSL-JSON parsing → CSLItem[] |
+| `ingest/zotero.ts` | Zotero 7 local API (`127.0.0.1:23119`, needs Zotero's "allow other applications"): collections ("Parent / Child" paths) + `format=csljson` items, paged; parsing is pure (`parseCollections`, `parseCslPage`) |
 | `index/embedding.ts` | `EmbeddingProvider` interface + factory |
 | `util/json.ts` | narrowing helpers for external JSON and frontmatter: `str`, `num`, `rec`, `arr`, `optStr`, `text` (numbers from unquoted YAML survive), `numLike`, `isNumberArray` — use these instead of `any` |
 | `util/nodeTypes.ts` | minimal local types for the Node APIs the desktop-only files call, plus `nodeRequire<T>()`; `tsconfig` has `"types": []`, so the Community review's no-`@types/node` lint is what `npm run lint` sees. Exception: `child_process` is required directly so static scanners see it |
@@ -86,7 +87,10 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `llm/client.ts` | provider-agnostic chat (Anthropic / OpenAI / Ollama) via `requestUrl`, with 429/5xx backoff; `noReasoning` sends OpenRouter's `reasoning:{enabled:false}` (that host only — a plain OpenAI endpoint 400s on the unknown field) |
 | `chat/rag.ts` | retrieve (under optional `SearchFilters`) → number sources → [n] grounded answer → resolve citations |
 | `cite/csl.ts` | citeproc-js rendering: bundled styles + CSL-repo fetch/cache, per-note `csl:` override |
-| `cite/format.ts` | CSL-JSON → APA / Vancouver / Plain (lightweight fallback; `cite/csl.ts` is primary) |
+| `cite/format.ts` | CSL-JSON → APA / Vancouver / Plain (lightweight fallback; `cite/csl.ts` is primary) + `citeTooltip` (hover text) |
+| `cite/clusters.ts` | `citeClusters` — `[@…]` ranges in a note, skipping fenced and inline code (pure; the editor uses it) |
+| `cite/editorCite.ts` | CodeMirror extension: Live Preview widgets with the note's CSL labels (source shown when the cursor touches one) + hover tooltip in every mode; `setCiteLabel` shared with reading view. Relies on `citeMapFor` returning the same promise until the cache is dropped |
+| `cite/styleIndex.ts` | `parseStyleIndex` — Zotero's `styles.json` → `{id, title, short, format}` for the style picker |
 | `cite/bibliography.ts` | citation grammar shared by every renderer: `extractCitekeys`, `citePattern`/`keysInCite`, `replaceCitations` (skips code), `resolveCluster` (all keys or none), `anchorsToCitekeys` (chat `[n]` → `[@key]` clusters), `splitAtReferences`, `buildBibliography`, `inTextLabel` |
 | `cite/export.ts` | library → BibTeX / RIS / CSL-JSON |
 | `cite/suggest.ts` | `@`-autocomplete EditorSuggest → inserts `[@citekey]` |
@@ -104,6 +108,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `mcp/vault.ts` | Markdown-only vault CRUD, pagination, hash-based concurrency checks, serialized writes |
 | `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch, including external source-read/summary-save (`get_reference_source` prefers a linked PDF's stashed extracted text over PMC full text over the abstract) and `set_reference_fields` (screening kq/include/level/design/screening_note, mirrored into tags); deliberately bypasses chat/summary/rerank LLM paths |
 | `write/docx.ts` + `write/pandoc.ts` | "Export manuscript to Word": Pandoc with the bundled `styles/manuscript-reference.docx` (esbuild `.docx` binary loader); `pandocCandidates` is the pure probe list |
+| `write/refcheck.ts` | `referenceProblems` / `refcheckReport` for "Check references in this manuscript" |
 | `write/manuscript.ts` | pure citation compilation shared by the Obsidian command and MCP output-copy tool |
 | `ui/{LibraryView,SearchView}.ts` | sidebar panes |
 | `ui/ScreeningView.ts` | one-record-at-a-time screening pane (scope, status filter, decisions, KQ/level/design, keyboard), mtime-guarded writes via `applyScreening` |
@@ -113,7 +118,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `ui/ChatView.ts` | chat pane — a `FilterRow` between log and input scopes the next answer (its `describeFilters` label rides along on the persisted turn and heads the source list), history persisted to `<pluginDir>/chat.json` (last 50 messages; the model still sees the last 8), Clear chat, and "Save as note" per answer → `Chat/<date> <question>.md` |
 | `ui/progress.ts` | `startBatch`/`cancelBatch` — status-bar progress with a ✕ for the two batch commands, one batch at a time, hands out the `AbortSignal` |
 | `ui/CiteSuggestModal.ts` | `CiteSuggestModal` (pick a retrieved reference → insert `[@citekey]`) + `UnsupportedClaimsModal` (uncited claim paragraphs, one **Suggest** button each) |
-| `ui/{AddReferenceModal,ImportPdfModal,ImportModal,PubmedSearchModal,TagRenameModal,BackfillScopeModal,MergeDuplicatesModal,FolderSuggestModal,PrismaScopeModal}.ts` | modals |
+| `ui/{AddReferenceModal,ImportPdfModal,ImportModal,StyleSuggestModal,PubmedSearchModal,TagRenameModal,BackfillScopeModal,MergeDuplicatesModal,FolderSuggestModal,PrismaScopeModal}.ts` | modals |
 | `main.ts` | plugin lifecycle, views, `addCommand` wiring, ribbons, events, citation rendering + shared plumbing (`writeAndOpen`, `activeRef`, `styleForNote`) |
 
 ## Commands (dev)
@@ -125,7 +130,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (305) + MCP checks + live integration suite (216 checks)
+npm test               # unit (334) + MCP checks + live integration suite (216 checks)
 ```
 
 ## Testing approach (important)

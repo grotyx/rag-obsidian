@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.7.8-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.7.9-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -48,7 +48,8 @@
 **📥 수집**
 - Obsidian 안에서 **PubMed 키워드 검색** → 논문 선택 → 노트.
 - **DOI / PMID / arXiv**, 또는 **논문 제목**으로 추가 (자동 조회).
-- 기존 라이브러리 **임포트** — **BibTeX · RIS · PubMed `.nbib` · CSL-JSON**.
+- 기존 라이브러리 **임포트** — **BibTeX · RIS · PubMed `.nbib` · CSL-JSON**, 또는 실행 중인
+  **Zotero 7**에서 바로(라이브러리 전체 또는 컬렉션 하나).
 
 **🧠 AI 요약**
 - LLM이 **섹션별 요약**(Background / Methods / Results / Conclusions)을 각 노트에 작성.
@@ -76,7 +77,11 @@
 - `@` 입력 → 자동완성으로 `[@citekey]` 삽입.
 - **"Update bibliography"**가 실제 **저널 스타일**(citeproc-js / CSL)로 `## References`
   생성; in-text 표시도 그에 맞춤(`[1]`, 위첨자, 또는 저자–연도).
-- 노트의 `csl:` frontmatter로 **논문별 스타일** 지정.
+- 노트의 `csl:` frontmatter로 **논문별 스타일** 지정 — 또는 **Choose citation style…**에서
+  저널 이름으로 약 1만 개 스타일 검색.
+- **Live Preview**에서도 인용이 저널 형식으로 보이고, 마우스를 올리면 논문 정보가 뜸.
+- 투고 전 **Check references in this manuscript**: 라이브러리에 없음, 철회, DOI 없음,
+  서지 정보 누락을 한 번에 보고.
 - **Compile manuscript** → 인용이 풀린 사본 → **`.docx`** 변환.
 
 **🔎 검색·챗**
@@ -292,10 +297,10 @@ csl: springer-basic-brackets
 
 | 그룹 | 명령 |
 |---|---|
-| **추가** | Search PubMed · DOI / PMID / arXiv / 제목 추가 · Import(BibTeX / RIS / nbib / CSL-JSON) · Import PDF |
+| **추가** | Search PubMed · DOI / PMID / arXiv / 제목 추가 · Import(BibTeX / RIS / nbib / CSL-JSON / Zotero) · Import PDF |
 | **독서** | 읽기 상태(unread / reading / read) · Reading queue · OA PDF 찾기 · OA PDF 다운로드 · OA PDF 일괄 다운로드 · 폴더의 PDF 연결 · PDF 형광펜 추출 · 링크된 PDF 본문 색인 · 이 노트의 PDF 색인 · 온라인으로 열기 |
 | **정리** | 요약·태그 일괄 채우기 · 이 참고문헌 요약·태그 채우기 · 폴더/태그 범위로 요약·태그 채우기… · 이 참고문헌 다시 요약 · 옛 모델로 만든 요약 다시 생성 · 스크리닝 창 · PRISMA 흐름도 · 대시보드 · 중복 찾기 · 중복 병합… · 인용수 채우기 · 철회 확인(이 노트 / 전체) · 태그 변경 · 메타데이터 보강 · 관련 논문 추천 · 인용 네트워크 내보내기 |
-| **집필** | `@` 자동완성 · 선택 문단에 인용 추천 · 근거 없는 주장 찾기 · Update bibliography · Compile manuscript · Word(.docx)로 내보내기 · 인용 복사 · 주석 참고문헌 · 최근 챗 답변을 노트로 저장 |
+| **집필** | `@` 자동완성 · 선택 문단에 인용 추천 · 근거 없는 주장 찾기 · Update bibliography · 인용 스타일 선택 · 원고 참고문헌 점검 · Compile manuscript · Word(.docx)로 내보내기 · 인용 복사 · 주석 참고문헌 · 최근 챗 답변을 노트로 저장 |
 | **검색** | 의미 검색 · 챗 · 관련 논문 · 인용 그래프 만들기 · 인덱스 재생성 |
 | **내보내기** | 라이브러리 → BibTeX / RIS / CSL-JSON |
 

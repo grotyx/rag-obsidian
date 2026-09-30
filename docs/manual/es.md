@@ -109,7 +109,7 @@ Pon el estilo de la revista en las propiedades de la nota (`csl: spine`) y ejecu
 1. En la vista de lectura, cada `[@citekey]` se muestra con el estilo de la revista (aquí, números en superíndice).
 2. Al final de la nota se escribe una sección **References** con el formato de la revista. Vuelve a ejecutar el comando después de añadir o quitar citas para actualizarla.
 
-> **Estilos de revista**: `spine`, `apa`, `american-medical-association`, `elsevier-vancouver` y `springer-basic-brackets` vienen integrados. Cualquier otro ID de estilo del [repositorio de estilos CSL](https://github.com/citation-style-language/styles), como `vancouver` o `nature`, se descarga la primera vez que se usa.
+> **Estilos de revista**: `spine`, `apa`, `american-medical-association`, `elsevier-vancouver` y `springer-basic-brackets` vienen integrados. Cualquier otro ID de estilo del [repositorio de estilos CSL](https://github.com/citation-style-language/styles), como `vancouver` o `nature`, se descarga la primera vez que se usa. ¿No conoces el ID? Ejecuta **Choose citation style…** y escribe el nombre de la revista.
 
 ## 7. Búsqueda semántica
 

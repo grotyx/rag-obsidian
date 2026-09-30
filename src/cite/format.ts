@@ -74,3 +74,11 @@ export function formatCitation(item: CSLItem, style: CiteStyle = "apa"): string 
   const volPart = vol ? `, ${vol}${iss}` : "";
   return tidy(`${lead}. ${journal}${volPart}${pg}.${doi}`);
 }
+
+/** Multi-line hover text for one reference: `Lv Z, Zhang Y, et al. (2024)` / title / journal. */
+export function citeTooltip(item: CSLItem): string {
+  const names = (item.author ?? []).map((n) => n.literal ?? `${n.family ?? ""} ${initialsPlain(n.given)}`.trim()).filter(Boolean);
+  const who = names.slice(0, 3).join(", ") + (names.length > 3 ? ", et al." : "");
+  const head = `${who ? who + " " : ""}(${year(item)})`;
+  return [head, item.title, item["container-title"]].filter(Boolean).join("\n");
+}

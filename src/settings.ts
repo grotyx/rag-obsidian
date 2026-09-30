@@ -311,6 +311,8 @@ export class ScholarRagSettingTab extends PluginSettingTab {
    *  method, so fall back to display() the way the old imperative render() used to. */
   private refreshStructure(): void {
     if (requireApiVersion("1.13.0")) this.update();
+    // Deliberately the one remaining no-deprecated warning: display() is deprecated only on 1.13+,
+    // where the branch above never reaches it, and hiding it from the lint would hide real ones too.
     else this.display();
   }
 
@@ -634,16 +636,12 @@ export class ScholarRagSettingTab extends PluginSettingTab {
                 })
               )
               .addButton((b) =>
-                // setDestructive() (the non-deprecated replacement) requires Obsidian 1.13.0; this plugin's
-                // minAppVersion is 1.11.4, so this stays on the older, still-supported setWarning() —
-                // deliberately left as the one remaining `no-deprecated` warning (disabling this specific
-                // rule is repo-blocked; see eslint-comments/no-restricted-disable). Guarding the call with
-                // requireApiVersion doesn't help: @typescript-eslint/no-deprecated flags any reference to
-                // the deprecated symbol regardless of the surrounding control flow.
-                b.setButtonText("Stop server").setWarning().onClick(async () => {
+                // setDestructive() needs Obsidian 1.13 (minAppVersion is 1.11.4) and setWarning() is
+                // deprecated; both just add the mod-warning class, so add it directly.
+                b.setButtonText("Stop server").onClick(async () => {
                   await this.plugin.stopMcp();
                   this.refreshStructure();
-                })
+                }).buttonEl.addClass("mod-warning")
               );
           },
         }

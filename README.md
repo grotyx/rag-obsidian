@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.7.8-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.7.9-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -48,7 +48,8 @@ A step-by-step guide with screenshots, from adding papers to exporting a Word ma
 **📥 Collect**
 - **Search PubMed by keyword** inside Obsidian → pick papers → notes.
 - Add by **DOI / PMID / arXiv**, or by **paper title** (auto-lookup).
-- **Import** an existing library — **BibTeX · RIS · PubMed `.nbib` · CSL-JSON**.
+- **Import** an existing library — **BibTeX · RIS · PubMed `.nbib` · CSL-JSON**, or straight
+  from a running **Zotero 7** (whole library or one collection).
 
 **🧠 Summarize (AI)**
 - An LLM writes a **section-by-section summary** (Background / Methods / Results /
@@ -78,7 +79,11 @@ A step-by-step guide with screenshots, from adding papers to exporting a Word ma
 - Type `@` → autocomplete inserts `[@citekey]`.
 - **"Update bibliography"** builds a `## References` list in a real **journal style**
   (citeproc-js / CSL); in-text marks render to match (`[1]`, superscript, or author–date).
-- **Per-manuscript style** via a note's `csl:` frontmatter.
+- **Per-manuscript style** via a note's `csl:` frontmatter — or **Choose citation style…** and
+  search about 10,000 journal styles by journal name.
+- Citations render as you type in **Live Preview**; **hover** one to see the paper.
+- **Check references in this manuscript** before submission: missing from the library,
+  retracted, no DOI, or incomplete metadata.
 - **Compile manuscript** → a clean copy with citations resolved → export to **`.docx`**.
 
 **🔎 Search & chat**
@@ -301,10 +306,10 @@ csl: springer-basic-brackets
 
 | Group | Commands |
 |---|---|
-| **Add** | Search PubMed · Add by DOI / PMID / arXiv / title · Import (BibTeX / RIS / nbib / CSL-JSON) · Import PDF |
+| **Add** | Search PubMed · Add by DOI / PMID / arXiv / title · Import (BibTeX / RIS / nbib / CSL-JSON / Zotero) · Import PDF |
 | **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Download open-access PDF files for references without one · Link PDF files in a folder to references · Extract PDF highlights · Index linked PDF files · Index this note's PDF · Open reference online |
 | **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
-| **Write** | `@` autocomplete · Suggest citations for selection · Find unsupported claims · Update bibliography · Compile manuscript · Export manuscript to Word (.docx) · Copy citation · Export annotated bibliography · Save latest chat answer as note |
+| **Write** | `@` autocomplete · Suggest citations for selection · Find unsupported claims · Update bibliography · Choose citation style… · Check references in this manuscript · Compile manuscript · Export manuscript to Word (.docx) · Copy citation · Export annotated bibliography · Save latest chat answer as note |
 | **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Rebuild search index |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |
 

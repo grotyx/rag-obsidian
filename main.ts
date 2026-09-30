@@ -8,6 +8,8 @@ import {
   Platform,
   FileSystemAdapter,
   MarkdownView,
+  setTooltip,
+  debounce,
 } from "obsidian";
 import { ScholarRagSettings, DEFAULT_SETTINGS, SECRET_FIELDS, SecretField } from "./src/types";
 import { ScholarRagSettingTab } from "./src/settings";
@@ -30,8 +32,9 @@ import {
   citePattern,
   keysInCite,
   resolveCluster,
-  decodeEntities,
 } from "./src/cite/bibliography";
+import { citationEditorExtension, setCiteLabel } from "./src/cite/editorCite";
+import { citeTooltip } from "./src/cite/format";
 import { CiteEngine } from "./src/cite/csl";
 import { ImportModal } from "./src/ui/ImportModal";
 import { TagRenameModal } from "./src/ui/TagRenameModal";
@@ -196,6 +199,16 @@ export default class ScholarRagPlugin extends Plugin {
       id: "compile-manuscript",
       name: "Compile manuscript (resolve [@citekey] + references)",
       callback: () => void writingCmd.compileManuscript(this),
+    });
+    this.addCommand({
+      id: "choose-citation-style",
+      name: "Choose citation style…",
+      callback: () => writingCmd.openStylePicker(this),
+    });
+    this.addCommand({
+      id: "check-manuscript-references",
+      name: "Check references in this manuscript",
+      callback: () => void writingCmd.checkManuscriptReferences(this),
     });
     this.addCommand({
       id: "export-docx",
@@ -376,6 +389,9 @@ export default class ScholarRagPlugin extends Plugin {
       return this.renderCitations(el, ctx.sourcePath);
     });
 
+    // Live Preview: render [@citekey] in the editor too, and hover a citation for its reference.
+    this.registerEditorExtension(citationEditorExtension(this));
+
     this.addSettingTab(new ScholarRagSettingTab(this.app, this));
 
     // Restore persisted indexes once the vault metadata is ready.
@@ -397,6 +413,7 @@ export default class ScholarRagPlugin extends Plugin {
         if (file instanceof TFile) this.citationGraph.enqueue(file); // new reference joins a built graph
         if (file.path.startsWith(this.library.folder() + "/")) {
           this.citeCache.clear(); // reference data changed
+          this.pokeEditors(); // editors re-read labels and titles (debounced: imports write hundreds)
           this.library.invalidateKeyCache();
         } else void this.refreshCitations(file.path); // style or numbering in this note may have changed
       })
@@ -582,6 +599,7 @@ export default class ScholarRagPlugin extends Plugin {
   // Per-file [@citekey] → in-text label map (CSL). The in-flight promise is cached so
   // concurrent post-processor blocks share one engine build; a failed render is evicted.
   private citeCache = new Map<string, Promise<Record<string, string>>>();
+  private pokeEditors = debounce(() => this.app.workspace.updateOptions(), 1000, true);
 
   /** Citation style for a note: its `csl` / `citation-style` frontmatter, else the global setting. */
   styleForNote(file: TFile | null): string {
@@ -601,6 +619,7 @@ export default class ScholarRagPlugin extends Plugin {
     if (!old) return; // never rendered in reading view
     const [before, after] = await Promise.all([old.catch(() => ({})), this.citeMapFor(path)]);
     if (JSON.stringify(before) === JSON.stringify(after)) return;
+    this.app.workspace.updateOptions(); // Live Preview editors pick up the new labels
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
       const view = leaf.view;
       if (view instanceof MarkdownView && view.file?.path === path) view.previewMode.rerender(true);
@@ -611,11 +630,13 @@ export default class ScholarRagPlugin extends Plugin {
   citeMapFor(sourcePath: string): Promise<Record<string, string>> {
     let p = this.citeCache.get(sourcePath);
     if (!p) {
-      p = this.computeCiteMap(sourcePath);
+      // One stable promise per cache entry: the editor compares identity to spot a cache drop.
+      // A failure stays cached as {} until the note or a reference changes; evicting it here made
+      // the editor retry (and re-fetch the style) in a loop.
+      p = this.computeCiteMap(sourcePath).catch(() => ({}));
       this.citeCache.set(sourcePath, p);
-      p.catch(() => this.citeCache.delete(sourcePath));
     }
-    return p.catch(() => ({}));
+    return p;
   }
 
   private async computeCiteMap(sourcePath: string): Promise<Record<string, string>> {
@@ -667,7 +688,10 @@ export default class ScholarRagPlugin extends Plugin {
           const span = createSpan({ cls: "srag-cite" });
           if (label) setCiteLabel(span, label);
           else span.textContent = item ? inTextLabel(item) : `[@${k}]`;
-          if (item) span.onclick = () => void this.openCitekey(k);
+          if (item) {
+            span.onclick = () => void this.openCitekey(k);
+            setTooltip(span, citeTooltip(item));
+          }
           frag.appendChild(span);
         });
         last = m.index + m[0].length;
@@ -679,7 +703,7 @@ export default class ScholarRagPlugin extends Plugin {
     }
   }
 
-  private async openCitekey(citekey: string): Promise<void> {
+  async openCitekey(citekey: string): Promise<void> {
     const file = this.library.getFile(citekey);
     if (file) await this.app.workspace.getLeaf(false).openFile(file);
   }
@@ -761,15 +785,4 @@ export default class ScholarRagPlugin extends Plugin {
     }
     await workspace.revealLeaf(leaf);
   }
-}
-
-/** Render a citeproc in-text label (e.g. `<sup>1</sup>`, `[1]`, `(Park et al., 2022)`) into a span. */
-function setCiteLabel(span: HTMLElement, html: string): void {
-  const sup = html.match(/^\s*<sup>([\s\S]*?)<\/sup>\s*$/i);
-  if (sup) {
-    const s = createEl("sup", { text: decodeEntities(sup[1].replace(/<[^>]+>/g, "")) });
-    span.appendChild(s);
-    return;
-  }
-  span.textContent = decodeEntities(html.replace(/<[^>]+>/g, ""));
 }

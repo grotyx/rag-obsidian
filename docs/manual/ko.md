@@ -129,7 +129,8 @@
 > **저널 스타일**: `spine`, `apa`, `american-medical-association`, `elsevier-vancouver`,
 > `springer-basic-brackets`는 내장되어 있습니다. 그 밖에는
 > [CSL 스타일 저장소](https://github.com/citation-style-language/styles)의 ID(예: `vancouver`,
-> `nature`)를 적으면 처음 쓸 때 내려받습니다.
+> `nature`)를 적으면 처음 쓸 때 내려받습니다. ID를 모르면 **Choose citation style…** 명령에서
+> 저널 이름으로 찾습니다.
 
 ## 7. 의미 검색
 

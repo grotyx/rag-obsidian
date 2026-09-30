@@ -109,7 +109,7 @@
 1. 在阅读视图中，每个 `[@citekey]` 都会按期刊样式显示（此处为上标数字）。
 2. 笔记末尾会按期刊格式写入 **References** 部分。增删引用后重新运行命令即可更新。
 
-> **期刊样式**：`spine`、`apa`、`american-medical-association`、`elsevier-vancouver` 和 `springer-basic-brackets` 已内置。[CSL 样式仓库](https://github.com/citation-style-language/styles)中的其他样式 ID（例如 `vancouver` 或 `nature`）会在首次使用时自动下载。
+> **期刊样式**：`spine`、`apa`、`american-medical-association`、`elsevier-vancouver` 和 `springer-basic-brackets` 已内置。[CSL 样式仓库](https://github.com/citation-style-language/styles)中的其他样式 ID（例如 `vancouver` 或 `nature`）会在首次使用时自动下载。不知道 ID？运行 **Choose citation style…** 并输入期刊名称即可。
 
 ## 7. 语义搜索
 
