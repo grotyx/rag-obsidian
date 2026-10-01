@@ -3,7 +3,7 @@
 > Display name: **Academic Paper Citation Manager** · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.7.9 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.8.0 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [User guide](docs/manual/README.md) (screenshots, en/ko/zh/ja/es; `scripts/manual/capture.py` reshoots them) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -76,10 +76,12 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `util/pool.ts` | `mapPool` bounded concurrency + `POOL_WIDTH` (15, sized for the LLM wait) + `poolWidth(settings)` (3 for the CLI providers) — the network/LLM half of a batch; vault writes stay sequential. Takes an optional `AbortSignal`: cancelling lets in-flight items finish, starts no new ones, and still resolves (unstarted slots come back empty) |
 | `index/providers/{ollama,openai}.ts` | embedding backends |
 | `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers (`yearFromIssued`, `authorNames`), `chunkHash` (reindex change detector) |
-| `index/store.ts` | Orama hybrid index wrapper + compact persist/restore (`docs.json` + raw Float32 `vectors.f32`, Orama rebuilt on load; never pass `includeVectors: false` — Orama then nulls the *stored* vector) + `SearchFilters` (year range, tag AND, author) over the `tags`/`author` `enum[]` facets + `describeFilters` (one-line label, `""` = unfiltered); `tagText` (tokenized tags, boosted in `search()`) lets a tag/MeSH term move full-text relevance without breaking `tags`' exact-match filtering; `INDEX_SCHEMA` is the rebuild marker |
+| `index/store.ts` | Orama **full-text only** (BM25 + facets/filters) + a packed `Float32Array` **vector bank** (L2-normalized rows, `rowOf`/`idAt`/free list) — `search` fuses them like Orama's hybrid (text/max + vector/max, 0.5 each) except **gated**: a text hit gets the vector half only inside the vector arm's top `vectorArm` (500); `gatedFusion=false` reproduces Orama exactly (parity test). Hits carry a `vector` view (internal; `IndexManager.search` strips it). Persist format unchanged: `docs.json` + `vectors.f32` + meta; `SearchFilters` (year range, tag AND, author) + `describeFilters`; `tagText` boost 1.5; `INDEX_SCHEMA` is the rebuild marker |
 | `index/localFiles.ts` | `FileIO` (the vault adapter or `NodeFileIO` over fs.promises) + `cacheRoot`/`localIndexDir` — where the index lives when `indexLocal` keeps it out of a synced vault |
-| `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding); `search` over-fetches ×3 and thins via `capPerReference` |
-| `index/rerank.ts` | retrieval quality, no Obsidian imports: `capPerReference` (≤3 chunks per reference, tops back up from the spill so k is still returned), `rerankHits`/`buildRerankUser`/`parseRerankOrder` (optional LLM reranker behind `llmRerank`; any failure falls back to retrieval order), `coupledCandidates` (citation-graph papers coupled to a top hit, offered to the reranker as unscored candidates via the `CoupledLookup`/`CandidateLookup` shapes `chat/rag.ts` adapts the real `CitationGraph`/`Library` to) |
+| `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding); `search` over-fetches ×3 and thins via `capPerReference`; `search(query, filters, k, {rerank, translate})`: optional LLM translation of non-English queries (`translator`, injected by main.ts, cached; MCP passes `translate:false`), query expansion of the BM25 term only (`expand`, `addMeshHeadings`, thesaurus at `<pluginDir>/mesh-thesaurus.json`), optional MMR, hosted rerank |
+| `index/rerank.ts` | retrieval quality, no Obsidian imports: `capPerReference` (≤3 chunks per reference, tops back up from the spill so k is still returned), `rerankHits`/`buildRerankUser`/`parseRerankOrder` (optional LLM reranker behind `llmRerank`; any failure falls back to retrieval order), `coupledCandidates` (citation-graph papers coupled to a top hit, offered to the reranker as unscored candidates via the `CoupledLookup`/`CandidateLookup` shapes `chat/rag.ts` adapts the real `CitationGraph`/`Library` to); `mmr` (λ 0.7 over bank vectors) and `hostedRerank`/`parseRerankResponse` (OpenRouter `/rerank`, default free Nemotron; `null` on any failure → retrieval order) |
+| `index/expand.ts` | pure query expansion: `parseVocabulary` (user JSON vocabulary, any language), `buildExpander` (longest-match, Hangul substring / Latin word-edge matching, ≤12 added terms, label qualifiers stripped), `expandedTerm`, `isForeignQuery` |
+| `index/thesaurus.ts` | `MeshThesaurus`: NLM entry terms per MeSH heading via esearch+esummary db=mesh through `ncbiGate`; resumable, cancellable cache |
 | `graph/openalex.ts` | OpenAlex client (`resolveWork`, `fetchTitles`) |
 | `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` + `refIds` (raw cited ids, for the map's dashed nodes) + incremental upkeep: `enqueue` (debounced, one OpenAlex lookup per newly added note, no-op until the graph has been built once), `prune` (drops nodes whose note is gone), `onChange` (views redraw when either fires) |
 | `graph/layout.ts` | `layoutGraph` — deterministic force-directed layout (circle seeding, no RNG) + `topByDegree` node cap; pure math behind the Related pane's SVG map |
@@ -102,6 +104,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `commands/merge.ts` | `mergeDuplicateGroups` — merge, rewrite `[@old]` across the vault, trash the others; skips a group whose files changed since the modal opened |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them, scoped via `BackfillScope`/`inScope` (`src/data/library.ts`) to all, one note, a folder, or a tag |
 | `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
+| `commands/search.ts` | `buildMeshSynonyms` — entry terms for tags used by ≥5 references + stored `mesh_terms` ("Build MeSH synonym list for search") |
 | `mcp/protocol.ts` | minimal JSON-RPC/MCP initialize, tools/list and tools/call contract |
 | `mcp/bridge.ts` | source generator for the standalone Node stdio bridge written beside `main.js` |
 | `mcp/http.ts` | desktop-only authenticated loopback lifecycle, discovery file, setup snippets, realpath containment |
@@ -130,10 +133,18 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (334) + MCP checks + live integration suite (216 checks)
+npm test               # unit (402) + MCP checks + live integration suite (216 checks)
 ```
 
 ## Testing approach (important)
+
+**Retrieval benchmark** (`scripts/eval/`, data in git-ignored `_eval/`): `run.mjs <variant>` sends the
+96 held-out questions (rag_research `evaluation/gold_standard/heldout_questions_v2_LOCKED.json`, English
+and Korean) through MCP `search_library` against the live vault; `judge-export.mjs` pools every run's
+top-10 papers and writes one prompt per question for pairs not yet judged; `judge-worker.sh` grades
+them with OpenCode (0/1/2); `score.mjs` merges `_eval/qrels.json` and prints nDCG@10 / R@10 / P@10.
+Never commit `_eval/` — the questions are locked for a paper. Every retrieval default in 0.8.0 was
+picked on this table; rerun it before changing fusion, expansion or rerank.
 
 There is no Obsidian headless runner. `test/integration.ts` bundles the **real source modules**
 with `obsidian` aliased to `test/obsidian-shim.ts` (a thin Node stand-in: `requestUrl`→fetch,

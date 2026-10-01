@@ -313,7 +313,10 @@ async function serviceChecks(): Promise<void> {
   }) as any;
   assert.equal(search.results[0].citekey, "smith2024");
   assert.equal(search.results[0].path, "References/ref.md");
-  assert.deepEqual(searchArgs, ["question", { yearFrom: 2020, tags: ["Spine"] }, 4]);
+  // MCP never translates (no plugin LLM) and reranks only when asked.
+  assert.deepEqual(searchArgs, ["question", { yearFrom: 2020, tags: ["Spine"] }, 4, { rerank: false, translate: false }]);
+  await service.callTool("search_library", { query: "question", rerank: true });
+  assert.deepEqual(searchArgs[3], { rerank: true, translate: false });
   assert.deepEqual(await service.callTool("rebuild_search_index", {}), { chunkCount: 11 });
   assert.equal(rebuilt, 1);
 

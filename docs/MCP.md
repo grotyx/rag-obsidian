@@ -24,7 +24,7 @@ running Obsidian plugin
 - Obsidian Desktop must remain open with this plugin enabled in the target vault.
 - The MCP path **never calls Chat with library, the summary LLM, or the LLM reranker**. Claude
   Code or Codex performs all reasoning and generation.
-- Only `search_library` and `rebuild_search_index` may call the configured embedding provider.
+- Only `search_library` and `rebuild_search_index` may call the configured embedding provider; `search_library` with `rerank: true` also calls OpenRouter's rerank endpoint. No MCP tool calls the plugin's LLM (so MCP never translates a query — write it in English).
 - There is no account, remote MCP endpoint, persistent daemon, or standalone backend. The plugin
   listens only on a random `127.0.0.1` port and stops with Obsidian.
 - Version 0.6.0 declares the complete plugin desktop-only because this bundle contains the
@@ -153,7 +153,7 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | Tool | Purpose | Effect |
 |---|---|---|
 | `library_status` | Vault, plugin, and index status | Local read |
-| `search_library` | Search the same BM25+vector index as Obsidian | Embeddings possible; read-only |
+| `search_library` | Search the same BM25+vector index as Obsidian (keyword half expanded with the library's synonyms). Query in English; pass `rerank: true` for the hosted cross-encoder (recommended for evidence) | Embeddings; rerank call when asked; read-only |
 | `rebuild_search_index` | Rebuild the complete private index | Embeddings possible; index write |
 | `list_references` | Page and filter reference metadata | Read-only |
 | `get_reference` | Read metadata and note content by citekey | Read-only |

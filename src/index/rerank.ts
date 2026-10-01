@@ -1,3 +1,5 @@
+import { requestUrl } from "obsidian";
+import { arr, num, rec } from "../util/json";
 import { LLMClient } from "../llm/client";
 import { ScholarRagSettings } from "../types";
 import { SearchHit } from "./store";
@@ -157,5 +159,94 @@ export async function rerankHits(
     return parseRerankOrder(raw, hits.length).map((i) => hits[i]);
   } catch {
     return hits;
+  }
+}
+
+/** Maximal Marginal Relevance over the hits' own (L2-normalized) vectors: dot product = cosine.
+ *  Relevance is `score` min-max normalized across the candidates; a hit without a vector is
+ *  never penalized for similarity. ponytail: O(k·n·dim), fine for n <= ~120. */
+export function mmr<T extends { score: number; vector?: Float32Array }>(hits: T[], k: number, lambda = 0.7): T[] {
+  if (hits.length === 0 || k <= 0) return [];
+  const scores = hits.map((h) => h.score);
+  const lo = Math.min(...scores);
+  const span = Math.max(...scores) - lo;
+  const rel = scores.map((s) => (span > 0 ? (s - lo) / span : 1));
+  const dot = (a: Float32Array, b: Float32Array): number => {
+    let d = 0;
+    for (let i = 0, n = Math.min(a.length, b.length); i < n; i++) d += a[i] * b[i];
+    return d;
+  };
+  const rest = hits.map((_, i) => i);
+  const picked: number[] = [];
+  const maxSim = new Array<number>(hits.length).fill(0);
+  while (picked.length < k && rest.length) {
+    let best = 0;
+    let bestVal = -Infinity;
+    for (let j = 0; j < rest.length; j++) {
+      const i = rest[j];
+      const v = lambda * rel[i] - (1 - lambda) * maxSim[i];
+      if (v > bestVal) { bestVal = v; best = j; }
+    }
+    const [p] = rest.splice(best, 1);
+    picked.push(p);
+    const pv = hits[p].vector;
+    if (pv) for (const i of rest) { const v = hits[i].vector; if (v) maxSim[i] = Math.max(maxSim[i], dot(pv, v)); }
+  }
+  return picked.map((i) => hits[i]);
+}
+
+export interface RerankApi { baseUrl: string; apiKey: string; model: string }
+
+/** Validate a `/rerank` body: `{results:[{index, relevance_score}]}` -> entries in score order.
+ *  null when results is missing/empty or any index is out of range, duplicated or score non-numeric.
+ *  A partial list is fine (only what the API returned is kept). */
+export function parseRerankResponse(json: unknown, n: number): { index: number; score: number }[] | null {
+  const results = arr(rec(json).results);
+  if (!results.length) return null;
+  const seen = new Set<number>();
+  const out: { index: number; score: number }[] = [];
+  for (const r of results) {
+    const index = num(rec(r).index);
+    const score = num(rec(r).relevance_score);
+    if (index === undefined || score === undefined) return null;
+    if (!Number.isInteger(index) || index < 0 || index >= n || seen.has(index)) return null;
+    seen.add(index);
+    out.push({ index, score });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
+/** Cross-encoder rerank through an OpenRouter-style `/rerank` endpoint. Returns the hits
+ *  reordered by relevance (scores aligned), or null on any failure so the caller keeps
+ *  retrieval order. */
+export async function hostedRerank<T extends { text: string; title?: string }>(
+  api: RerankApi,
+  query: string,
+  hits: T[],
+  opts: { timeoutMs?: number; maxChars?: number } = {},
+): Promise<{ hits: T[]; scores: number[] } | null> {
+  if (!hits.length) return null;
+  const maxChars = opts.maxChars ?? 1000;
+  const documents = hits.map((h) => `${h.title ?? ""}\n${h.text}`.trim().slice(0, maxChars));
+  let timer = 0;
+  try {
+    const res = await Promise.race([
+      requestUrl({
+        url: `${api.baseUrl.replace(/\/+$/, "")}/rerank`,
+        method: "POST",
+        contentType: "application/json",
+        headers: { Authorization: `Bearer ${api.apiKey}` },
+        body: JSON.stringify({ model: api.model, query, documents }),
+        throw: false,
+      }),
+      new Promise<null>((resolve) => { timer = window.setTimeout(() => resolve(null), opts.timeoutMs ?? 8000); }),
+    ]);
+    if (!res || res.status >= 400) return null;
+    const parsed = parseRerankResponse(res.json, hits.length);
+    return parsed && { hits: parsed.map((p) => hits[p.index]), scores: parsed.map((p) => p.score) };
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timer);
   }
 }

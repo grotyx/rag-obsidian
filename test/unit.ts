@@ -8,6 +8,8 @@
  * Run: esbuild bundles this with `obsidian` aliased to ./obsidian-shim.ts.
  */
 import assert from "node:assert/strict";
+import { VectorStore } from "../src/index/store";
+import { create, insertMultiple, search, MODE_HYBRID_SEARCH, AnyOrama, SearchParams } from "@orama/orama";
 
 import { parseLibrary } from "../src/ingest/import";
 import { parseCollections, parseCslPage } from "../src/ingest/zotero";
@@ -19,6 +21,7 @@ import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summ
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
+import { mmr, parseRerankResponse } from "../src/index/rerank";
 import { requestWithRetry } from "../src/llm/client";
 import {
   buildCliArgs,
@@ -58,6 +61,7 @@ import {
   MergeSourceNote,
 } from "../src/data/merge";
 import { extractSummaryBlock, renameCiteKeys } from "../src/cite/bibliography";
+import { isForeignQuery, buildExpander, expandedTerm, parseVocabulary } from "../src/index/expand";
 import { citeTooltip } from "../src/cite/format";
 import { citeClusters } from "../src/cite/clusters";
 import { isNumberArray, numLike, text } from "../src/util/json";
@@ -1321,6 +1325,214 @@ check(
     ["[@z]", "z"],
   ]);
   passed += 6;
+}
+
+// ---------- index/rerank.ts: mmr + hosted rerank ----------
+{
+  const v = (...a: number[]) => { const f = new Float32Array(a); const n = Math.hypot(...a); return f.map((x) => x / n); };
+  const hs = [
+    { id: "a", score: 1.0, vector: v(1, 0) },
+    { id: "b", score: 0.95, vector: v(1, 0.01) },
+    { id: "c", score: 0.9, vector: v(0, 1) },
+    { id: "d", score: 0, vector: v(-1, 0) },
+  ];
+  assert.deepEqual(mmr(hs, 3).map((h) => h.id), ["a", "c", "b"]);
+  assert.deepEqual(mmr(hs, 3, 1).map((h) => h.id), ["a", "b", "c"]);
+  assert.equal(mmr(hs, 10).length, 4);
+  assert.equal(mmr(hs, 2).length, 2);
+  assert.deepEqual(mmr([{ id: "x", score: 1 }, { id: "y", score: 2 }], 2).map((h) => h.id), ["y", "x"]);
+  assert.deepEqual(mmr([], 3), []);
+  const ok = { results: [{ index: 1, relevance_score: 0.2 }, { index: 0, relevance_score: 0.9 }] };
+  assert.deepEqual(parseRerankResponse(ok, 3), [{ index: 0, score: 0.9 }, { index: 1, score: 0.2 }]);
+  assert.equal(parseRerankResponse({ results: [{ index: 3, relevance_score: 1 }] }, 3), null);
+  assert.equal(parseRerankResponse({ results: [{ index: 0, relevance_score: 1 }, { index: 0, relevance_score: 2 }] }, 3), null);
+  assert.equal(parseRerankResponse({}, 3), null);
+  assert.equal(parseRerankResponse({ results: [{ index: 0 }] }, 3), null);
+  assert.equal(parseRerankResponse({ results: [{ index: 2, relevance_score: 0.5 }] }, 3)?.length, 1);
+  passed += 12;
+}
+
+// ---------- index/store.ts: vector bank ----------
+{
+  const DIM = 16;
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const words = ["spine", "fusion", "endoscopy", "lumbar", "outcome", "trial", "disc", "pain", "surgery", "bone"];
+  const N = 300;
+  const mk = (i: number) => ({
+    id: `c${i}`, citekey: `k${Math.floor(i / 3)}`, title: `T${i}`, section: "s", year: 2015 + (i % 10),
+    tags: i % 4 === 0 ? ["alpha", "beta"] : i % 4 === 1 ? ["alpha"] : ["gamma"],
+    authors: [i % 2 ? "kim" : "lee"],
+    text: Array.from({ length: 6 }, () => words[Math.floor(rnd() * words.length)]).join(" "),
+    embedText: "",
+  });
+  const chunks = Array.from({ length: N }, (_, i) => mk(i));
+  // Float32-rounded so the reference (doubles) and the bank (float32) see the same numbers.
+  const vecs = chunks.map(() => Array.from(new Float32Array(Array.from({ length: DIM }, () => rnd() - 0.5))));
+  const store = new VectorStore();
+  store.init(DIM, "m");
+  await store.addChunks(chunks, vecs);
+
+  // Reference: the pre-bank implementation — the same chunks in an Orama DB that owns the vectors.
+  const ref = create({
+    schema: { id: "string", citekey: "string", title: "string", section: "string", year: "number",
+      tags: "enum[]", tagText: "string", author: "enum[]", text: "string", embedding: `vector[${DIM}]` },
+  });
+  await insertMultiple(ref, chunks.map((c, i) => ({
+    id: c.id, citekey: c.citekey, title: c.title, section: c.section, year: c.year, tags: c.tags,
+    tagText: c.tags.join(" "), author: c.authors, text: c.text, embedding: vecs[i],
+  })));
+  const refTop = async (q: number[], term: string, k: number, where?: Record<string, unknown>) => {
+    const r = await search(ref, {
+      term: term || " ", mode: MODE_HYBRID_SEARCH, vector: { value: q, property: "embedding" },
+      similarity: 0, includeVectors: true, limit: k, boost: { tagText: 1.5 }, ...(where ? { where } : {}),
+    } as SearchParams<AnyOrama>);
+    return (r.hits as unknown as { document: { id: string } }[]).map((h) => h.document.id);
+  };
+  const queries = [0, 1, 2, 3].map(() => Array.from({ length: DIM }, () => rnd() - 0.5));
+  const terms = ["spine fusion", "lumbar", "", "zzzunknown"];
+  const cases: Array<[Record<string, unknown> | undefined, import("../src/index/store").SearchFilters]> = [
+    [undefined, {}],
+    [{ tags: { containsAll: ["alpha"] } }, { tags: ["alpha"] }],
+    [{ year: { between: [2018, 2022] }, author: { containsAll: ["kim"] } }, { yearFrom: 2018, yearTo: 2022, author: "Kim" }],
+  ];
+  for (const [where, filters] of cases) {
+    for (let qi = 0; qi < queries.length; qi++) {
+      const got = (await store.search(queries[qi], terms[qi], 10, filters)).map((h) => h.id);
+      const want = await refTop(queries[qi], terms[qi], 10, where);
+      assert.equal(got.length, 10);
+      assert.deepEqual(got, want, `parity q${qi} ${JSON.stringify(filters)}`);
+      passed++;
+    }
+  }
+  const h0 = (await store.search(queries[0], "lumbar", 3))[0];
+  assert.ok(h0.vector && h0.vector.length === DIM, "hit carries a bank view");
+  assert.ok(Math.abs(Math.hypot(...Array.from(h0.vector)) - 1) < 1e-5, "bank rows are unit length");
+  passed += 2;
+
+  // gated fusion: a text hit outside the vector arm's top slice keeps only its text share (≤ 0.5);
+  // Orama's formula (gatedFusion=false) lifts some of them above 0.5 with a vector score.
+  store.vectorArm = 20;
+  const near = new Set((await store.search(queries[0], "", 20)).map((h) => h.id));
+  const gated = (await store.search(queries[0], "spine fusion lumbar", 200)).filter((h) => !near.has(h.id));
+  assert.ok(gated.length > 0 && gated.every((h) => h.score <= 0.5 + 1e-9), "gated: far text hits get no vector share");
+  store.gatedFusion = false;
+  const full = (await store.search(queries[0], "spine fusion lumbar", 200)).filter((h) => !near.has(h.id));
+  assert.ok(full.some((h) => h.score > 0.5), "orama formula: far text hits do get a vector share");
+  store.gatedFusion = true;
+  store.vectorArm = 500;
+  passed += 2;
+
+  // (b) serialize -> load round-trip
+  const ser = await store.serialize();
+  assert.equal(ser.vectors.byteLength, N * DIM * 4);
+  const store2 = new VectorStore();
+  await store2.load(ser.docs, ser.vectors, ser.meta);
+  for (let qi = 0; qi < queries.length; qi++) {
+    const a = await store.search(queries[qi], terms[qi], 10);
+    const b = await store2.search(queries[qi], terms[qi], 10);
+    assert.deepEqual(b.map((h) => h.id), a.map((h) => h.id), `round-trip q${qi}`);
+    passed++;
+  }
+
+  const scaled = new Float32Array(ser.vectors).map((x, i) => x * (1 + (Math.floor(i / DIM) % 5))); // an old index holds raw, un-normalized vectors
+  const store3 = new VectorStore();
+  await store3.load(ser.docs, scaled.buffer, ser.meta);
+  assert.deepEqual((await store3.search(queries[0], terms[0], 10)).map((h) => h.id), (await store.search(queries[0], terms[0], 10)).map((h) => h.id));
+  passed++;
+
+  // (c) remove + re-add reuses rows; removed ids never come back
+  const gone = new Set((await store.search(queries[0], "", 5)).map((h) => h.citekey));
+  for (const ck of gone) await store.removeCitekey(ck);
+  const after = await store.search(queries[0], "", 50);
+  assert.ok(after.every((h) => !gone.has(h.citekey)), "removed citekeys never return");
+  assert.equal(store["idAt"].filter((x: string | null) => x !== null).length, store.count, "freed rows are cleared");
+  const rowsBefore = store["idAt"].length;
+  const nv = Array.from({ length: DIM }, () => rnd() - 0.5);
+  await store.addChunks([mk(1000)], [nv]);
+  assert.equal(store["idAt"].length, rowsBefore, "freed row reused, bank not grown");
+  assert.equal((await store.search(nv, "", 1))[0].id, "c1000");
+  await store.addChunks([mk(1000)], [vecs[1]]); // same id again replaces in place
+  assert.equal(store["idAt"].length, rowsBefore);
+  assert.equal(store["rowOf"].size, store.count, "one live row per tracked chunk");
+  passed += 6;
+
+  // (d) dimension mismatch throws
+  await assert.rejects(store.search([1, 2, 3], "x", 3), /dim/);
+  await assert.rejects(store.addChunks([mk(2000)], [[1, 2, 3]]), /dim/);
+  passed += 2;
+}
+
+// ---------- index/expand.ts: source priority + duplicate headings ----------
+{
+  const dup = buildExpander(null, { "Low Back Pain": ["Lumbago"], "low back pain": ["Lumbago"] }).expand("lumbago treatment");
+  check(dup.terms.some((t) => /low back pain/i.test(t)), "expand: the same heading cached twice (case) still expands");
+  const both = buildExpander(
+    parseVocabulary({ version: 1, concepts: [{ name: "Spinal Fusion", aliases: ["arthrodesis"], narrower: ["PLIF"] }] }),
+    { "Spinal Fusion": ["Fusion, Spinal"] }
+  ).expand("spinal fusion outcomes");
+  check(both.terms.includes("arthrodesis"), "expand: a vocabulary concept survives a MeSH heading with the same name");
+}
+
+// ---------- index/expand.ts: isForeignQuery ----------
+{
+  check(isForeignQuery("감압술에 유합술을 추가하면 ODI가 개선되는가?"), "isForeignQuery: Korean with an English acronym");
+  check(!isForeignQuery("Does adding fusion to decompression improve ODI?"), "isForeignQuery: English");
+  check(!isForeignQuery("TLIF 대 PLIF blood loss in lumbar fusion"), "isForeignQuery: mostly Latin letters stays English");
+  check(isForeignQuery("腰椎すべり症の手術"), "isForeignQuery: Japanese");
+  check(!isForeignQuery("12345 ?!"), "isForeignQuery: no letters");
+}
+
+// ---------- index/expand.ts ----------
+{
+  const vocab = parseVocabulary({
+    version: 1,
+    concepts: [
+      { name: "Lumbar Spinal Stenosis", aliases: ["요추관 협착증", "LSS", "x", "x", "lumbar canal narrowing"], narrower: ["Lateral recess stenosis"] },
+      { name: "Decompression", aliases: ["감압술", "laminectomy"], broader: ["Spine surgery"] },
+      { name: "Oswestry Disability Index", aliases: ["ODI"] },
+      { name: "", aliases: ["junk"] },
+    ],
+  });
+  assert.equal(vocab.concepts.length, 3);
+  assert.deepEqual(vocab.concepts[0].aliases, ["요추관 협착증", "LSS", "lumbar canal narrowing"]);
+  const mesh = { "Intervertebral Disc Displacement": ["Herniated Disc", "Slipped Disc", "Disk Herniation"] };
+  const ex = buildExpander(vocab, mesh);
+  const e1 = ex.expand("herniated disc outcomes");
+  assert.deepEqual(e1.matched, ["Intervertebral Disc Displacement"]);
+  assert.ok(e1.terms.includes("Intervertebral Disc Displacement") && e1.terms.includes("Slipped Disc"));
+  assert.ok(!e1.terms.includes("Herniated Disc"), "already in the query");
+  assert.equal(expandedTerm("herniated disc outcomes", e1).startsWith("herniated disc outcomes Intervertebral"), true);
+  // Korean with attached particle and different spacing reaches the English names.
+  const e2 = ex.expand("요추관협착증에서 감압술");
+  assert.deepEqual(e2.matched, ["Lumbar Spinal Stenosis", "Decompression"]);
+  assert.ok(e2.terms.includes("Lumbar Spinal Stenosis") && e2.terms.includes("laminectomy") && e2.terms.includes("Lateral recess stenosis"));
+  assert.ok(!e2.terms.some((t) => /[가-힣]/.test(t)), "Latin aliases preferred, Korean ones not added while Latin exist");
+  // Short acronym: whole token only.
+  assert.deepEqual(ex.expand("ODI change").matched, ["Oswestry Disability Index"]);
+  assert.deepEqual(ex.expand("periodic follow-up").matched, []);
+  assert.deepEqual(ex.expand("odi점수").matched, ["Oswestry Disability Index"]);
+  // Cap of 12, round-robin across concepts, no duplicates.
+  const many = parseVocabulary({
+    concepts: ["alpha", "beta", "gamma"].map((n) => ({
+      name: n + " thing",
+      aliases: [1, 2, 3, 4, 5].map((i) => `${n} alias ${i}`),
+      narrower: [1, 2, 3, 4, 5].map((i) => `${n} child ${i}`),
+    })),
+  });
+  const e3 = buildExpander(many, null).expand("alpha thing beta thing gamma thing");
+  assert.equal(e3.terms.length, 12);
+  assert.equal(new Set(e3.terms.map((t) => t.toLowerCase())).size, 12);
+  assert.ok(e3.terms.some((t) => t.startsWith("gamma")), "later concept is not crowded out");
+  assert.ok(!e3.terms.includes("alpha thing"), "name already in query");
+  // Empty vocabulary: nothing added, query unchanged.
+  const none = buildExpander(null, null).expand("herniated disc");
+  assert.deepEqual(none, { terms: [], matched: [] });
+  assert.equal(expandedTerm("q", none), "q");
+  // A surface claimed by two concepts is ambiguous and ignored.
+  const amb = buildExpander(parseVocabulary({ concepts: [{ name: "Aa one", aliases: ["shared term"] }, { name: "Bb two", aliases: ["shared term"] }] }), null);
+  assert.deepEqual(amb.expand("shared term").matched, []);
+  passed += 20;
 }
 
 console.log(`unit: all ${passed} assertions passed`);

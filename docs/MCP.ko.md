@@ -25,7 +25,7 @@ mcp-bridge.cjs (Node 표준 라이브러리만 사용)
 - Obsidian Desktop이 열려 있고 해당 vault의 플러그인이 활성화되어 있어야 합니다.
 - MCP 경로는 Obsidian의 **Chat with library LLM, 요약 LLM, LLM reranker를 호출하지 않습니다.**
   답변 작성과 판단은 Claude Code 또는 Codex가 담당합니다.
-- `search_library`와 `rebuild_search_index`만 설정된 임베딩 공급자를 사용할 수 있습니다.
+- `search_library`와 `rebuild_search_index`만 설정된 임베딩 공급자를 사용할 수 있습니다. `search_library`에 `rerank: true`를 주면 OpenRouter rerank endpoint도 호출합니다. 어떤 MCP 도구도 플러그인 LLM을 부르지 않으므로 MCP 검색어는 번역되지 않습니다 — 영어로 쓰세요.
 - 별도 daemon, 계정, 원격 MCP 서버는 없습니다. 로컬 서버는 `127.0.0.1`의 임의 포트에서만
   열리고 플러그인 종료 시 함께 닫힙니다.
 - 0.6.0은 Node 기반 MCP 서버를 같은 bundle에 포함하므로 전체 plugin을 데스크톱 전용으로
@@ -159,7 +159,7 @@ Manuscripts/Review.md를 읽고 "Outcomes" 절을 보강해줘.
 | 도구 | 역할 | 외부 호출/변경 |
 |---|---|---|
 | `library_status` | vault, 플러그인 버전, 인덱스 상태 확인 | 없음 |
-| `search_library` | Obsidian과 같은 BM25+벡터 인덱스 검색 | 임베딩 가능, 읽기 전용 |
+| `search_library` | Obsidian과 같은 BM25+벡터 인덱스 검색(키워드 쪽은 라이브러리 동의어로 확장). 검색어는 영어로, 근거 검색에는 `rerank: true` 권장(hosted cross-encoder) | 임베딩, 요청 시 rerank 호출, 읽기 전용 |
 | `rebuild_search_index` | 검색 인덱스 전체 재구축 | 임베딩 가능, 인덱스 변경 |
 | `list_references` | 문헌 메타데이터 필터·페이지 조회 | 읽기 전용 |
 | `get_reference` | citekey로 메타데이터와 노트 조회 | 읽기 전용 |

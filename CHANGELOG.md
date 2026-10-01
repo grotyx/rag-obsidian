@@ -6,6 +6,40 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-10-02
+
+Retrieval, measured. A 96-question held-out benchmark (English and Korean versions of each
+question, LLM-judged pooled relevance) drove every default below; on a 16,578-reference library
+nDCG@10 went from 0.53 to 0.78 for English questions and from 0.18 to 0.78 for Korean ones.
+
+### Added
+
+- **Cross-encoder reranking** (OpenRouter `/rerank`, free `nvidia/llama-nemotron-rerank-vl-1b-v2`
+  by default) for the search pane and chat — the largest single gain (English nDCG@10 0.62 → 0.78),
+  about one second per search. Replaces the LLM reranker when on; falls back to retrieval order on
+  any failure. MCP `search_library` takes `rerank: true` to use it.
+- **Translate non-English searches.** A Korean question sat far from its English twin in embedding
+  space (cosine ≈ 0.45), so the search pane and chat translate it to English with the chat model
+  first (one short request, cached). MCP never calls the plugin's LLM; its tool description asks the
+  agent to query in English.
+- **Query expansion** for the keyword half of every search: aliases from a user-owned **search
+  vocabulary** (JSON in the vault; any language — this is how Korean terms reach English papers) and
+  NLM **MeSH entry terms** for the library's common subject tags, built once with *Build MeSH synonym
+  list for search* and cached in the plugin folder. The meaning half keeps the user's words.
+- **Diversify results** (maximal marginal relevance) as an option; off by default — it measured
+  slightly worse here.
+- `scripts/eval/`: the benchmark runner, judge and scorer. Questions and judgments stay local
+  (`_eval/`, git-ignored).
+
+### Changed
+
+- **Search index memory**: vectors live in one packed `Float32Array` instead of Orama documents —
+  about 1.4 GB less JS heap on a 59,000-passage index (3.7 → 2.3 GB, plus 0.5 GB outside the heap),
+  and local search 261 → 198 ms. The on-disk format is unchanged; no rebuild needed.
+- **Score fusion**: a keyword match only gets the vector half of its score when the embedding also
+  ranks it among the top 500 passages (Orama's formula gave every keyword match a vector share).
+  Measured better (English nDCG@10 0.55 → 0.63 with expansion).
+
 ## [0.7.9] — 2026-09-30
 
 ### Added

@@ -23,3 +23,6 @@ styles/cache/
 
 # Local presentation bundles (large; the video lives outside git)
 presentation/*.zip
+
+# Retrieval eval data (questions/judgments stay local: the question set is locked for a paper)
+_eval/

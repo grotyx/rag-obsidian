@@ -83,7 +83,9 @@ export class SearchView extends ItemView {
     this.resultsEl.empty();
     const loading = this.resultsEl.createDiv({ cls: "srag-count", text: "Searching…" });
     try {
-      const hits = await this.plugin.indexManager.search(this.query, this.filterRow.filters());
+      const hits = await this.plugin.indexManager.search(this.query, this.filterRow.filters(), undefined, {
+        rerank: this.plugin.settings.hostedRerank,
+      });
       loading.remove();
       this.renderHits(hits);
     } catch (e) {

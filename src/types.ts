@@ -23,6 +23,18 @@ export interface ScholarRagSettings {
   indexLocal: boolean;
   /** Ask the LLM to re-rank retrieved passages before the chat answers (one extra request). */
   llmRerank: boolean;
+  /** Translate non-English queries to English (one LLM call, cached) before searching — the
+   *  embedding model aligns Korean and English poorly. Search pane and chat only; never MCP. */
+  translateQueries: boolean;
+  /** Add synonyms (user vocabulary + cached MeSH entry terms) to the keyword half of every search. */
+  queryExpansion: boolean;
+  /** Vault path of a JSON search vocabulary (`{ version, concepts: [{ name, aliases, broader, narrower }] }`); "" = none. */
+  searchVocabulary: string;
+  /** Diversify results (MMR) so near-duplicate passages don't crowd out other papers. */
+  searchDiversity: boolean;
+  /** Rerank search-pane and chat results with a hosted cross-encoder (OpenRouter `/rerank`); replaces the LLM reranker. */
+  hostedRerank: boolean;
+  rerankModel: string;
 
   // Phase 2 — chat
   llmProvider: LLMProviderId;
@@ -77,6 +89,12 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   topK: 20,
   indexLocal: false,
   llmRerank: false,
+  translateQueries: true,
+  queryExpansion: true,
+  searchVocabulary: "",
+  searchDiversity: false,
+  hostedRerank: true,
+  rerankModel: "nvidia/llama-nemotron-rerank-vl-1b-v2:free",
 
   llmProvider: "openai",
   llmModel: "deepseek/deepseek-v4-flash-0731",

@@ -210,6 +210,25 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       case "llmRerank":
         s.llmRerank = value as boolean;
         break;
+      case "hostedRerank":
+        s.hostedRerank = value as boolean;
+        break;
+      case "rerankModel":
+        s.rerankModel = String(value).trim();
+        break;
+      case "searchDiversity":
+        s.searchDiversity = value as boolean;
+        break;
+      case "translateQueries":
+        s.translateQueries = value as boolean;
+        break;
+      case "queryExpansion":
+        s.queryExpansion = value as boolean;
+        break;
+      case "searchVocabulary":
+        s.searchVocabulary = String(value).trim();
+        this.plugin.indexManager.invalidateExpander();
+        break;
       case "topK":
         s.topK = value as number;
         break;
@@ -389,6 +408,41 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         "Rerank chat results with the LLM",
         "Retrieves twice as many passages and has the model order them by relevance before the " +
           "answer is written. One extra request per question; affects chat only."
+      ),
+      toggle(
+        "hostedRerank",
+        "Rerank results with a cross-encoder",
+        "Uses OpenRouter's rerank endpoint (the default model is free) to reorder search-pane and chat " +
+          "results; replaces the LLM reranker above. About one extra second per search.",
+        () => s.openaiBaseUrl.includes("openrouter.ai")
+      ),
+      text("rerankModel", "Rerank model", undefined, DEFAULT_SETTINGS.rerankModel, undefined, () => s.hostedRerank),
+      toggle(
+        "translateQueries",
+        "Translate non-English searches",
+        "Korean (or other non-Latin) questions are translated to English with the chat model before " +
+          "searching, because the embedding model matches them poorly against English papers. One " +
+          "short request per new question; search pane and chat only."
+      ),
+      toggle(
+        "queryExpansion",
+        "Expand searches with synonyms",
+        "Adds the search vocabulary's aliases and cached MeSH entry terms to the keyword half of " +
+          "every search (the meaning half keeps your words). No model calls."
+      ),
+      text(
+        "searchVocabulary",
+        "Search vocabulary file",
+        "Vault path of a JSON vocabulary (concept names, aliases in any language, broader and narrower " +
+          "terms). Lets a Korean question reach English papers.",
+        "Search vocabulary.json",
+        undefined,
+        () => s.queryExpansion
+      ),
+      toggle(
+        "searchDiversity",
+        "Diversify results",
+        "Prefers passages that add something new over near-duplicates of a higher hit (maximal marginal relevance)."
       ),
       slider("topK", "Results (top-k)", 3, 30, 1, "How many chunks a search returns."),
       slider("chunkChars", "Chunk size (characters)", 400, 3000, 100, "Target size of each embedded text chunk."),

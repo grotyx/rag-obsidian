@@ -13,6 +13,7 @@ import {
 } from "obsidian";
 import { ScholarRagSettings, DEFAULT_SETTINGS, SECRET_FIELDS, SecretField } from "./src/types";
 import { ScholarRagSettingTab } from "./src/settings";
+import { LLMClient } from "./src/llm/client";
 import { Library } from "./src/data/library";
 import { IndexManager } from "./src/index/manager";
 import { AddReferenceModal } from "./src/ui/AddReferenceModal";
@@ -43,6 +44,7 @@ import { BackfillScopeModal } from "./src/ui/BackfillScopeModal";
 import { normalizePath } from "obsidian";
 import * as libraryCmd from "./src/commands/library";
 import * as writingCmd from "./src/commands/writing";
+import { buildMeshSynonyms } from "./src/commands/search";
 import * as oaCmd from "./src/commands/openaccess";
 import { backfillSummaries } from "./src/commands/backfill";
 import { cancelBatch } from "./src/ui/progress";
@@ -70,6 +72,14 @@ export default class ScholarRagPlugin extends Plugin {
     const pluginDir = this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`;
     this.library = new Library(this.app, this.settings);
     this.indexManager = new IndexManager(this.app, this.library, this.settings, pluginDir);
+    // Non-English searches → English before embedding (search pane and chat; MCP opts out).
+    this.indexManager.translator = (query) =>
+      new LLMClient(this.settings).chat(
+        [{ role: "user", content: query }],
+        "Translate this literature-search query into English, using standard biomedical terminology " +
+          "(MeSH-style terms, expanded abbreviations where unambiguous). Reply with the English query only.",
+        { maxTokens: 300, noReasoning: true }
+      );
     this.citationGraph = new CitationGraph(this.app, this.library, this.settings, pluginDir);
     this.citeEngine = new CiteEngine(this.app, pluginDir);
     if (Platform.isDesktopApp && this.app.vault.adapter instanceof FileSystemAdapter) {
@@ -134,6 +144,11 @@ export default class ScholarRagPlugin extends Plugin {
       id: "rebuild-index",
       name: "Rebuild search index",
       callback: () => void this.rebuildIndex(),
+    });
+    this.addCommand({
+      id: "build-mesh-synonyms",
+      name: "Build MeSH synonym list for search",
+      callback: () => void buildMeshSynonyms(this),
     });
     this.addCommand({
       id: "chat",
@@ -407,6 +422,12 @@ export default class ScholarRagPlugin extends Plugin {
     });
 
     // Incremental index maintenance.
+    // The search vocabulary is a JSON file (no metadata events): rebuild the expander when it changes.
+    this.registerEvent(
+      this.app.vault.on("modify", (file: TAbstractFile) => {
+        if (file.path === normalizePath(this.settings.searchVocabulary || "\u0000")) this.indexManager.invalidateExpander();
+      })
+    );
     this.registerEvent(
       this.app.metadataCache.on("changed", (file) => {
         if (file instanceof TFile) this.indexManager.enqueue(file);

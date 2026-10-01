@@ -5,7 +5,6 @@ import {
   removeMultiple,
   getByID,
   search,
-  MODE_HYBRID_SEARCH,
   AnyOrama,
   SearchParams,
 } from "@orama/orama";
@@ -23,7 +22,6 @@ interface StoredDoc {
   tags: string[];
   author: string[];
   text: string;
-  embedding: number[];
 }
 
 interface SearchHitRaw {
@@ -60,6 +58,8 @@ export interface SearchHit {
   year: number;
   text: string;
   score: number;
+  /** View onto this hit's row of the vector bank (no copy). Internal use (MMR) only. */
+  vector?: Float32Array;
 }
 
 export interface SearchFilters {
@@ -81,9 +81,32 @@ export function describeFilters(f: SearchFilters): string {
   return parts.join(" · ");
 }
 
-/** Thin wrapper over an Orama hybrid (BM25 + vector) index. */
+/** Candidates kept per arm before merging (Orama's own hybrid merges the full lists; the tail
+ *  past the top 500 cannot reach a realistic `k`). */
+/** Text hits kept from Orama (it returns every match; past this rank the normalized BM25 share is small). */
+const TEXT_LIMIT = 2000;
+
+function unit(v: ArrayLike<number>, out: Float32Array, at: number): void {
+  let n = 0;
+  for (let i = 0; i < v.length; i++) n += v[i] * v[i];
+  n = Math.sqrt(n) || 1;
+  for (let i = 0; i < v.length; i++) out[at + i] = v[i] / n;
+}
+
+/** Orama (BM25 + facets/filters) for the text arm; embeddings live in one packed Float32Array
+ *  we scan ourselves (Orama's vector arm is a brute-force scan too, but holds `number[]`s). */
 export class VectorStore {
+  /** Gated fusion (default): measured on a 96-question held-out set it beat Orama's own hybrid
+   *  formula (English nDCG@10 0.63 vs 0.55 with expansion). `false` reproduces Orama exactly — kept for the parity test. */
+  gatedFusion = true;
+  /** Size of the vector arm's top slice (500; tests shrink it). */
+  vectorArm = 500;
   private db: AnyOrama | null = null;
+  /** Row-major, L2-normalized (dot = cosine). Capacity grows ×1.5. */
+  private bank = new Float32Array(0);
+  private rowOf = new Map<string, number>();
+  private idAt: (string | null)[] = [];
+  private free: number[] = [];
   dim = 0;
   modelId = "";
   chunkIds: Record<string, string[]> = {};
@@ -99,11 +122,46 @@ export class VectorStore {
   /** Drop everything; store becomes not-ready until the next init/load. */
   reset(): void {
     this.db = null;
+    this.clearBank();
     this.dim = 0;
     this.modelId = "";
     this.chunkIds = {};
     this.paths = {};
     this.hashes = {};
+  }
+
+  private clearBank(): void {
+    this.bank = new Float32Array(0);
+    this.rowOf = new Map();
+    this.idAt = [];
+    this.free = [];
+  }
+
+  private takeRow(id: string): number {
+    let row = this.rowOf.get(id);
+    if (row === undefined) {
+      row = this.free.pop();
+      if (row === undefined) {
+        row = this.idAt.length;
+        this.idAt.push(null);
+        if ((row + 1) * this.dim > this.bank.length) {
+          const grown = new Float32Array(Math.max((row + 1) * this.dim, Math.ceil(this.bank.length * 1.5)));
+          grown.set(this.bank);
+          this.bank = grown;
+        }
+      }
+      this.rowOf.set(id, row);
+      this.idAt[row] = id;
+    }
+    return row;
+  }
+
+  private freeRow(id: string): void {
+    const row = this.rowOf.get(id);
+    if (row === undefined) return;
+    this.rowOf.delete(id);
+    this.idAt[row] = null;
+    this.free.push(row);
   }
 
   /** Create a fresh DB for a given vector dimension + model id. Clears content. */
@@ -113,6 +171,7 @@ export class VectorStore {
     this.chunkIds = {};
     this.paths = {};
     this.hashes = {};
+    this.clearBank();
     this.db = create({
       schema: {
         id: "string",
@@ -129,14 +188,16 @@ export class VectorStore {
         tagText: "string",
         author: "enum[]",
         text: "string",
-        embedding: `vector[${dim}]`,
       },
     });
   }
 
   async addChunks(chunks: Chunk[], vectors: number[][]): Promise<void> {
     if (!this.db) throw new Error("store not initialized");
-    const docs = chunks.map((c, i) => ({
+    for (const v of vectors.slice(0, chunks.length)) {
+      if (v?.length !== this.dim) throw new Error(`Vector dim ${v?.length} ≠ index dim ${this.dim}.`);
+    }
+    const docs = chunks.map((c) => ({
       id: c.id,
       citekey: c.citekey,
       title: c.title,
@@ -146,13 +207,16 @@ export class VectorStore {
       tagText: c.tags.join(" "),
       author: c.authors,
       text: c.text,
-      embedding: vectors[i],
     }));
     // stale ids (e.g. meta/DB desync) would make insertMultiple throw DOCUMENT_ALREADY_EXISTS
     for (const d of docs) {
       if (getByID(this.db, d.id)) await remove(this.db, d.id);
     }
     await insertMultiple(this.db, docs);
+    chunks.forEach((c, i) => {
+      const row = this.takeRow(c.id); // may reallocate the bank, so take the row first
+      unit(vectors[i], this.bank, row * this.dim);
+    });
     for (const c of chunks) {
       if (!this.chunkIds[c.citekey]) this.chunkIds[c.citekey] = [];
       if (!this.chunkIds[c.citekey].includes(c.id)) this.chunkIds[c.citekey].push(c.id);
@@ -162,7 +226,10 @@ export class VectorStore {
   async removeCitekey(citekey: string): Promise<void> {
     if (!this.db) return;
     const ids = this.chunkIds[citekey];
-    if (ids && ids.length) await removeMultiple(this.db, ids);
+    if (ids && ids.length) {
+      await removeMultiple(this.db, ids);
+      for (const id of ids) this.freeRow(id);
+    }
     delete this.chunkIds[citekey];
     for (const [p, ck] of Object.entries(this.paths)) {
       if (ck === citekey) {
@@ -204,33 +271,88 @@ export class VectorStore {
     else if (filters.yearTo) where.year = { lte: filters.yearTo };
     if (filters.tags?.length) where.tags = { containsAll: filters.tags };
     if (filters.author) where.author = { containsAll: [filters.author.trim().toLowerCase()] };
-    const res = await search(this.db, {
+    const db = this.db;
+    const whereArg = Object.keys(where).length ? { where } : {};
+    // Text arm: Orama BM25 (a boost, not a filter, on tagged passages), top score → 1.
+    const text = await search(db, {
       term: term || " ",
-      mode: MODE_HYBRID_SEARCH,
-      vector: { value: queryVec, property: "embedding" },
-      similarity: 0,
-      // NOT false: @orama/orama's `includeVectors: false` path (removeVectorsFromHits)
-      // mutates the *stored* document in place, permanently nulling its embedding — a real
-      // corruption a later persist would silently write out. We never read `h.document.embedding`
-      // below anyway (the mapped SearchHit doesn't carry it), so just leave it in the hit.
-      includeVectors: true,
-      limit: k,
-      // A term hitting a paper's own mesh_terms/tags is a strong topical signal even when the
-      // vector side is lukewarm — moderate boost, not a filter (an unrelated query still ranks
-      // on the passage text/vector, this only sways close calls).
+      limit: TEXT_LIMIT,
       boost: { tagText: 1.5 },
-      ...(Object.keys(where).length ? { where } : {}),
+      ...whereArg,
     } as SearchParams<AnyOrama>);
-    const hits = res.hits as unknown as SearchHitRaw[];
-    return hits.map((h) => ({
-      id: String(h.document.id),
-      citekey: String(h.document.citekey),
-      title: String(h.document.title),
-      section: String(h.document.section),
-      year: Number(h.document.year) || 0,
-      text: String(h.document.text),
-      score: h.score,
-    }));
+    const textHits = text.hits as unknown as SearchHitRaw[];
+    const docs = new Map<string, StoredDoc>();
+    const merged = new Map<string, number>();
+    const maxText = textHits.length ? textHits[0].score : 0;
+    if (maxText > 0) {
+      for (const h of textHits) {
+        docs.set(h.document.id, h.document);
+        merged.set(h.document.id, (0.5 * h.score) / maxText);
+      }
+    }
+    // Vector arm: cosine vs every live row (inside the filter), > 0 only, top this.vectorArm, top → 1.
+    let allowed: Set<string> | null = null;
+    if (whereArg.where) {
+      const all = await search(db, { term: "", limit: Math.max(1, this.count), ...whereArg } as SearchParams<AnyOrama>);
+      allowed = new Set((all.hits as unknown as SearchHitRaw[]).map((h) => h.document.id));
+    }
+    const q = new Float32Array(this.dim);
+    unit(queryVec, q, 0);
+    const dim = this.dim;
+    // Orama's hybrid gives *every* text hit its vector score too (its vector arm returns all docs
+    // above `similarity: 0`), so score every row once and look scores up for text hits — keeping
+    // only a top slice of the vector arm dropped that half for text-only hits and reordered results.
+    const sim = new Float32Array(this.idAt.length);
+    let maxVec = 0;
+    let cand: { id: string; s: number }[] = [];
+    let cut = 0;
+    for (let row = 0; row < this.idAt.length; row++) {
+      const id = this.idAt[row];
+      if (id === null || (allowed && !allowed.has(id))) continue;
+      let sc = 0;
+      for (let j = 0, o = row * dim; j < dim; j++) sc += q[j] * this.bank[o + j];
+      sim[row] = sc;
+      if (sc > maxVec) maxVec = sc;
+      if (sc <= cut) continue;
+      cand.push({ id, s: sc });
+      if (cand.length >= this.vectorArm * 2) {
+        cand.sort((x, y) => y.s - x.s);
+        cand = cand.slice(0, this.vectorArm);
+        cut = Math.max(cut, cand[this.vectorArm - 1].s);
+      }
+    }
+    cand.sort((x, y) => y.s - x.s);
+    cand = cand.slice(0, this.vectorArm);
+    if (maxVec > 0) {
+      // `gated`: only passages in the vector arm's top slice get its share — a keyword-only match the
+      // embedding ranks far down is not lifted by a vector score it barely has.
+      const near = this.gatedFusion ? new Set(cand.map((c) => c.id)) : null;
+      for (const id of merged.keys()) {
+        if (near && !near.has(id)) continue;
+        const row = this.rowOf.get(id);
+        const sc = row === undefined ? 0 : sim[row];
+        if (sc > 0) merged.set(id, (merged.get(id) ?? 0) + (0.5 * sc) / maxVec);
+      }
+      for (const c of cand) if (!merged.has(c.id)) merged.set(c.id, (0.5 * c.s) / maxVec);
+    }
+    const top = [...merged].sort((x, y) => y[1] - x[1]).slice(0, k);
+    const out: SearchHit[] = [];
+    for (const [id, score] of top) {
+      const d = docs.get(id) ?? (getByID(db, id) as unknown as StoredDoc | undefined);
+      if (!d) continue;
+      const row = this.rowOf.get(id);
+      out.push({
+        id: String(d.id),
+        citekey: String(d.citekey),
+        title: String(d.title),
+        section: String(d.section),
+        year: Number(d.year) || 0,
+        text: String(d.text),
+        score,
+        ...(row === undefined ? {} : { vector: this.bank.subarray(row * dim, (row + 1) * dim) }),
+      });
+    }
+    return out;
   }
 
   get count(): number {
@@ -246,6 +368,7 @@ export class VectorStore {
     for (const arr of Object.values(this.chunkIds)) ids.push(...arr);
     const docs: Array<Record<string, unknown>> = [];
     const vectors = new Float32Array(ids.length * this.dim);
+    const dim = this.dim;
     ids.forEach((id, i) => {
       const doc = getByID(this.db as AnyOrama, id) as unknown as StoredDoc | undefined;
       if (!doc) throw new Error(`index/meta desync — rebuild required (missing doc ${id})`);
@@ -259,7 +382,9 @@ export class VectorStore {
         author: doc.author,
         text: doc.text,
       });
-      vectors.set(doc.embedding, i * this.dim);
+      const row = this.rowOf.get(id);
+      if (row === undefined) throw new Error(`index/meta desync — rebuild required (missing vector ${id})`);
+      vectors.set(this.bank.subarray(row * dim, (row + 1) * dim), i * dim);
     });
     const meta: StoredMeta = {
       modelId: this.modelId,
@@ -297,7 +422,7 @@ export class VectorStore {
     }
     this.init(meta.dim, meta.modelId);
     const view = new Float32Array(vectors);
-    const insertDocs = docs.map((d, i) => ({
+    const insertDocs = docs.map((d) => ({
       id: d.id,
       citekey: d.citekey,
       title: d.title,
@@ -307,9 +432,15 @@ export class VectorStore {
       tagText: d.tags.join(" "),
       author: d.author,
       text: d.text,
-      embedding: Array.from(view.subarray(i * meta.dim, i * meta.dim + meta.dim)),
     }));
     if (insertDocs.length) await insertMultiple(this.db as AnyOrama, insertDocs);
+    this.bank = new Float32Array(docs.length * meta.dim);
+    docs.forEach((d, i) => {
+      const o = i * meta.dim;
+      unit(view.subarray(o, o + meta.dim), this.bank, o);
+      this.rowOf.set(d.id, i);
+      this.idAt.push(d.id);
+    });
     this.chunkIds = meta.chunkIds || {};
     this.paths = meta.paths || {};
     this.hashes = meta.hashes || {};

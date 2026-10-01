@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.7.9-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.8.0-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -86,6 +86,9 @@
 
 **🔎 검색·챗**
 - 하이브리드 **의미 검색**(BM25 + 벡터) + 라이브러리 근거 기반 **챗** (`[n]` 출처).
+- **측정으로 다듬은 검색** (0.8.0): 무료 hosted **cross-encoder 재순위**, **질의 확장**(내 검색 용어집 +
+  MeSH 동의어), 한국어(비영어) 질문 **자동 번역**. 논문 16,578편, 임상 질문 96개 벤치마크에서
+  nDCG@10이 영어 질문 0.53 → 0.78, 한국어 질문 0.18 → 0.78로 올랐습니다.
 - **검색 패널과 챗 패널의 필터** — 출판 **연도 범위**, **저자**(성), **태그**로 결과를 좁힙니다.
   태그 입력창은 라이브러리에 이미 있는 태그를 자동완성하며, Enter를 누르면 칩으로 추가됩니다.
   칩을 여러 개 넣으면 그 태그를 **모두** 가진 논문만 남습니다. 필터는 설정이 아니라 패널에
@@ -384,6 +387,10 @@ node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled 
   Gemini 포함), Anthropic 또는 Ollama로 보냅니다. API key는 가능한 경우 Obsidian
   SecretStorage에 저장되고, 구버전 Obsidian에서는 plugin `data.json`으로 fallback합니다.
   telemetry, 광고, 계정 서비스, 별도 hosted backend는 없습니다.
+- *Rerank results with a cross-encoder*(기본 켬)를 쓰면 검색어와 검색된 문단이 OpenRouter rerank
+  endpoint로 갑니다. *Translate non-English searches*(기본 켬)를 쓰면 비영어 검색어가 번역을 위해
+  채팅 모델로 갑니다. *Build MeSH synonym list for search*는 라이브러리의 주요 주제 태그를 NCBI
+  E-utilities로 보냅니다.
 - MCP는 인증된 `127.0.0.1`에서만 열립니다. 생성된 bridge는 plugin 폴더에, 짧게 유지되는
   discovery 파일은 vault 밖의 운영체제 임시 폴더에 저장됩니다. 둘 다 노트 내용이나 provider
   API key를 담지 않습니다. MCP를 켠 동안에만 외부 AI가 vault Markdown을 읽고 변경할 수

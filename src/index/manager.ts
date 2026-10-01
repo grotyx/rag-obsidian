@@ -3,7 +3,9 @@ import { ScholarRagSettings } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
 import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA } from "./store";
-import { capPerReference } from "./rerank";
+import { capPerReference, hostedRerank, mmr } from "./rerank";
+import { buildExpander, expandedTerm, Expander, Expansion, isForeignQuery, parseVocabulary } from "./expand";
+import { MeshThesaurus, MeshAddOptions } from "./thesaurus";
 import { mapPool } from "../util/pool";
 import { FileIO, NodeFileIO, localIndexDir } from "./localFiles";
 
@@ -51,7 +53,7 @@ export class IndexManager {
     private app: App,
     private library: Library,
     public settings: ScholarRagSettings,
-    pluginDir: string
+    private pluginDir: string
   ) {
     this.vaultDir = normalizePath(`${pluginDir}/index`);
     this.io = this.app.vault.adapter;
@@ -337,13 +339,115 @@ export class IndexManager {
   }
 
   /** `k` defaults to the user's top-K; callers that collapse hits (one row per reference)
-   *  pass a bigger one so a full-text-indexed paper can't fill the whole result set. */
-  async search(query: string, filters: SearchFilters = {}, k = this.settings.topK): Promise<SearchHit[]> {
-    const [vec] = await this.getProvider().embed([query]);
+   *  pass a bigger one so a full-text-indexed paper can't fill the whole result set.
+   *  `rerank` asks the hosted cross-encoder to reorder a 2k pool (falls back to retrieval order). */
+  async search(
+    query: string,
+    filters: SearchFilters = {},
+    k = this.settings.topK,
+    opts: { rerank?: boolean; translate?: boolean } = {}
+  ): Promise<SearchHit[]> {
+    // A Korean question lands far from its English twin in embedding space (cosine ~0.45), so
+    // translate first when allowed; MCP passes translate:false (its agent translates itself).
+    const english = opts.translate !== false ? await this.toEnglish(query) : query;
+    const [vec] = await this.getProvider().embed([english]);
+    // Synonyms go to the keyword half only: the embedding already paraphrases, BM25 doesn't.
+    // The original words still feed the matcher (Korean aliases live in the vocabulary).
+    const term = this.settings.queryExpansion
+      ? expandedTerm(english, await this.expand(english === query ? query : `${query} ${english}`))
+      : english;
+    // The rerank endpoint is OpenRouter's; any other host would 404 (and get the key posted to it).
+    const rerank = !!opts.rerank && this.settings.openaiBaseUrl.includes("openrouter.ai");
+    const want = rerank ? k * 2 : k;
     // Over-fetch, then cap per reference: a paper whose stashed PDF text splits into dozens of
     // chunks would otherwise fill the whole result set on its own.
-    const hits = await this.store.search(vec, query, k * OVERFETCH, filters);
-    return capPerReference(hits, k);
+    let hits = await this.store.search(vec, term, want * OVERFETCH, filters);
+    if (this.settings.searchDiversity) hits = mmr(hits, Math.min(hits.length, want * 2));
+    hits = capPerReference(hits, want);
+    if (rerank) {
+      const key = this.settings.openaiApiKey;
+      const r = key
+        ? await hostedRerank({ baseUrl: this.settings.openaiBaseUrl, apiKey: key, model: this.settings.rerankModel }, english, hits)
+        : null;
+      // Reranked hits carry the cross-encoder's score so `score` stays in result order.
+      if (r) hits = r.hits.map((h, i) => ({ ...h, score: r.scores[i] }));
+    }
+    // The bank row view is internal (MMR); never hand it to callers that serialize hits.
+    return hits.slice(0, k).map(({ vector: _v, ...h }) => h);
+  }
+
+  /** Set by the plugin: non-English query → English search query (failures fall back to the original, cached). */
+  translator: ((query: string) => Promise<string>) | null = null;
+  private translations = new Map<string, string>();
+
+  private async toEnglish(query: string): Promise<string> {
+    if (!this.settings.translateQueries || !this.translator || !isForeignQuery(query)) return query;
+    const hit = this.translations.get(query);
+    if (hit) return hit;
+    try {
+      const en = (await this.translator(query)).trim();
+      if (!en) return query;
+      if (this.translations.size > 500) this.translations.clear();
+      this.translations.set(query, en);
+      return en;
+    } catch (e) {
+      console.warn("[RAG Obsidian] query translation failed — searching the original", e);
+      this.translations.set(query, query); // don't pay for the same failing call on every search
+      return query;
+    }
+  }
+
+  // ---- query expansion: user vocabulary + cached MeSH entry terms ----
+
+  private expander: Promise<Expander> | null = null;
+  readonly mesh = new MeshThesaurus();
+  private get meshPath(): string {
+    return normalizePath(`${this.pluginDir}/mesh-thesaurus.json`);
+  }
+
+  /** What expansion would add to a query (also used by the search pane to show it). */
+  async expand(query: string): Promise<Expansion> {
+    if (!this.expander) this.expander = this.loadExpander();
+    return (await this.expander).expand(query);
+  }
+
+  /** Drop the built expander (vocabulary path changed, thesaurus grew). */
+  invalidateExpander(): void {
+    this.expander = null;
+  }
+
+  private async loadExpander(): Promise<Expander> {
+    const adapter = this.app.vault.adapter;
+    try {
+      if (await adapter.exists(this.meshPath)) this.mesh.load(JSON.parse(await adapter.read(this.meshPath)));
+    } catch (e) {
+      console.warn("[RAG Obsidian] MeSH thesaurus unreadable — ignoring", e);
+    }
+    let vocab = null;
+    const vp = this.settings.searchVocabulary.trim();
+    if (vp) {
+      try {
+        vocab = parseVocabulary(JSON.parse(await adapter.read(normalizePath(vp))));
+      } catch (e) {
+        console.warn(`[RAG Obsidian] search vocabulary "${vp}" unreadable — ignoring`, e);
+      }
+    }
+    return buildExpander(vocab, this.mesh.entries());
+  }
+
+  /** Load the cached thesaurus (and vocabulary) if not yet loaded — `mesh.has` is empty until then. */
+  async ensureExpander(): Promise<void> {
+    if (!this.expander) this.expander = this.loadExpander();
+    await this.expander;
+  }
+
+  /** Look up NLM entry terms for these MeSH headings (cached in the plugin folder, resumable). */
+  async addMeshHeadings(headings: string[], opts: MeshAddOptions = {}): Promise<{ added: number; failed: number }> {
+    if (!this.expander) await (this.expander = this.loadExpander()); // load the existing cache first
+    const res = await this.mesh.addHeadings(headings, opts);
+    await this.app.vault.adapter.write(this.meshPath, JSON.stringify(this.mesh.toJSON()));
+    this.invalidateExpander();
+    return res;
   }
 
   private async persist(): Promise<void> {

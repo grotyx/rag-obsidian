@@ -55,9 +55,12 @@ export class RagChat {
     // With the reranker on, retrieve a wider pool and let the model pick the passages that
     // actually answer the question; without it, retrieval order stands.
     const k = this.settings.topK;
-    const pool = await this.index.search(query, filters, this.settings.llmRerank ? k * RERANK_POOL : k);
+    // The hosted cross-encoder (when on) reorders inside search(); the LLM reranker is the fallback path.
+    const hosted = this.settings.hostedRerank && this.settings.openaiBaseUrl.includes("openrouter.ai");
+    const llmRerank = this.settings.llmRerank && !hosted;
+    const pool = await this.index.search(query, filters, llmRerank ? k * RERANK_POOL : k, { rerank: hosted });
     let hits: SearchHit[];
-    if (this.settings.llmRerank) {
+    if (llmRerank) {
       // Coupled papers bypass the filtered index (the graph doesn't know about year/tag/author
       // filters), so only add them to an otherwise-unfiltered question — anything narrower means
       // the user asked for that scope specifically.
