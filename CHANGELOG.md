@@ -6,6 +6,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Fixed
+
+- Chat kept no reranker at all when the hosted reranker was on but no OpenRouter key was set (Anthropic
+  / Ollama users with *Rerank chat results with the LLM*); the LLM reranker now applies in that case.
+- The search vocabulary is picked up when its file is created or renamed onto the configured path,
+  not only when edited.
+- A vocabulary edit during *Build MeSH synonym list for search* no longer drops the headings fetched
+  so far.
+
 ## [0.8.0] — 2026-10-02
 
 Retrieval, measured. A 96-question held-out benchmark (English and Korean versions of each

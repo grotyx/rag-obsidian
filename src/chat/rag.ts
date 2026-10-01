@@ -56,7 +56,9 @@ export class RagChat {
     // actually answer the question; without it, retrieval order stands.
     const k = this.settings.topK;
     // The hosted cross-encoder (when on) reorders inside search(); the LLM reranker is the fallback path.
-    const hosted = this.settings.hostedRerank && this.settings.openaiBaseUrl.includes("openrouter.ai");
+    // Hosted only when it can actually run (OpenRouter + key); otherwise the LLM reranker still applies.
+    const hosted =
+      this.settings.hostedRerank && this.settings.openaiBaseUrl.includes("openrouter.ai") && !!this.settings.openaiApiKey;
     const llmRerank = this.settings.llmRerank && !hosted;
     const pool = await this.index.search(query, filters, llmRerank ? k * RERANK_POOL : k, { rerank: hosted });
     let hits: SearchHit[];

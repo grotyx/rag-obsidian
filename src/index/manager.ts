@@ -401,6 +401,7 @@ export class IndexManager {
 
   private expander: Promise<Expander> | null = null;
   readonly mesh = new MeshThesaurus();
+  private meshLoaded = false;
   private get meshPath(): string {
     return normalizePath(`${this.pluginDir}/mesh-thesaurus.json`);
   }
@@ -419,7 +420,10 @@ export class IndexManager {
   private async loadExpander(): Promise<Expander> {
     const adapter = this.app.vault.adapter;
     try {
-      if (await adapter.exists(this.meshPath)) this.mesh.load(JSON.parse(await adapter.read(this.meshPath)));
+      // Read the disk copy once: reloading it mid-build (a vocabulary edit invalidates the expander)
+      // would drop headings fetched since, and the build would then save the thesaurus without them.
+      if (!this.meshLoaded && (await adapter.exists(this.meshPath))) this.mesh.load(JSON.parse(await adapter.read(this.meshPath)));
+      this.meshLoaded = true;
     } catch (e) {
       console.warn("[RAG Obsidian] MeSH thesaurus unreadable — ignoring", e);
     }

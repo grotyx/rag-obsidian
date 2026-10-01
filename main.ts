@@ -424,8 +424,13 @@ export default class ScholarRagPlugin extends Plugin {
     // Incremental index maintenance.
     // The search vocabulary is a JSON file (no metadata events): rebuild the expander when it changes.
     this.registerEvent(
-      this.app.vault.on("modify", (file: TAbstractFile) => {
-        if (file.path === normalizePath(this.settings.searchVocabulary || "\u0000")) this.indexManager.invalidateExpander();
+      this.app.vault.on("modify", (file: TAbstractFile) => this.vocabularyTouched(file.path))
+    );
+    this.registerEvent(this.app.vault.on("create", (file: TAbstractFile) => this.vocabularyTouched(file.path)));
+    this.registerEvent(
+      this.app.vault.on("rename", (file: TAbstractFile, oldPath: string) => {
+        this.vocabularyTouched(file.path);
+        this.vocabularyTouched(oldPath);
       })
     );
     this.registerEvent(
@@ -727,6 +732,12 @@ export default class ScholarRagPlugin extends Plugin {
   async openCitekey(citekey: string): Promise<void> {
     const file = this.library.getFile(citekey);
     if (file) await this.app.workspace.getLeaf(false).openFile(file);
+  }
+
+  private vocabularyTouched(path: string): void {
+    if (this.settings.searchVocabulary && path === normalizePath(this.settings.searchVocabulary)) {
+      this.indexManager.invalidateExpander();
+    }
   }
 
   /** "Save latest chat answer as note" — the chat pane owns the history, so open it if needed. */
