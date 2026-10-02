@@ -367,30 +367,47 @@ export class IndexManager {
     if (rerank) {
       const key = this.settings.openaiApiKey;
       // `abstract`: score each hit's paper (title + abstract) instead of the passage itself.
-      const docs = this.rerankOn === "abstract"
-        ? hits.map((h) => {
-            const ab = this.library.getItem(h.citekey)?.abstract;
-            return { ...h, text: typeof ab === "string" && ab ? ab : h.text };
-          })
-        : hits;
-      const r = key
-        ? await hostedRerank({ baseUrl: this.settings.openaiBaseUrl, apiKey: key, model: this.settings.rerankModel }, english, docs)
-        : null;
-      // Reranked hits carry the cross-encoder's score so `score` stays in result order.
-      if (r) {
-        const byId = new Map(hits.map((h) => [h.id, h]));
-        hits = r.hits.map((h, i) => ({ ...(byId.get(h.id) ?? h), score: r.scores[i] }));
+      const api = { baseUrl: this.settings.openaiBaseUrl, apiKey: key, model: this.settings.rerankModel };
+      if (key && this.rerankOn === "abstract" && this.rerankPerPaper) {
+        // One document per paper (title + abstract): a paper's chunks would otherwise send identical
+        // documents and fill pool slots; its passages then keep their retrieval order under its score.
+        const papers = [...new Map(hits.map((h) => [h.citekey, h])).values()].map((h) => {
+          const ab = this.library.getItem(h.citekey)?.abstract;
+          return { ...h, text: typeof ab === "string" && ab ? ab : h.text };
+        });
+        const r = await hostedRerank(api, english, papers);
+        if (r) {
+          const rank = new Map(r.hits.map((p, i) => [p.citekey, { i, score: r.scores[i] }]));
+          hits = hits
+            .filter((h) => rank.has(h.citekey))
+            .map((h, order) => ({ h, order, r: rank.get(h.citekey)! }))
+            .sort((a, b) => a.r.i - b.r.i || a.order - b.order)
+            .map(({ h, r: pr }) => ({ ...h, score: pr.score }));
+        }
+      } else if (key) {
+        const docs = this.rerankOn === "abstract"
+          ? hits.map((h) => {
+              const ab = this.library.getItem(h.citekey)?.abstract;
+              return { ...h, text: typeof ab === "string" && ab ? ab : h.text };
+            })
+          : hits;
+        const r = await hostedRerank(api, english, docs);
+        // Reranked hits carry the cross-encoder's score so `score` stays in result order.
+        if (r) hits = r.hits.map((h, i) => ({ ...h, score: r.scores[i] }));
       }
     }
     // The bank row view is internal (MMR); never hand it to callers that serialize hits.
     return hits.slice(0, k).map(({ vector: _v, ...h }) => h);
   }
 
-  /** Rerank a 3k pool and score each hit's *paper* (title + abstract): on the held-out set this beat
-   *  0.8.0's 2k pool of passages (English nDCG@10 0.76 → 0.80, Korean 0.77 → 0.81) at the same latency.
+  /** Rerank a 3k pool and score each hit's *paper* (title + abstract, one document per paper): on the
+   *  held-out set this beat 0.8.0's 2k pool of passages (English nDCG@10 0.76 → 0.81, Korean 0.77 → 0.83
+   *  with voyage-2.5-lite).
    *  Fields, not settings, so the eval can still compare variants. */
   rerankPool = 3;
   rerankOn: "passage" | "abstract" = "abstract";
+  /** Send one document per paper (vs. one per passage) when reranking abstracts. */
+  rerankPerPaper = true;
   private queryVecs = new Map<string, number[]>();
 
   /** Query embeddings are cached per provider+model: a repeated or re-filtered question skips the API call. */

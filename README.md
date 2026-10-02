@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.8.0-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.8.1-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -89,10 +89,12 @@ A step-by-step guide with screenshots, from adding papers to exporting a Word ma
 **🔎 Search & chat**
 - Hybrid **semantic search** (BM25 + vector) and **citation-grounded chat** that answers
   only from your library, with `[n]` sources.
-- **Measured retrieval** (0.8.0): a free hosted **cross-encoder reranker**, **query expansion**
+- **Measured retrieval** (0.8.1): a hosted **cross-encoder reranker** (about $0.0002 a search), **query expansion**
   (your own search vocabulary + MeSH entry terms), and **automatic translation** of Korean (or any
   non-English) questions. On a 96-question clinical benchmark over 16,578 papers, nDCG@10 rose from
-  0.53 to 0.78 for English questions and from 0.18 to 0.78 for Korean ones.
+  0.53 to 0.81 for English questions and from 0.18 to 0.83 for Korean ones.
+- **Finding-level search** for Claude Code / Codex (MCP `search_findings`): individual results —
+  effect size, CI, p and the verbatim quote — from a note's `## Evidence (extracted)` section.
 - **Filters in the search *and* chat panes** — narrow by publication **year range**, by **author**
   (family name), and by **tag**: type in the tag box (it autocompletes from the tags already in
   your library) and press Enter to add a chip; add several and a paper must carry them all.

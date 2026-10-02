@@ -14,8 +14,10 @@ const [refDir, exDir] = pos;
 const HEAD = "## Evidence (extracted)";
 const cap = (s, n) => (s.length > n ? s.slice(0, n) : s);
 const one = (v) => (v == null ? "" : String(v)).replace(/\s+/g, " ").trim();
-const val = (v) => cap(one(v).replace(/\[/g, "(").replace(/\]/g, ")"), 300);
-const quoteOf = (v) => cap(one(v).replace(/"/g, "'"), 600);
+// Backtick runs would close the ```text fence the findings sit in.
+const noFence = (s) => s.replace(/`{3,}/g, "'''");
+const val = (v) => cap(noFence(one(v)).replace(/\[/g, "(").replace(/\]/g, ")"), 300);
+const quoteOf = (v) => cap(noFence(one(v)).replace(/"/g, "'"), 600);
 
 // --- notes: PMID / DOI from frontmatter
 const byPmid = new Map(), byDoi = new Map();
@@ -84,7 +86,7 @@ for (const [file, e] of perNote) {
   const s = lines.findIndex((l) => l.trimEnd() === HEAD);
   let out;
   if (s >= 0) {
-    let n = lines.findIndex((l, i) => i > s && /^## /.test(l));
+    let n = lines.findIndex((l, i) => i > s && /^##[ \t]/.test(l));
     if (n < 0) n = lines.length;
     const tail = lines.slice(n).join("\n");
     out = lines.slice(0, s).join("\n") + (s ? "\n" : "") + text + (n < lines.length ? "\n" + tail : "");

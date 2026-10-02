@@ -44,7 +44,7 @@ export const MCP_TOOLS: McpTool[] = [
       year_to: integer("Latest publication year.", 1000, 3000),
       author: string("Author family name, matched case-insensitively."),
       tags: strings("Tags that every result must contain."),
-      rerank: { type: "boolean", description: "Reorder results with the hosted cross-encoder (one extra network call, ~1.3 s). Recommended for evidence searches: it raised nDCG@10 from 0.62 to 0.78 on a 96-question benchmark. Default false." },
+      rerank: { type: "boolean", description: "Reorder results with the hosted cross-encoder (one extra network call, under a second). Recommended for evidence searches: it raised nDCG@10 from 0.62 to 0.81 on a 96-question benchmark. Default false." },
     }, ["query"]),
     annotations: { ...readOnly, openWorldHint: true },
   },
@@ -54,7 +54,7 @@ export const MCP_TOOLS: McpTool[] = [
     inputSchema: objectSchema({
       query: string("Clinical question or keywords, English recommended."),
       limit: integer("Maximum findings to return.", 1, 50),
-      papers: strings("Restrict to these citekeys (skips paper retrieval)."),
+      papers: strings("(Year/author/tag filters apply only without this.) Restrict to these citekeys (skips paper retrieval)."),
       year_from: integer("Earliest publication year.", 1000, 3000),
       year_to: integer("Latest publication year.", 1000, 3000),
       author: string("Author family name, matched case-insensitively."),
@@ -364,8 +364,8 @@ export class McpService {
     };
   }
 
-  private async searchLibrary(args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    if (!this.plugin.indexManager.ready) throw new Error("INDEX_NOT_READY: call rebuild_search_index first");
+  /** year_from / year_to / author / tags → SearchFilters (shared by search_library and search_findings). */
+  private filtersOf(args: Record<string, unknown>): SearchFilters {
     const filters: SearchFilters = {};
     if (args.year_from !== undefined) filters.yearFrom = numberArg(args, "year_from", 0, 1000, 3000);
     if (args.year_to !== undefined) filters.yearTo = numberArg(args, "year_to", 0, 1000, 3000);
@@ -373,6 +373,12 @@ export class McpService {
     if (author) filters.author = author;
     const tags = stringArrayArg(args, "tags");
     if (tags) filters.tags = tags;
+    return filters;
+  }
+
+  private async searchLibrary(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.plugin.indexManager.ready) throw new Error("INDEX_NOT_READY: call rebuild_search_index first");
+    const filters = this.filtersOf(args);
     const hits = await this.plugin.indexManager.search(
       stringArg(args, "query"), filters, numberArg(args, "limit", this.plugin.settings.topK, 1, 30),
       { rerank: args.rerank === true, translate: false }
@@ -396,39 +402,43 @@ export class McpService {
     const limit = numberArg(args, "limit", 15, 1, 50);
     const kind = optionalString(args, "kind");
     if (kind !== undefined && kind !== "comparative" && kind !== "prognostic") throw new Error("INVALID_ARGUMENT: kind must be comparative or prognostic");
+    const rerank = args.rerank !== false;
     let keys = stringArrayArg(args, "papers");
     if (!keys) {
       if (!this.plugin.indexManager.ready) throw new Error("INDEX_NOT_READY: call rebuild_search_index first");
-      const filters: SearchFilters = {};
-      if (args.year_from !== undefined) filters.yearFrom = numberArg(args, "year_from", 0, 1000, 3000);
-      if (args.year_to !== undefined) filters.yearTo = numberArg(args, "year_to", 0, 1000, 3000);
-      const author = optionalString(args, "author")?.trim();
-      if (author) filters.author = author;
-      const tags = stringArrayArg(args, "tags");
-      if (tags) filters.tags = tags;
-      const hits = await this.plugin.indexManager.search(query, filters, 30, { rerank: true, translate: false });
-      keys = [...new Set(hits.map((h) => h.citekey))];
+      const hits = await this.plugin.indexManager.search(query, this.filtersOf(args), 30, { rerank, translate: false });
+      keys = hits.map((h) => h.citekey);
     }
-    keys = keys.slice(0, 20);
+    keys = [...new Set(keys)];
+    // Read candidates in rank order and keep the first 20 that actually carry findings — most notes
+    // may have no Evidence section, so truncating before reading could leave nothing.
     const pool: { citekey: string; title: string; year: number; path: string; finding: Finding }[] = [];
     let papersSearched = 0;
+    let withFindings = 0;
     for (const citekey of keys) {
+      if (withFindings >= 20) break;
       const file = this.plugin.library.getFile(citekey);
       const item = this.plugin.library.getItem(citekey);
       if (!file || !item) continue;
       try { await this.vault.assertPath(file.path, false); } catch { continue; }
       papersSearched++;
-      const found = parseFindings(await this.plugin.app.vault.cachedRead(file));
-      for (const finding of found) {
-        if (!kind || finding.kind === kind) pool.push({ citekey, title: text(item.title), year: yearOf(item), path: file.path, finding });
-      }
+      const found = parseFindings(await this.plugin.app.vault.cachedRead(file)).filter((f) => !kind || f.kind === kind);
+      if (found.length) withFindings++;
+      for (const finding of found) pool.push({ citekey, title: text(item.title), year: yearOf(item), path: file.path, finding });
     }
     const s = this.plugin.settings;
     let reranked = false;
-    // 100 findings × 500 chars keeps the free reranker near 2 s; paper order already front-loads the likely ones.
-    let ranked = pool.slice(0, 100).map((p, i) => ({ ...p, score: 0, i }));
-    const docs = ranked.map((p) => ({ text: findingText(p.finding), p }));
-    if (args.rerank !== false && s.openaiBaseUrl.includes("openrouter.ai") && s.openaiApiKey && docs.length) {
+    // The reranker sees at most 100 findings (× 500 chars keeps the free model near 2 s), taken
+    // round-robin across papers so one paper's 40 findings can't fill it; the lexical path scores all.
+    const perPaper = new Map<string, typeof pool>();
+    for (const p of pool) (perPaper.get(p.citekey) ?? perPaper.set(p.citekey, []).get(p.citekey)!).push(p);
+    const lists = [...perPaper.values()];
+    const fair: typeof pool = [];
+    for (let r = 0; fair.length < pool.length && lists.some((l) => r < l.length); r++) for (const l of lists) if (l[r]) fair.push(l[r]);
+    let ranked = fair.map((p, i) => ({ ...p, score: 0, i }));
+    const canRerank = rerank && s.openaiBaseUrl.includes("openrouter.ai") && !!s.openaiApiKey && fair.length > 0;
+    const docs = (canRerank ? ranked.slice(0, 100) : ranked).map((p) => ({ text: findingText(p.finding), p }));
+    if (canRerank) {
       const r = await hostedRerank({ baseUrl: s.openaiBaseUrl, apiKey: s.openaiApiKey, model: s.rerankModel }, query, docs, { maxChars: 500 });
       if (r) {
         reranked = true;
@@ -444,7 +454,7 @@ export class McpService {
     }
     return {
       results: ranked.slice(0, limit).map(({ citekey, title, year, path, finding, score }) => ({ citekey, title, year, path, ...finding, score })),
-      papersSearched, findingsConsidered: pool.length, reranked,
+      papersSearched, findingsConsidered: docs.length, reranked,
       nextAction: "Cite as [@citekey]; quotes are verbatim from the paper but extracted automatically — check them against the source before relying on numbers. A review or discussion section may restate another study's result (e.g. \"X et al. reported…\"): cite the original study for such numbers, not this paper.",
     };
   }

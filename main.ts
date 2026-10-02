@@ -417,9 +417,9 @@ export default class ScholarRagPlugin extends Plugin {
         const graphErr = this.citationGraph.restoreError;
         if (indexErr) new Notice(`Search index not restored (${indexErr}) — rebuild it from the search pane.`);
         if (graphErr) new Notice(`Citation graph cache ignored (${graphErr}) — rebuild it from the command palette.`);
-        if (this.settings.mcpEnabled) await this.startMcp();
         // Load the search vocabulary + MeSH synonyms now, not on the first search (~seconds).
-        void this.indexManager.ensureExpander();
+        if (this.settings.queryExpansion) void this.indexManager.ensureExpander().catch(() => undefined);
+        if (this.settings.mcpEnabled) await this.startMcp();
       });
     });
 
@@ -532,6 +532,13 @@ export default class ScholarRagPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, rec(await this.loadData()));
     let migrated = false;
+    // 0.8.0 shipped the free Nemotron reranker as default; its OpenRouter free tier caps requests
+    // per day (50 on a small balance) and then silently stops reranking. voyage-2.5-lite measured
+    // better (nDCG@10 0.81 vs 0.80) and faster for ~$0.0002 a search.
+    if (this.settings.rerankModel === "nvidia/llama-nemotron-rerank-vl-1b-v2:free") {
+      this.settings.rerankModel = DEFAULT_SETTINGS.rerankModel;
+      migrated = true;
+    }
     if ((this.settings.embeddingProvider as string) === "transformers") {
       this.settings.embeddingProvider = DEFAULT_SETTINGS.embeddingProvider;
       this.settings.embeddingModel = DEFAULT_SETTINGS.embeddingModel;

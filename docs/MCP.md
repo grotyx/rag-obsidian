@@ -174,7 +174,7 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | `compile_manuscript` | Render `[@citekey]` and bibliography into a copy | Creates/updates output note |
 
 The seven note tools (`list_notes` through `trash_note`) can be hidden: **Settings → External AI
-(MCP) → Allow note editing tools**, off. Clients then see only the 12 library tools, and a direct
+(MCP) → Allow note editing tools**, off. Clients then see only the 13 library tools, and a direct
 call to a hidden tool is refused with `UNKNOWN_TOOL`. Clients read the tool list when a session
 starts, so start a new Claude Code / Codex / OpenCode session after changing it.
 

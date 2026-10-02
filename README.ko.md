@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.8.0-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.8.1-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -86,9 +86,11 @@
 
 **🔎 검색·챗**
 - 하이브리드 **의미 검색**(BM25 + 벡터) + 라이브러리 근거 기반 **챗** (`[n]` 출처).
-- **측정으로 다듬은 검색** (0.8.0): 무료 hosted **cross-encoder 재순위**, **질의 확장**(내 검색 용어집 +
+- **측정으로 다듬은 검색** (0.8.1): hosted **cross-encoder 재순위**(검색 1번에 약 0.0002달러), **질의 확장**(내 검색 용어집 +
   MeSH 동의어), 한국어(비영어) 질문 **자동 번역**. 논문 16,578편, 임상 질문 96개 벤치마크에서
-  nDCG@10이 영어 질문 0.53 → 0.78, 한국어 질문 0.18 → 0.78로 올랐습니다.
+  nDCG@10이 영어 질문 0.53 → 0.81, 한국어 질문 0.18 → 0.83로 올랐습니다.
+- Claude Code / Codex용 **결과 단위 검색**(MCP `search_findings`): 노트의 `## Evidence (extracted)` 칸에서
+  효과크기·CI·p값·원문 인용을 개별 결과로 찾아 줍니다.
 - **검색 패널과 챗 패널의 필터** — 출판 **연도 범위**, **저자**(성), **태그**로 결과를 좁힙니다.
   태그 입력창은 라이브러리에 이미 있는 태그를 자동완성하며, Enter를 누르면 칩으로 추가됩니다.
   칩을 여러 개 넣으면 그 태그를 **모두** 가진 논문만 남습니다. 필터는 설정이 아니라 패널에

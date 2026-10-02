@@ -412,8 +412,9 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       toggle(
         "hostedRerank",
         "Rerank results with a cross-encoder",
-        "Uses OpenRouter's rerank endpoint (the default model is free) to reorder search-pane and chat " +
-          "results; replaces the LLM reranker above. About one extra second per search.",
+        "Uses OpenRouter's rerank endpoint to reorder search-pane and chat results by each paper's " +
+          "title and abstract; replaces the LLM reranker above. The default model costs about $0.0002 " +
+          "per search and adds under a second.",
         () => s.openaiBaseUrl.includes("openrouter.ai")
       ),
       text("rerankModel", "Rerank model", undefined, DEFAULT_SETTINGS.rerankModel, undefined, () => s.hostedRerank),

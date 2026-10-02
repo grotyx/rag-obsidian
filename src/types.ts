@@ -94,7 +94,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   searchVocabulary: "",
   searchDiversity: false,
   hostedRerank: true,
-  rerankModel: "nvidia/llama-nemotron-rerank-vl-1b-v2:free",
+  rerankModel: "voyageai/rerank-2.5-lite",
 
   llmProvider: "openai",
   llmModel: "deepseek/deepseek-v4-flash-0731",

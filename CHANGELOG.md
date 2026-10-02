@@ -6,6 +6,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-10-03
+
 ### Added
 
 - **Finding-level search** — MCP tool `search_findings`: finds the relevant papers with the normal
@@ -17,9 +19,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ### Changed
 
-- **Reranking scores the paper** (title + abstract) over a 3× candidate pool instead of the passage
-  over a 2× pool: nDCG@10 0.76 → 0.80 (English) and 0.77 → 0.81 (Korean) on the held-out set, same
-  latency.
+- **Reranking scores the paper** (title + abstract, one document per paper) over a 3× candidate pool
+  instead of each passage over a 2× pool, and the default rerank model is now
+  `voyageai/rerank-2.5-lite` (about $0.0002 a search). The free Nemotron model of 0.8.0 stops working
+  after OpenRouter's daily free-tier cap (50 requests on a small balance) and then silently fell back
+  to retrieval order; settings still on it move to the new default. Held-out nDCG@10: 0.76 → 0.81
+  (English), 0.77 → 0.83 (Korean); a search is about a second faster.
 - The search vocabulary and MeSH synonyms load at startup instead of on the first search, and query
   embeddings are cached (first search ~7 s → ~4.5 s; a repeated question skips the embedding call).
 

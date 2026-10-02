@@ -180,7 +180,7 @@ Manuscripts/Review.md를 읽고 "Outcomes" 절을 보강해줘.
 | `compile_manuscript` | `[@citekey]`와 참고문헌을 렌더링한 사본 생성 | 출력 노트 생성/갱신 |
 
 노트 도구 7개(`list_notes`~`trash_note`)는 숨길 수 있습니다. **설정 → External AI (MCP) →
-Allow note editing tools**를 끄면 클라이언트에는 라이브러리 도구 12개만 보이고, 숨긴 도구를
+Allow note editing tools**를 끄면 클라이언트에는 라이브러리 도구 13개만 보이고, 숨긴 도구를
 직접 호출해도 `UNKNOWN_TOOL`로 거부됩니다. 클라이언트는 세션을 시작할 때 도구 목록을 읽으므로,
 바꾼 뒤에는 Claude Code / Codex / OpenCode 세션을 새로 시작하세요.
 
