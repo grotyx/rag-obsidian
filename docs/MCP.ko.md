@@ -159,6 +159,7 @@ Manuscripts/Review.md를 읽고 "Outcomes" 절을 보강해줘.
 | 도구 | 역할 | 외부 호출/변경 |
 |---|---|---|
 | `library_status` | vault, 플러그인 버전, 인덱스 상태 확인 | 없음 |
+| `search_findings` | 가장 관련 있는 논문들의 `## Evidence (extracted)` 섹션에서 개별 결과(효과크기, p, CI, 원문 인용)를 꺼내 질문 기준으로 재순위 | 임베딩 + rerank 호출, 읽기 전용 |
 | `search_library` | Obsidian과 같은 BM25+벡터 인덱스 검색(키워드 쪽은 라이브러리 동의어로 확장). 검색어는 영어로, 근거 검색에는 `rerank: true` 권장(hosted cross-encoder) | 임베딩, 요청 시 rerank 호출, 읽기 전용 |
 | `rebuild_search_index` | 검색 인덱스 전체 재구축 | 임베딩 가능, 인덱스 변경 |
 | `list_references` | 문헌 메타데이터 필터·페이지 조회 | 읽기 전용 |

@@ -56,6 +56,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `data/reference.ts` | citekey generation, CSL-JSON → markdown note builder |
 | `data/library.ts` | CRUD over `References/`, `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` (add-time) + `matchKeys`/`duplicateGroups` (report, groups on any shared identifier) + `BackfillScope`/`inScope` (pure filter for fill-gaps scoping) |
 | `data/pdfMatch.ts` | `matchPdf` — PDF ↔ reference by file name = citekey, then DOI / PMID / title+year in the first 4,000 chars only (reference lists name other papers) |
+| `data/findings.ts` | `parseFindings` / `findingText` / `evidenceSection` — the `## Evidence (extracted)` callout (Dataview `[key:: value]` fields + verbatim quote per finding); read by MCP `search_findings`, excluded from chunking by `index/chunker.ts` |
 | `data/screening.ts` | `applyScreening` — the one screening write (kq / include / level / design / note + mirrored tags), shared by the MCP `set_reference_fields` tool and the Screening pane; include needs ≥1 KQ |
 | `data/prisma.ts` | `prismaCounts` / `prismaMarkdown` — PRISMA 2020 numbers and the Mermaid + table note (`commands/prisma.ts` gathers the records) |
 | `data/merge.ts` | duplicate merge logic: `pickKeeper`, `mergeFrontmatter`, `mergeBodies` (`renameCiteKeys` lives in `cite/bibliography.ts`) |
@@ -133,7 +134,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (402) + MCP checks + live integration suite (216 checks)
+npm test               # unit (408) + MCP checks + live integration suite (216 checks)
 ```
 
 ## Testing approach (important)

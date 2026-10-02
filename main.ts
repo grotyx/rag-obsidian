@@ -418,6 +418,8 @@ export default class ScholarRagPlugin extends Plugin {
         if (indexErr) new Notice(`Search index not restored (${indexErr}) — rebuild it from the search pane.`);
         if (graphErr) new Notice(`Citation graph cache ignored (${graphErr}) — rebuild it from the command palette.`);
         if (this.settings.mcpEnabled) await this.startMcp();
+        // Load the search vocabulary + MeSH synonyms now, not on the first search (~seconds).
+        void this.indexManager.ensureExpander();
       });
     });
 

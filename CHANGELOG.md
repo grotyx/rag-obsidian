@@ -6,6 +6,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Added
+
+- **Finding-level search** — MCP tool `search_findings`: finds the relevant papers with the normal
+  search, then returns their individual results (outcome, comparison, timepoint, n, effect size, CI,
+  p, direction, and the verbatim quote), reranked against the question. Reads a note's
+  `## Evidence (extracted)` section (a collapsed callout of Dataview inline fields); the section is
+  kept out of the search index, so it costs no memory. `scripts/evidence-from-rag-research.mjs`
+  fills that section from rag_research extraction JSON (matched by PMID/DOI, verbatim quotes only).
+
+### Changed
+
+- **Reranking scores the paper** (title + abstract) over a 3× candidate pool instead of the passage
+  over a 2× pool: nDCG@10 0.76 → 0.80 (English) and 0.77 → 0.81 (Korean) on the held-out set, same
+  latency.
+- The search vocabulary and MeSH synonyms load at startup instead of on the first search, and query
+  embeddings are cached (first search ~7 s → ~4.5 s; a repeated question skips the embedding call).
+
 ### Fixed
 
 - Chat kept no reranker at all when the hosted reranker was on but no OpenRouter key was set (Anthropic

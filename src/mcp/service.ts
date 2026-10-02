@@ -10,6 +10,8 @@ import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
 import { text } from "../util/json";
+import { Finding, findingText, parseFindings } from "../data/findings";
+import { hostedRerank } from "../index/rerank";
 
 type JsonSchema = Record<string, unknown>;
 
@@ -43,6 +45,22 @@ export const MCP_TOOLS: McpTool[] = [
       author: string("Author family name, matched case-insensitively."),
       tags: strings("Tags that every result must contain."),
       rerank: { type: "boolean", description: "Reorder results with the hosted cross-encoder (one extra network call, ~1.3 s). Recommended for evidence searches: it raised nDCG@10 from 0.62 to 0.78 on a 96-question benchmark. Default false." },
+    }, ["query"]),
+    annotations: { ...readOnly, openWorldHint: true },
+  },
+  {
+    name: "search_findings",
+    description: "Find quantitative findings (outcome, intervention vs comparator or predictor, effect, CI, p, verbatim quote) extracted into reference notes' `## Evidence (extracted)` section. Retrieves candidate papers with the hybrid index (calls the embedding provider), then ranks their findings; with rerank=true (default) also OpenRouter's rerank endpoint when configured, else a lexical score. Never an LLM. Returns only papers whose notes carry an Evidence section. Write the query in English.",
+    inputSchema: objectSchema({
+      query: string("Clinical question or keywords, English recommended."),
+      limit: integer("Maximum findings to return.", 1, 50),
+      papers: strings("Restrict to these citekeys (skips paper retrieval)."),
+      year_from: integer("Earliest publication year.", 1000, 3000),
+      year_to: integer("Latest publication year.", 1000, 3000),
+      author: string("Author family name, matched case-insensitively."),
+      tags: strings("Tags that every paper must contain."),
+      kind: { type: "string", enum: ["comparative", "prognostic"], description: "Only this kind of finding." },
+      rerank: { type: "boolean", description: "Use the hosted cross-encoder when available. Default true." },
     }, ["query"]),
     annotations: { ...readOnly, openWorldHint: true },
   },
@@ -309,6 +327,7 @@ export class McpService {
     switch (name) {
       case "library_status": return this.status();
       case "search_library": return this.searchLibrary(args);
+      case "search_findings": return this.searchFindings(args);
       case "rebuild_search_index": return { chunkCount: await this.plugin.indexManager.rebuild() };
       case "list_references": return this.listReferences(args);
       case "get_reference": return this.getReference(stringArg(args, "citekey"));
@@ -370,6 +389,64 @@ export class McpService {
       }
     }
     return { results };
+  }
+
+  private async searchFindings(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const query = stringArg(args, "query");
+    const limit = numberArg(args, "limit", 15, 1, 50);
+    const kind = optionalString(args, "kind");
+    if (kind !== undefined && kind !== "comparative" && kind !== "prognostic") throw new Error("INVALID_ARGUMENT: kind must be comparative or prognostic");
+    let keys = stringArrayArg(args, "papers");
+    if (!keys) {
+      if (!this.plugin.indexManager.ready) throw new Error("INDEX_NOT_READY: call rebuild_search_index first");
+      const filters: SearchFilters = {};
+      if (args.year_from !== undefined) filters.yearFrom = numberArg(args, "year_from", 0, 1000, 3000);
+      if (args.year_to !== undefined) filters.yearTo = numberArg(args, "year_to", 0, 1000, 3000);
+      const author = optionalString(args, "author")?.trim();
+      if (author) filters.author = author;
+      const tags = stringArrayArg(args, "tags");
+      if (tags) filters.tags = tags;
+      const hits = await this.plugin.indexManager.search(query, filters, 30, { rerank: true, translate: false });
+      keys = [...new Set(hits.map((h) => h.citekey))];
+    }
+    keys = keys.slice(0, 20);
+    const pool: { citekey: string; title: string; year: number; path: string; finding: Finding }[] = [];
+    let papersSearched = 0;
+    for (const citekey of keys) {
+      const file = this.plugin.library.getFile(citekey);
+      const item = this.plugin.library.getItem(citekey);
+      if (!file || !item) continue;
+      try { await this.vault.assertPath(file.path, false); } catch { continue; }
+      papersSearched++;
+      const found = parseFindings(await this.plugin.app.vault.cachedRead(file));
+      for (const finding of found) {
+        if (!kind || finding.kind === kind) pool.push({ citekey, title: text(item.title), year: yearOf(item), path: file.path, finding });
+      }
+    }
+    const s = this.plugin.settings;
+    let reranked = false;
+    // 100 findings × 500 chars keeps the free reranker near 2 s; paper order already front-loads the likely ones.
+    let ranked = pool.slice(0, 100).map((p, i) => ({ ...p, score: 0, i }));
+    const docs = ranked.map((p) => ({ text: findingText(p.finding), p }));
+    if (args.rerank !== false && s.openaiBaseUrl.includes("openrouter.ai") && s.openaiApiKey && docs.length) {
+      const r = await hostedRerank({ baseUrl: s.openaiBaseUrl, apiKey: s.openaiApiKey, model: s.rerankModel }, query, docs, { maxChars: 500 });
+      if (r) {
+        reranked = true;
+        ranked = r.hits.map((d, i) => ({ ...d.p, score: r.scores[i] }));
+      }
+    }
+    if (!reranked) {
+      const terms = [...new Set(query.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 3))];
+      ranked = docs.map((d) => {
+        const low = d.text.toLowerCase();
+        return { ...d.p, score: terms.filter((t) => low.includes(t)).length };
+      }).sort((a, b) => b.score - a.score || a.i - b.i);
+    }
+    return {
+      results: ranked.slice(0, limit).map(({ citekey, title, year, path, finding, score }) => ({ citekey, title, year, path, ...finding, score })),
+      papersSearched, findingsConsidered: pool.length, reranked,
+      nextAction: "Cite as [@citekey]; quotes are verbatim from the paper but extracted automatically — check them against the source before relying on numbers. A review or discussion section may restate another study's result (e.g. \"X et al. reported…\"): cite the original study for such numbers, not this paper.",
+    };
   }
 
   private async safeEntries(): Promise<ReturnType<ScholarRagPlugin["library"]["entries"]>> {

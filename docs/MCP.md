@@ -153,6 +153,7 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | Tool | Purpose | Effect |
 |---|---|---|
 | `library_status` | Vault, plugin, and index status | Local read |
+| `search_findings` | Individual results (effect size, p, CI, verbatim quote) from the notes' `## Evidence (extracted)` sections of the best-matching papers, reranked against the question | Embeddings + rerank call; read-only |
 | `search_library` | Search the same BM25+vector index as Obsidian (keyword half expanded with the library's synonyms). Query in English; pass `rerank: true` for the hosted cross-encoder (recommended for evidence) | Embeddings; rerank call when asked; read-only |
 | `rebuild_search_index` | Rebuild the complete private index | Embeddings possible; index write |
 | `list_references` | Page and filter reference metadata | Read-only |

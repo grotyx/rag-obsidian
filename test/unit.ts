@@ -35,7 +35,8 @@ import {
 import { windowsCliShimChecks } from "./windows";
 import { cacheRoot } from "../src/index/localFiles";
 import { pandocCandidates, pandocSuperscripts } from "../src/write/pandoc";
-import { stripFrontmatter } from "../src/index/chunker";
+import { stripFrontmatter, chunkReference } from "../src/index/chunker";
+import { parseFindings, findingText } from "../src/data/findings";
 import { referenceProblems, refcheckReport } from "../src/write/refcheck";
 import { parseStyleIndex } from "../src/cite/styleIndex";
 import {
@@ -845,6 +846,21 @@ check(
   );
 }
 
+// ---------- data/findings.ts + chunker exclusion ----------
+{
+  const ev = '## Evidence (extracted)\n\n> [!quote]- 3 findings\n> - [kind:: comparative] [outcome:: fusion rate] [intervention:: A] [comparator:: B] [effect:: 96%] [future:: z]\n>   "Fusion was 96%."\n> - [kind:: prognostic] [outcome:: reoperation] [predictor:: age > 65] [p:: 0.01]\n>   "Older had more."\n> - [kind:: comparative] [outcome:: no quote]\n';
+  const fs2 = parseFindings(`# T\n\n${ev}\n## Notes\n\n> - [kind:: comparative] [outcome:: leak]\n>   "after section"\n`);
+  check(fs2.length === 2 && fs2[0].intervention === "A" && fs2[1].predictor === "age > 65" && fs2[1].p === "0.01", "parseFindings: 2 findings, quote-less skipped, stops at next heading");
+  check(!("future" in fs2[0]) && parseFindings("# none").length === 0, "parseFindings: unknown key ignored, no section -> []");
+  check(findingText(fs2[0]).includes("A vs B") && findingText(fs2[0]).includes("Fusion was 96%."), "findingText: intervention vs comparator + quote");
+  const plain = "# T\n\nAbout cages.\n\n## Notes\n\nmore";
+  const base = chunkReference({ citekey: "k", title: "T", year: 2020, tags: [], body: plain }, 800);
+  const withEv = chunkReference({ citekey: "k", title: "T", year: 2020, tags: [], body: `${plain}\n\n${ev}` }, 800);
+  const mid = chunkReference({ citekey: "k", title: "T", year: 2020, tags: [], body: `# T\n\n${ev}\n## Notes\n\nAbout cages.\n\nmore` }, 800);
+  check(withEv.map((c) => c.embedText).join() === base.map((c) => c.embedText).join(), "chunker: trailing Evidence section not embedded");
+  check(mid.every((c) => !c.text.includes("fusion rate")) && mid.some((c) => c.text.includes("About cages")), "chunker: mid-note Evidence skipped, later sections kept");
+}
+
 // ---------- index/chunker.ts: stripFrontmatter (reused by writing/export-docx) ----------
 {
   const withFm = "---\ntitle: Draft\nauthor: Me\n---\n\n# Heading\n\nBody [@key].\n";
@@ -1461,6 +1477,13 @@ check(
   await assert.rejects(store.search([1, 2, 3], "x", 3), /dim/);
   await assert.rejects(store.addChunks([mk(2000)], [[1, 2, 3]]), /dim/);
   passed += 2;
+}
+
+// ---------- data/findings.ts: fenced format ----------
+{
+  const md = "# T\n\n## Evidence (extracted)\n\n> [!quote]- 1 findings · x\n> ```text\n> [kind:: comparative] [outcome:: ODI] [p:: 0.02]\n>   \"ODI improved (p = 0.02).\"\n> ```\n\n## Notes\n";
+  const fs = parseFindings(md);
+  check(fs.length === 1 && fs[0].outcome === "ODI" && fs[0].p === "0.02" && fs[0].quote === "ODI improved (p = 0.02).", "parseFindings: fenced (non-list) format");
 }
 
 // ---------- index/expand.ts: source priority + duplicate headings ----------

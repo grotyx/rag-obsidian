@@ -1,4 +1,5 @@
 import { text } from "../util/json";
+import { evidenceSection } from "../data/findings";
 export interface Chunk {
   id: string;
   citekey: string;
@@ -93,7 +94,9 @@ export function chunkReference(input: ChunkInput, maxChars: number): Chunk[] {
   if (input.abstract) sections.push({ section: "abstract", text: input.abstract });
 
   // Body: skip the H1 title line; keep the rest under a "notes" section bucket.
-  const body = input.body
+  // The Evidence section is structured data for search_findings, not prose to embed.
+  const ev = evidenceSection(input.body);
+  const body = (ev ? input.body.replace(ev, "") : input.body)
     .replace(/^#\s.*$/m, "")
     .replace(/^##\s*(Notes|Highlights)\s*$/gim, "")
     .trim();

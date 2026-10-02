@@ -133,6 +133,7 @@ function fakeApp(initial: Record<string, string> = {}): {
       getMarkdownFiles: () => [...files.values()].map((x) => x.file),
       getAbstractFileByPath: (path: string) => files.get(path)?.file ?? (folders.has(path) ? { path } : null),
       read: async (file: FakeFile) => files.get(file.path)?.content ?? "",
+      cachedRead: async (file: FakeFile) => files.get(file.path)?.content ?? "",
       create: async (path: string, content: string) => put(path, content),
       modify: async (file: FakeFile, content: string) => { put(file.path, content); },
       createFolder: async (path: string) => { folders.add(path); },
@@ -242,7 +243,7 @@ async function serviceChecks(): Promise<void> {
     /from ["'][^"']*(?:llm\/|ingest\/summarize)/,
   );
   assert.deepEqual(MCP_TOOLS.map((t) => t.name), [
-    "library_status", "search_library", "rebuild_search_index", "list_references",
+    "library_status", "search_library", "search_findings", "rebuild_search_index", "list_references",
     "get_reference", "get_reference_source", "save_reference_summary", "list_tags", "search_pubmed", "add_reference", "list_notes",
     "read_note", "create_note", "update_note", "replace_in_note", "move_note",
     "trash_note", "compile_manuscript", "set_reference_fields",
@@ -250,13 +251,14 @@ async function serviceChecks(): Promise<void> {
   assert.equal(MCP_TOOLS.find((t) => t.name === "search_library")?.annotations?.readOnlyHint, true);
   assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
   const libraryOnly = mcpToolsFor(false).map((t) => t.name);
-  assert.equal(libraryOnly.length, 12, "note tools off leaves the 12 library tools");
+  assert.equal(libraryOnly.length, 13, "note tools off leaves the 13 library tools");
   for (const hidden of ["list_notes", "read_note", "create_note", "update_note", "replace_in_note", "move_note", "trash_note"]) {
     assert.ok(!libraryOnly.includes(hidden), `${hidden} hidden when note tools are off`);
   }
   assert.equal(mcpToolsFor(true), MCP_TOOLS);
 
   const fake = fakeApp({
+    "References/ev.md": "---\ncitekey: jones2023\n---\n\n## Evidence (extracted)\n\n> [!quote]- 3 findings\n> - [kind:: comparative] [outcome:: fusion rate] [intervention:: cage A] [comparator:: cage B] [effect:: 96%]\n>   \"Fusion was 96% with cage A.\"\n> - [kind:: prognostic] [outcome:: reoperation] [predictor:: age > 65] [effect:: OR 2.1]\n>   \"Older patients had more reoperation.\"\n> - [kind:: comparative] [outcome:: pain] [mystery:: x]\n\n## Notes\n",
     "References/ref.md": "---\ncitekey: smith2024\ntitle: Trial\n---\n\n## Summary\n\nUseful.\n\n##\tNotes\n\n##\tHighlights\n\n## Full text (extracted)\n\nvery long",
   });
   const item = {
@@ -274,7 +276,7 @@ async function serviceChecks(): Promise<void> {
       vault: { ...fake.app.vault, getName: () => "Research" },
     },
     settings: {
-      referencesFolder: "References", topK: 20, pubmedApiKey: "", openalexMailto: "",
+      referencesFolder: "References", topK: 20, pubmedApiKey: "", openalexMailto: "", openaiBaseUrl: "http://127.0.0.1:1", openaiApiKey: "",
     },
     indexManager: {
       ready: true,
@@ -289,8 +291,8 @@ async function serviceChecks(): Promise<void> {
     library: {
       folder: () => "References",
       entries: () => [{ citekey: "smith2024", item, file, year: "2024", authors: "Smith", title: "Trial" }],
-      getFile: (citekey: string) => citekey === "smith2024" ? file : null,
-      getItem: (citekey: string) => citekey === "smith2024" ? item : null,
+      getFile: (citekey: string) => citekey === "smith2024" ? file : citekey === "jones2023" ? fake.files.get("References/ev.md")?.file : null,
+      getItem: (citekey: string) => citekey === "smith2024" ? item : citekey === "jones2023" ? { ...item, title: "Cages", issued: { "date-parts": [[2023]] } } : null,
       findDuplicate: (candidate: Record<string, unknown>) => candidate.PMID === "123" ? "smith2024" : null,
       createReference: async () => { created = true; return { path: "References/new.md" }; },
     },
@@ -317,6 +319,15 @@ async function serviceChecks(): Promise<void> {
   assert.deepEqual(searchArgs, ["question", { yearFrom: 2020, tags: ["Spine"] }, 4, { rerank: false, translate: false }]);
   await service.callTool("search_library", { query: "question", rerank: true });
   assert.deepEqual(searchArgs[3], { rerank: true, translate: false });
+  const ff = await service.callTool("search_findings", { query: "reoperation in older patients", papers: ["jones2023", "smith2024"], rerank: false }) as any;
+  assert.equal(ff.results.length, 2, "quote-less finding skipped, paper without section ignored");
+  assert.equal(ff.results[0].outcome, "reoperation", "lexical rank");
+  assert.equal(ff.results[0].citekey, "jones2023");
+  assert.equal(ff.results[0].year, 2023);
+  assert.equal(ff.reranked, false);
+  assert.equal(ff.papersSearched, 2);
+  const fk = await service.callTool("search_findings", { query: "cage", papers: ["jones2023"], kind: "comparative" }) as any;
+  assert.deepEqual(fk.results.map((r: any) => r.outcome), ["fusion rate"]);
   assert.deepEqual(await service.callTool("rebuild_search_index", {}), { chunkCount: 11 });
   assert.equal(rebuilt, 1);
 

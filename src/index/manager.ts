@@ -350,7 +350,7 @@ export class IndexManager {
     // A Korean question lands far from its English twin in embedding space (cosine ~0.45), so
     // translate first when allowed; MCP passes translate:false (its agent translates itself).
     const english = opts.translate !== false ? await this.toEnglish(query) : query;
-    const [vec] = await this.getProvider().embed([english]);
+    const vec = await this.embedQuery(english);
     // Synonyms go to the keyword half only: the embedding already paraphrases, BM25 doesn't.
     // The original words still feed the matcher (Korean aliases live in the vocabulary).
     const term = this.settings.queryExpansion
@@ -358,7 +358,7 @@ export class IndexManager {
       : english;
     // The rerank endpoint is OpenRouter's; any other host would 404 (and get the key posted to it).
     const rerank = !!opts.rerank && this.settings.openaiBaseUrl.includes("openrouter.ai");
-    const want = rerank ? k * 2 : k;
+    const want = rerank ? Math.round(k * this.rerankPool) : k;
     // Over-fetch, then cap per reference: a paper whose stashed PDF text splits into dozens of
     // chunks would otherwise fill the whole result set on its own.
     let hits = await this.store.search(vec, term, want * OVERFETCH, filters);
@@ -366,14 +366,42 @@ export class IndexManager {
     hits = capPerReference(hits, want);
     if (rerank) {
       const key = this.settings.openaiApiKey;
+      // `abstract`: score each hit's paper (title + abstract) instead of the passage itself.
+      const docs = this.rerankOn === "abstract"
+        ? hits.map((h) => {
+            const ab = this.library.getItem(h.citekey)?.abstract;
+            return { ...h, text: typeof ab === "string" && ab ? ab : h.text };
+          })
+        : hits;
       const r = key
-        ? await hostedRerank({ baseUrl: this.settings.openaiBaseUrl, apiKey: key, model: this.settings.rerankModel }, english, hits)
+        ? await hostedRerank({ baseUrl: this.settings.openaiBaseUrl, apiKey: key, model: this.settings.rerankModel }, english, docs)
         : null;
       // Reranked hits carry the cross-encoder's score so `score` stays in result order.
-      if (r) hits = r.hits.map((h, i) => ({ ...h, score: r.scores[i] }));
+      if (r) {
+        const byId = new Map(hits.map((h) => [h.id, h]));
+        hits = r.hits.map((h, i) => ({ ...(byId.get(h.id) ?? h), score: r.scores[i] }));
+      }
     }
     // The bank row view is internal (MMR); never hand it to callers that serialize hits.
     return hits.slice(0, k).map(({ vector: _v, ...h }) => h);
+  }
+
+  /** Rerank a 3k pool and score each hit's *paper* (title + abstract): on the held-out set this beat
+   *  0.8.0's 2k pool of passages (English nDCG@10 0.76 → 0.80, Korean 0.77 → 0.81) at the same latency.
+   *  Fields, not settings, so the eval can still compare variants. */
+  rerankPool = 3;
+  rerankOn: "passage" | "abstract" = "abstract";
+  private queryVecs = new Map<string, number[]>();
+
+  /** Query embeddings are cached per provider+model: a repeated or re-filtered question skips the API call. */
+  private async embedQuery(text: string): Promise<number[]> {
+    const key = `${this.settings.embeddingProvider}:${this.settings.embeddingModel}\u0000${text}`;
+    const hit = this.queryVecs.get(key);
+    if (hit) return hit;
+    const [vec] = await this.getProvider().embed([text]);
+    if (this.queryVecs.size >= 200) this.queryVecs.delete(this.queryVecs.keys().next().value as string);
+    this.queryVecs.set(key, vec);
+    return vec;
   }
 
   /** Set by the plugin: non-English query → English search query (failures fall back to the original, cached). */
