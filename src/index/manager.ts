@@ -204,57 +204,73 @@ export class IndexManager {
 
   private async rebuildNow(onProgress?: (done: number, total: number) => void): Promise<number> {
     const provider = this.getProvider();
-    const all: Chunk[] = [];
-    const pathByCitekey = new Map<string, { path: string; hash: string }>();
-    for (const f of this.files()) {
-      const chunks = await this.readChunks(f);
-      const citekey = chunks[0]?.citekey;
-      if (!citekey) continue;
-      if (pathByCitekey.has(citekey)) {
-        console.warn(`[RAG Obsidian] duplicate citekey "${citekey}" — skipping ${f.path}`);
-        continue;
+    const files = this.files();
+    // Streamed in windows of notes: embed a window, put its vectors straight into the store's
+    // Float32 bank, drop it. Holding every chunk and every embedding (as number[]) until the end
+    // peaked at ~1 GB of extra heap on a 19k-note vault and crashed Obsidian's renderer.
+    const WINDOW = 400;
+    const batchSize = 32;
+    const seen = new Set<string>();
+    let total = 0;
+    let doneNotes = 0;
+    // The old index is dropped first so two copies never sit in memory; if the build fails the
+    // last persisted index is restored from disk below.
+    this.store.reset();
+    try {
+      for (let w = 0; w < files.length; w += WINDOW) {
+        const chunks: Chunk[] = [];
+        const owners: { citekey: string; path: string; hash: string }[] = [];
+        for (const f of files.slice(w, w + WINDOW)) {
+          const cs = await this.readChunks(f);
+          const citekey = cs[0]?.citekey;
+          if (!citekey) continue;
+          if (seen.has(citekey)) {
+            console.warn(`[RAG Obsidian] duplicate citekey "${citekey}" — skipping ${f.path}`);
+            continue;
+          }
+          seen.add(citekey);
+          owners.push({ citekey, path: f.path, hash: chunkHash(cs) });
+          chunks.push(...cs);
+        }
+        doneNotes = Math.min(files.length, w + WINDOW);
+        if (!chunks.length) continue;
+        const batches: Chunk[][] = [];
+        for (let i = 0; i < chunks.length; i += batchSize) batches.push(chunks.slice(i, i + batchSize));
+        // A few embedding requests in flight; the first failure stops new (paid) requests.
+        const stop = new AbortController();
+        const results = await mapPool(
+          batches,
+          EMBED_WIDTH,
+          async (batch) => {
+            try {
+              return await provider.embed(batch.map((c) => c.embedText));
+            } catch (e) {
+              stop.abort();
+              throw e;
+            }
+          },
+          stop.signal
+        );
+        const vectors = results.flat();
+        if (!this.store.ready) this.store.init(vectors[0].length, provider.id);
+        await this.store.addChunks(chunks, vectors);
+        for (const o of owners) this.store.setPath(o.path, o.citekey, o.hash);
+        total += chunks.length;
+        onProgress?.(doneNotes, files.length);
       }
-      pathByCitekey.set(citekey, { path: f.path, hash: chunkHash(chunks) });
-      all.push(...chunks);
+    } catch (e) {
+      this.store.reset();
+      await this.restore(); // back to the last persisted index (it never throws)
+      throw e;
     }
-
-    if (all.length === 0) {
-      // don't init() with a bogus dim — clear instead so reindexFile no-ops until a real build
+    if (total === 0) {
+      // don't keep a bogus dim — clear instead so reindexFile no-ops until a real build
       this.store.reset();
       await this.clearPersisted();
       return 0;
     }
-
-    // A few embedding requests in flight: one at a time took 19.5 min for 22,622 chunks.
-    const batchSize = 32;
-    const batches: Chunk[][] = [];
-    for (let i = 0; i < all.length; i += batchSize) batches.push(all.slice(i, i + batchSize));
-    let embedded = 0;
-    // First failure stops the other workers from starting new (paid) requests.
-    const stop = new AbortController();
-    const results = await mapPool(
-      batches,
-      EMBED_WIDTH,
-      async (batch) => {
-        try {
-          const v = await provider.embed(batch.map((c) => c.embedText));
-          embedded += batch.length;
-          onProgress?.(embedded, all.length);
-          return v;
-        } catch (e) {
-          stop.abort();
-          throw e;
-        }
-      },
-      stop.signal
-    );
-    const vectors = results.flat();
-
-    this.store.init(vectors[0].length, provider.id);
-    await this.store.addChunks(all, vectors);
-    for (const [citekey, { path, hash }] of pathByCitekey) this.store.setPath(path, citekey, hash);
     await this.persist();
-    return all.length;
+    return total;
   }
 
   /** Incremental: re-embed a single note (on edit/create). No-op until first build.

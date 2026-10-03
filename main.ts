@@ -620,7 +620,7 @@ export default class ScholarRagPlugin extends Plugin {
     const notice = new Notice("Building index…", 0);
     try {
       const n = await this.indexManager.rebuild((done, total) =>
-        notice.setMessage(`Embedding ${done}/${total} chunks…`)
+        notice.setMessage(`Indexing ${done}/${total} notes…`)
       );
       new Notice(`Index built: ${n} chunks`);
     } catch (e) {
