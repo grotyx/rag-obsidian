@@ -97,7 +97,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   rerankModel: "voyageai/rerank-2.5-lite",
 
   llmProvider: "openai",
-  llmModel: "deepseek/deepseek-v4-flash-0731",
+  llmModel: "deepseek/deepseek-v4.1-flash",
   chatModel: "deepseek/deepseek-v4-pro-0813",
   cliPath: "",
   anthropicApiKey: "",

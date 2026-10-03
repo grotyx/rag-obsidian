@@ -6,6 +6,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Changed
+
+- Default LLM (summaries, translation, reranking fallback) is now `deepseek/deepseek-v4.1-flash`;
+  settings still on the previous default `deepseek/deepseek-v4-flash-0731` move to it.
+
 ## [0.8.1] — 2026-10-03
 
 ### Added

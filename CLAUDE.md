@@ -250,7 +250,7 @@ in-vault CDP check — before trusting it.
 - **Embeddings**: OpenAI-compatible `openai/text-embedding-3-small` against OpenRouter (default —
   one key also covers chat) · Ollama `nomic-embed-text` (local, needs `ollama pull` + a server
   started with embeddings). Dimension is discovered from the first response.
-- **LLM (chat)**: OpenAI-compatible against OpenRouter (default: `deepseek/deepseek-v4-flash-0731`,
+- **LLM (chat)**: OpenAI-compatible against OpenRouter (default: `deepseek/deepseek-v4.1-flash`,
   chat `deepseek/deepseek-v4-pro-0813`) · Anthropic · Ollama · **Codex CLI / OpenCode CLI** (desktop,
   the user's own login, no key; deliberately no Claude CLI).
   `chatModel` (optional) overrides `llmModel` for "Chat with library" only. The chat answer, the reranker,

@@ -535,6 +535,11 @@ export default class ScholarRagPlugin extends Plugin {
     // 0.8.0 shipped the free Nemotron reranker as default; its OpenRouter free tier caps requests
     // per day (50 on a small balance) and then silently stops reranking. voyage-2.5-lite measured
     // better (nDCG@10 0.81 vs 0.80) and faster for ~$0.0002 a search.
+    // Settings still on the previous default model follow it to v4.1 (a deliberate choice is left alone).
+    if (this.settings.llmModel === "deepseek/deepseek-v4-flash-0731") {
+      this.settings.llmModel = DEFAULT_SETTINGS.llmModel;
+      migrated = true;
+    }
     if (this.settings.rerankModel === "nvidia/llama-nemotron-rerank-vl-1b-v2:free") {
       this.settings.rerankModel = DEFAULT_SETTINGS.rerankModel;
       migrated = true;
