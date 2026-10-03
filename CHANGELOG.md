@@ -30,7 +30,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
   ~140 ms instead of ~240 ms — Obsidian's renderer has a fixed ~4.4 GB heap, which a large library
   (and especially a rebuild) had been exhausting.
 - **Index rebuilds stream** in 400-note windows instead of holding every passage and embedding until
-  the end (a 19k-note rebuild had crashed the renderer).
+  the end, and `docs.json` is written in pieces instead of one 150 MB string: a 19k-note rebuild had
+  crashed the renderer; its heap peak is now 3.4 GB instead of 4.1 GB (of a ~4.4 GB cap).
 
 ### Fixed
 

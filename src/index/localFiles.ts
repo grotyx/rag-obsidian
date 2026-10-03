@@ -8,6 +8,8 @@ export interface FileIO {
   mkdir(path: string): Promise<void>;
   read(path: string): Promise<string>;
   write(path: string, data: string): Promise<void>;
+  /** Append text to an existing file (docs.json is written in pieces, never as one string). */
+  append(path: string, data: string): Promise<void>;
   readBinary(path: string): Promise<ArrayBuffer>;
   writeBinary(path: string, data: ArrayBuffer): Promise<void>;
   remove(path: string): Promise<void>;
@@ -51,6 +53,9 @@ export class NodeFileIO implements FileIO {
   }
   async write(path: string, data: string): Promise<void> {
     await this.fs.writeFile(path, data, "utf8");
+  }
+  async append(path: string, data: string): Promise<void> {
+    await this.fs.writeFile(path, data, { flag: "a" });
   }
   async readBinary(path: string): Promise<ArrayBuffer> {
     const buf = await this.fs.readFile(path);

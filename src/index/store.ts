@@ -56,6 +56,9 @@ export function describeFilters(f: SearchFilters): string {
 /** Text hits kept (every match is scored; past this rank the normalized BM25 share is small). */
 const TEXT_LIMIT = 2000;
 
+/** Size (chars) of one piece of the streamed docs.json. */
+const PART_CHARS = 4_000_000;
+
 function unit(v: ArrayLike<number>, out: Float32Array, at: number): void {
   let n = 0;
   for (let i = 0; i < v.length; i++) n += v[i] * v[i];
@@ -306,40 +309,61 @@ export class VectorStore {
   /** Documents (without their embedding — `docs`) + one packed Float32Array of every
    *  embedding in the same order (`vectors`), instead of persisting the whole Orama DB
    *  (which wrote each vector twice, as JSON text). Order follows `this.chunkIds`. */
+  /** Join of `serializeStream()` — one big string; the writer should prefer the stream. */
   async serialize(): Promise<{ docs: string; vectors: ArrayBuffer; meta: StoredMeta }> {
+    const { parts, vectors, meta } = await this.serializeStream();
+    return { docs: [...parts].join(""), vectors, meta };
+  }
+
+  /** Merge the text index's recent adds into its typed arrays and drop dead bytes (cheap to call often). */
+  flush(): void {
+    this.ti?.compact();
+    this.syncFree();
+  }
+
+  /** Same content as `serialize()`, but `docs.json` comes out as pieces (a generator of
+   *  ≤ ~`PART_CHARS` strings whose concatenation is the file) so it is never one 150 MB+ string. */
+  async serializeStream(): Promise<{ parts: Generator<string>; vectors: ArrayBuffer; meta: StoredMeta }> {
     const ti = this.ti;
     if (!ti) throw new Error("store not initialized");
     const ids: string[] = [];
     for (const arr of Object.values(this.chunkIds)) ids.push(...arr);
-    const vectors = new Float32Array(ids.length * this.dim);
     const dim = this.dim;
-    // documents stream out of the byte store a batch at a time (strings concatenate as ropes)
-    let docs = "[";
-    let batch: string[] = [];
+    const rows = new Int32Array(ids.length);
     ids.forEach((id, i) => {
       const row = this.rowOf.get(id);
-      const doc = row === undefined ? undefined : ti.doc(row);
-      if (row === undefined || !doc) throw new Error(`index/meta desync — rebuild required (missing doc ${id})`);
-      batch.push(
-        JSON.stringify({
-          id: doc.id,
-          citekey: doc.citekey,
-          title: doc.title,
-          section: doc.section,
-          year: doc.year,
-          tags: doc.tags,
-          author: doc.author,
-          text: doc.text,
-        })
-      );
-      vectors.set(this.bank.subarray(row * dim, (row + 1) * dim), i * dim);
-      if (batch.length >= 500) {
-        docs += (docs.length > 1 ? "," : "") + batch.join(",");
-        batch = [];
-      }
+      if (row === undefined || !ti.has(row)) throw new Error(`index/meta desync — rebuild required (missing doc ${id})`);
+      rows[i] = row;
     });
-    if (batch.length) docs += (docs.length > 1 ? "," : "") + batch.join(",");
-    docs += "]";
+    const vectors = new Float32Array(ids.length * dim);
+    for (let i = 0; i < rows.length; i++) vectors.set(this.bank.subarray(rows[i] * dim, (rows[i] + 1) * dim), i * dim);
+    const index: TextIndex = ti;
+    function* parts(): Generator<string> {
+      let out = "[";
+      let first = true;
+      for (const row of rows) {
+        const doc = index.doc(row);
+        if (!doc) throw new Error("index/meta desync — rebuild required");
+        out +=
+          (first ? "" : ",") +
+          JSON.stringify({
+            id: doc.id,
+            citekey: doc.citekey,
+            title: doc.title,
+            section: doc.section,
+            year: doc.year,
+            tags: doc.tags,
+            author: doc.author,
+            text: doc.text,
+          });
+        first = false;
+        if (out.length >= PART_CHARS) {
+          yield out;
+          out = "";
+        }
+      }
+      yield out + "]";
+    }
     const meta: StoredMeta = {
       modelId: this.modelId,
       dim: this.dim,
@@ -349,7 +373,7 @@ export class VectorStore {
       hashes: this.hashes,
       schema: INDEX_SCHEMA,
     };
-    return { docs, vectors: vectors.buffer, meta };
+    return { parts: parts(), vectors: vectors.buffer, meta };
   }
 
   async load(docsJson: string, vectors: ArrayBuffer, meta: StoredMeta): Promise<void> {

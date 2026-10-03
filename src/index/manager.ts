@@ -541,10 +541,11 @@ export class IndexManager {
 
   private async persistNow(): Promise<void> {
     if (!(await this.io.exists(this.dir))) await this.io.mkdir(this.dir);
-    const { docs, vectors, meta } = await this.store.serialize();
+    this.store.flush();
+    const { parts, vectors, meta } = await this.store.serializeStream();
     // docs, then vectors, then meta last: meta is the commit marker (restore bails if it's
     // missing, and store.load rejects a count/size desync from a crash between the writes)
-    await this.writeAtomicText(this.docsPath, docs);
+    await this.writeAtomicParts(this.docsPath, parts);
     await this.writeAtomicBinary(this.vectorsPath, vectors);
     await this.writeAtomicText(this.metaPath, JSON.stringify(meta));
     // a pre-0.7 whole-DB dump left behind at this same location is now dead weight
@@ -560,6 +561,19 @@ export class IndexManager {
     const tmp = `${path}.tmp`;
     await this.io.write(tmp, content);
     // DataAdapter.rename doesn't document overwrite-on-existing semantics — clear the target first
+    if (await this.io.exists(path)) await this.io.remove(path);
+    await this.io.rename(tmp, path);
+  }
+
+  /** `writeAtomicText` for content that arrives in pieces (docs.json is too big for one string). */
+  private async writeAtomicParts(path: string, parts: Iterable<string>): Promise<void> {
+    const tmp = `${path}.tmp`;
+    let first = true;
+    for (const part of parts) {
+      if (first) await this.io.write(tmp, part);
+      else await this.io.append(tmp, part);
+      first = false;
+    }
     if (await this.io.exists(path)) await this.io.remove(path);
     await this.io.rename(tmp, path);
   }

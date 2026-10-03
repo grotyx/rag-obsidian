@@ -1454,6 +1454,12 @@ check(
     passed++;
   }
 
+  const streamed = await store.serializeStream();
+  assert.equal([...streamed.parts].join(""), ser.docs, "streamed docs.json is byte-identical to serialize()");
+  store.flush();
+  assert.equal((await store.serialize()).docs, ser.docs, "flush changes nothing observable");
+  passed += 2;
+
   const scaled = new Float32Array(ser.vectors).map((x, i) => x * (1 + (Math.floor(i / DIM) % 5))); // an old index holds raw, un-normalized vectors
   const store3 = new VectorStore();
   await store3.load(ser.docs, scaled.buffer, ser.meta);

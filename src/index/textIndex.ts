@@ -253,7 +253,7 @@ export class TextIndex {
     }
     this.st[row] = 1;
     this.live++;
-    if (this.fields[F_TEXT].memCount > Math.max(500_000, this.fields[F_TEXT].rows.length >> 2)) this.compact();
+    if (this.fields[F_TEXT].memCount > Math.max(200_000, this.fields[F_TEXT].rows.length >> 3)) this.compact();
   }
 
   /** Lazy removal: queries skip the row at once; its postings go at the next `compact()`. */
