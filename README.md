@@ -265,7 +265,7 @@ Paste the key and you are done; everything else is optional.
   would otherwise start on every call), about 4–7 s each, three at a time in batches.
   Embeddings still need OpenRouter/OpenAI or Ollama.
 - **Index location**: *Keep the search index outside the vault* (desktop) stores it in the
-  computer's cache folder, so a synced vault doesn't re-upload it after every change; each
+  computer's app-data folder, so a synced vault doesn't re-upload it after every change; each
   device then builds its own.
 - **Retrieval**: *Results (top-k)* is how many passages an answer is built from (default 20; at
   most three per reference, so one long paper can't take every slot). *Rerank chat results with
@@ -422,8 +422,9 @@ See [`docs/MCP.md`](./docs/MCP.md) for external-AI setup,
   (Pandoc, run locally on the compiled manuscript). The plugin never downloads or installs
   either program.
 - **Files outside the vault (desktop, opt-in).** With "Keep the search index outside the vault"
-  on, the index is written to the operating system's cache folder
-  (`~/Library/Caches`, `%LOCALAPPDATA%` or `~/.cache`, under `academic-paper-citation-manager/`).
+  on, the index is written to the operating system's app-data folder
+  (`~/Library/Application Support`, `%LOCALAPPDATA%` or `~/.local/share`, under
+  `academic-paper-citation-manager/`; through 0.8.1 it was the cache folder, which cleaners empty).
   CLI and Pandoc calls use a temporary folder that is deleted after each call.
 
 ## 👤 Author

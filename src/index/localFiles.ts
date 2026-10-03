@@ -67,10 +67,19 @@ export class NodeFileIO implements FileIO {
   }
 }
 
-/** OS cache root for the given platform/env/home — pure, so it's unit-testable without
- *  touching the real OS. macOS: `~/Library/Caches`. Windows: `%LOCALAPPDATA%` (fallback
- *  `~/AppData/Local`). Else: `$XDG_CACHE_HOME` or `~/.cache`. */
+/** Local app-data root for the given platform/env/home — pure, so it's unit-testable without
+ *  touching the real OS. Not the OS *cache* folder: cleaners and the OS empty `~/Library/Caches`
+ *  and `~/.cache` at will, and a 0.5 GB index then silently vanished (rebuild + embedding cost).
+ *  macOS: `~/Library/Application Support`. Windows: `%LOCALAPPDATA%` (fallback `~/AppData/Local`).
+ *  Else: `$XDG_DATA_HOME` or `~/.local/share`. */
 export function cacheRoot(platform: string, env: Record<string, string | undefined>, home: string): string {
+  if (platform === "darwin") return `${home}/Library/Application Support`;
+  if (platform === "win32") return env.LOCALAPPDATA || `${home}/AppData/Local`;
+  return env.XDG_DATA_HOME || `${home}/.local/share`;
+}
+
+/** Where 0.7.x–0.8.x kept the index (the OS cache folder), for a one-time move. */
+export function legacyCacheRoot(platform: string, env: Record<string, string | undefined>, home: string): string {
   if (platform === "darwin") return `${home}/Library/Caches`;
   if (platform === "win32") return env.LOCALAPPDATA || `${home}/AppData/Local`;
   return env.XDG_CACHE_HOME || `${home}/.cache`;
@@ -84,5 +93,16 @@ export async function localIndexDir(vaultBasePath: string): Promise<string> {
   const { fs, crypto, os, pathApi } = loadNode();
   const real = (await fs.realpath(vaultBasePath)).normalize("NFC");
   const key = crypto.createHash("sha256").update(real).digest("hex").slice(0, 24);
-  return pathApi.join(cacheRoot(process.platform, process.env, os.homedir()), "academic-paper-citation-manager", key, "index");
+  const at = (root: string) => pathApi.join(root, "academic-paper-citation-manager", key);
+  const dir = at(cacheRoot(process.platform, process.env, os.homedir()));
+  const legacy = at(legacyCacheRoot(process.platform, process.env, os.homedir()));
+  // Move an index left in the old cache location (same path on Windows: nothing to do).
+  if (legacy !== dir) {
+    const exists = (p: string) => fs.stat(p).then(() => true, () => false);
+    if ((await exists(legacy)) && !(await exists(dir))) {
+      await fs.mkdir(pathApi.dirname(dir), { recursive: true });
+      await fs.rename(legacy, dir).catch(() => undefined);
+    }
+  }
+  return pathApi.join(dir, "index");
 }

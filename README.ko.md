@@ -259,7 +259,7 @@ manuwright는 선택 사항입니다. 플러그인은 혼자서도 쓸 수 있�
   CLI 사용자 설정을 건너뛰고 실행되며(그렇지 않으면 CLI의 MCP 서버와 훅이 매번 뜸), 한 번에
   4–7초, 일괄 작업은 3개씩입니다. 임베딩은 여전히 OpenRouter/OpenAI 또는 Ollama가 필요합니다.
 - **인덱스 위치**: *Keep the search index outside the vault*(데스크톱)를 켜면 인덱스를 컴퓨터의
-  캐시 폴더에 둡니다. 동기화되는 vault가 변경 때마다 인덱스를 다시 올리지 않고, 기기마다 따로
+  앱 데이터 폴더에 둡니다. 동기화되는 vault가 변경 때마다 인덱스를 다시 올리지 않고, 기기마다 따로
   만듭니다.
 - **검색**: *Results (top-k)*는 답변 하나가 참고하는 구절 수(기본 20, 문헌당 최대 3구절이라
   긴 논문 하나가 전체를 차지하지 못함). *Rerank chat results with the LLM*은 기본 꺼짐 —
@@ -402,7 +402,7 @@ node scripts/to-docx.cjs "Manuscript (compiled).md"                  # compiled 
   자기 제공자에게 보냅니다. 플러그인은 키를 저장하지 않고 CLI의 사용자 설정을 건너뜁니다)와
   **Word로 내보내기**(Pandoc을 로컬에서 실행)입니다. 플러그인이 이 프로그램들을 내려받거나 설치하지 않습니다.
 - **vault 밖 파일(데스크톱, 선택).** "Keep the search index outside the vault"를 켜면 인덱스를
-  운영체제 캐시 폴더(`~/Library/Caches`, `%LOCALAPPDATA%`, `~/.cache` 아래
+  운영체제 앱 데이터 폴더(`~/Library/Application Support`, `%LOCALAPPDATA%`, `~/.local/share` 아래
   `academic-paper-citation-manager/`)에 씁니다. CLI와 Pandoc 호출은 매번 지워지는 임시 폴더를 씁니다.
 
 ## 👤 저자

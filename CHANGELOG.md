@@ -21,6 +21,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 - `search_findings` flags `restated` findings — a quote reporting another study's result ("X et al.
   reported…", "[7]", "previous studies") — and ranks them below the paper's own results.
 
+### Fixed
+
+- **The search index no longer lives in the OS cache folder** (*Keep the search index outside the
+  vault*): `~/Library/Caches` / `~/.cache` are emptied by cleaner apps and the OS, and the 0.5 GB index
+  vanished, forcing a rebuild. It now lives in the app-data folder (`~/Library/Application Support`,
+  `~/.local/share`; unchanged on Windows), and an index found in the old place is moved once.
+
 ## [0.8.1] — 2026-10-03
 
 ### Added

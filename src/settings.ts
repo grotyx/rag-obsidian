@@ -239,7 +239,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         s.indexLocal = value as boolean;
         await this.plugin.saveSettings();
         await this.plugin.indexManager.relocate();
-        new Notice(s.indexLocal ? "Search index moved to the local cache folder." : "Search index moved back into the vault.");
+        new Notice(s.indexLocal ? "Search index moved to this computer's app-data folder." : "Search index moved back into the vault.");
         return;
       }
       case "llmProvider": {
@@ -455,7 +455,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         toggle(
           "indexLocal",
           "Keep the search index outside the vault",
-          "Stores the index in this computer's cache folder instead of the plugin folder, so OneDrive / " +
+          "Stores the index in this computer's app-data folder instead of the plugin folder, so OneDrive / " +
             "iCloud / Obsidian Sync don't re-upload it after every change. Each device then builds its own index."
         )
       );

@@ -33,7 +33,7 @@ import {
   winQuote,
 } from "../src/llm/cli";
 import { windowsCliShimChecks } from "./windows";
-import { cacheRoot } from "../src/index/localFiles";
+import { cacheRoot, legacyCacheRoot } from "../src/index/localFiles";
 import { pandocCandidates, pandocSuperscripts } from "../src/write/pandoc";
 import { stripFrontmatter, chunkReference } from "../src/index/chunker";
 import { parseFindings, findingText, isRestated } from "../src/data/findings";
@@ -721,7 +721,8 @@ await windowsCliShimChecks();
 // ---------- index/localFiles.ts: cacheRoot (pure — platform/env/home injected) ----------
 {
   const home = "/Users/kim";
-  check(cacheRoot("darwin", {}, home) === `${home}/Library/Caches`, "cacheRoot: darwin → Library/Caches");
+  check(cacheRoot("darwin", {}, home) === `${home}/Library/Application Support`, "cacheRoot: darwin → Application Support (not the purgeable Caches)");
+  check(legacyCacheRoot("darwin", {}, home) === `${home}/Library/Caches`, "legacyCacheRoot: darwin → Library/Caches (one-time move source)");
   check(
     cacheRoot("win32", { LOCALAPPDATA: "C:\\Users\\kim\\AppData\\Local" }, "C:\\Users\\kim") ===
       "C:\\Users\\kim\\AppData\\Local",
@@ -731,8 +732,9 @@ await windowsCliShimChecks();
     cacheRoot("win32", {}, "C:\\Users\\kim") === "C:\\Users\\kim/AppData/Local",
     "cacheRoot: win32 without LOCALAPPDATA falls back to ~/AppData/Local"
   );
-  check(cacheRoot("linux", { XDG_CACHE_HOME: "/xdg-cache" }, home) === "/xdg-cache", "cacheRoot: linux → $XDG_CACHE_HOME");
-  check(cacheRoot("linux", {}, home) === `${home}/.cache`, "cacheRoot: linux without XDG_CACHE_HOME falls back to ~/.cache");
+  check(cacheRoot("linux", { XDG_DATA_HOME: "/xdg-data" }, home) === "/xdg-data", "cacheRoot: linux → $XDG_DATA_HOME");
+  check(cacheRoot("linux", {}, home) === `${home}/.local/share`, "cacheRoot: linux without XDG_DATA_HOME falls back to ~/.local/share");
+  check(legacyCacheRoot("linux", {}, home) === `${home}/.cache`, "legacyCacheRoot: linux → ~/.cache");
 }
 
 // ---------- ui/libraryFilter.ts: filterAndSort ----------
