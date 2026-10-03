@@ -482,7 +482,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         (llm === "anthropic"
           ? "e.g. claude-haiku-4-5-20251001, claude-sonnet-4-6"
           : llm === "openai"
-            ? "On OpenRouter: deepseek/deepseek-v4.1-flash, openai/gpt-5.1. Straight to OpenAI: gpt-4o-mini."
+            ? "On OpenRouter: deepseek/deepseek-v4-flash-0731, openai/gpt-5.1. Straight to OpenAI: gpt-4o-mini."
             : llm === "codex"
               ? "Empty = your Codex default. e.g. gpt-5.1-codex"
               : llm === "opencode"
