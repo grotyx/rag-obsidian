@@ -60,6 +60,18 @@ export function parseFindings(markdown: string): Finding[] {
   return out;
 }
 
+/** True when the quote reports *another* study's result ("Ghogawala et al. demonstrated…", "[7]",
+ *  "previous studies reported") — typical of introductions, discussions and reviews. Such numbers
+ *  should be cited to the original study, so search_findings flags and demotes them. */
+export function isRestated(quote: string): boolean {
+  return (
+    /\bet al\b/i.test(quote) ||
+    /\[\d+(?:\s*[,–-]\s*\d+)*\]/.test(quote) ||
+    /\b(?:previous|prior|earlier|other)\s+(?:studies|study|reports?|trials?|authors)\b/i.test(quote) ||
+    /\(\s*[A-Z][A-Za-z-]+(?:\s+(?:and|&)\s+[A-Z][A-Za-z-]+)?,?\s+(?:19|20)\d{2}\s*\)/.test(quote)
+  );
+}
+
 /** One line for reranking / lexical scoring. */
 export function findingText(f: Finding): string {
   const who = f.intervention ? `${f.intervention}${f.comparator ? ` vs ${f.comparator}` : ""}` : f.predictor ?? "";

@@ -6,6 +6,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Changed
+
+- **Korean summaries keep medical terms in English** ("Degenerative spondylolisthesis 환자에서 decompression
+  단독군과…"). In a blinded review, mistranslated terms were the most common summary error
+  (cauda equina syndrome → a spinal-tumor syndrome, PACU → ICU); term accuracy rose 4.3 → 4.8 of 5.
+- MCP `search_library` reranks by default (pass `rerank: false` to skip) and reports `reranked` /
+  `rerankSkipped`.
+
+### Added
+
+- A notice when reranking is skipped and why (OpenRouter's daily free-model cap, a rejected key, no
+  credits, a missing model, a timeout) — before, results silently fell back to retrieval order.
+- `search_findings` flags `restated` findings — a quote reporting another study's result ("X et al.
+  reported…", "[7]", "previous studies") — and ranks them below the paper's own results.
+
 ## [0.8.1] — 2026-10-03
 
 ### Added

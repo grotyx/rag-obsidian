@@ -21,7 +21,7 @@ import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summ
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
-import { mmr, parseRerankResponse } from "../src/index/rerank";
+import { rerankHttpReason, mmr, parseRerankResponse } from "../src/index/rerank";
 import { requestWithRetry } from "../src/llm/client";
 import {
   buildCliArgs,
@@ -36,7 +36,7 @@ import { windowsCliShimChecks } from "./windows";
 import { cacheRoot } from "../src/index/localFiles";
 import { pandocCandidates, pandocSuperscripts } from "../src/write/pandoc";
 import { stripFrontmatter, chunkReference } from "../src/index/chunker";
-import { parseFindings, findingText } from "../src/data/findings";
+import { parseFindings, findingText, isRestated } from "../src/data/findings";
 import { referenceProblems, refcheckReport } from "../src/write/refcheck";
 import { parseStyleIndex } from "../src/cite/styleIndex";
 import {
@@ -1484,6 +1484,18 @@ check(
   const md = "# T\n\n## Evidence (extracted)\n\n> [!quote]- 1 findings · x\n> ```text\n> [kind:: comparative] [outcome:: ODI] [p:: 0.02]\n>   \"ODI improved (p = 0.02).\"\n> ```\n\n## Notes\n";
   const fs = parseFindings(md);
   check(fs.length === 1 && fs[0].outcome === "ODI" && fs[0].p === "0.02" && fs[0].quote === "ODI improved (p = 0.02).", "parseFindings: fenced (non-list) format");
+}
+
+// ---------- data/findings.ts: isRestated + rerankHttpReason ----------
+{
+  check(isRestated("Ghogawala et al. demonstrated that ODI improved (p = 0.02)."), "isRestated: et al.");
+  check(isRestated("Fusion rates were 90% in earlier series [7, 9]."), "isRestated: numeric citation");
+  check(isRestated("Previous studies reported a reoperation rate of 10%."), "isRestated: previous studies");
+  check(isRestated("This matches the rate reported earlier (Smith, 2019)."), "isRestated: (Author, year)");
+  check(!isRestated("ODI improved from 41.5 to 14.0 in the fusion group (p = 0.02)."), "isRestated: own result");
+  check(!isRestated("At 2 years (95% CI 1.2-3.6), n = 61 patients."), "isRestated: CI is not a citation");
+  check(/free-model limit/.test(rerankHttpReason(429, '{"error":{"message":"Rate limit exceeded: free-models-per-day"}}')), "rerankHttpReason: free daily cap");
+  check(/key was rejected/.test(rerankHttpReason(401, "")), "rerankHttpReason: bad key");
 }
 
 // ---------- index/expand.ts: source priority + duplicate headings ----------

@@ -10,7 +10,7 @@ import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
 import { text } from "../util/json";
-import { Finding, findingText, parseFindings } from "../data/findings";
+import { Finding, findingText, isRestated, parseFindings } from "../data/findings";
 import { hostedRerank } from "../index/rerank";
 
 type JsonSchema = Record<string, unknown>;
@@ -36,7 +36,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "search_library",
-    description: "Search the same hybrid BM25+vector index as Obsidian (keyword half expanded with the library's synonyms and MeSH entry terms when enabled). Use before factual writing; cite only returned citekeys as [@citekey]. Calls the embedding provider; with rerank=true also a hosted cross-encoder (OpenRouter /rerank). Never an LLM. Write the query in English (the index is English; a Korean query retrieves poorly). Tip: a short hypothetical answer passage as the query often retrieves better than the bare question.",
+    description: "Search the same hybrid BM25+vector index as Obsidian (keyword half expanded with the library's synonyms and MeSH entry terms when enabled). Use before factual writing; cite only returned citekeys as [@citekey]. Calls the embedding provider and, unless rerank=false, a hosted cross-encoder (OpenRouter /rerank). Never an LLM. Write the query in English (the index is English; a Korean query retrieves poorly). Tip: a short hypothetical answer passage as the query often retrieves better than the bare question.",
     inputSchema: objectSchema({
       query: string("Natural-language or keyword evidence query."),
       limit: integer("Maximum passages to return.", 1, 30),
@@ -44,7 +44,7 @@ export const MCP_TOOLS: McpTool[] = [
       year_to: integer("Latest publication year.", 1000, 3000),
       author: string("Author family name, matched case-insensitively."),
       tags: strings("Tags that every result must contain."),
-      rerank: { type: "boolean", description: "Reorder results with the hosted cross-encoder (one extra network call, under a second). Recommended for evidence searches: it raised nDCG@10 from 0.62 to 0.81 on a 96-question benchmark. Default false." },
+      rerank: { type: "boolean", description: "Reorder results with the hosted cross-encoder (one extra network call, under a second; it raised nDCG@10 from 0.62 to 0.81 on a 96-question benchmark). Default true; pass false for a faster, retrieval-order search. The reply's `reranked` says whether it ran and `rerankSkipped` why not." },
     }, ["query"]),
     annotations: { ...readOnly, openWorldHint: true },
   },
@@ -381,7 +381,7 @@ export class McpService {
     const filters = this.filtersOf(args);
     const hits = await this.plugin.indexManager.search(
       stringArg(args, "query"), filters, numberArg(args, "limit", this.plugin.settings.topK, 1, 30),
-      { rerank: args.rerank === true, translate: false }
+      { rerank: args.rerank !== false, translate: false }
     );
     const results = [];
     for (const hit of hits) {
@@ -394,7 +394,8 @@ export class McpService {
         // A reference reached through a vault symlink must not expose outside text over MCP.
       }
     }
-    return { results };
+    const rr = this.plugin.indexManager.lastRerank ?? { asked: false, ok: false };
+    return { results, reranked: rr.ok, ...(rr.asked && !rr.ok && rr.reason ? { rerankSkipped: rr.reason } : {}) };
   }
 
   private async searchFindings(args: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -439,7 +440,10 @@ export class McpService {
     const canRerank = rerank && s.openaiBaseUrl.includes("openrouter.ai") && !!s.openaiApiKey && fair.length > 0;
     const docs = (canRerank ? ranked.slice(0, 100) : ranked).map((p) => ({ text: findingText(p.finding), p }));
     if (canRerank) {
-      const r = await hostedRerank({ baseUrl: s.openaiBaseUrl, apiKey: s.openaiApiKey, model: s.rerankModel }, query, docs, { maxChars: 500 });
+      const r = await hostedRerank({ baseUrl: s.openaiBaseUrl, apiKey: s.openaiApiKey, model: s.rerankModel }, query, docs, {
+        maxChars: 500,
+        onFail: (why) => this.plugin.indexManager.rerankFailed(why),
+      });
       if (r) {
         reranked = true;
         ranked = r.hits.map((d, i) => ({ ...d.p, score: r.scores[i] }));
@@ -453,7 +457,12 @@ export class McpService {
       }).sort((a, b) => b.score - a.score || a.i - b.i);
     }
     return {
-      results: ranked.slice(0, limit).map(({ citekey, title, year, path, finding, score }) => ({ citekey, title, year, path, ...finding, score })),
+      // Restated results (another study's numbers quoted in a discussion/review) sink below the paper's own.
+      results: ranked
+        .map((r) => ({ ...r, restated: isRestated(r.finding.quote) }))
+        .sort((a, b) => Number(a.restated) - Number(b.restated))
+        .slice(0, limit)
+        .map(({ citekey, title, year, path, finding, score, restated }) => ({ citekey, title, year, path, ...finding, score, restated })),
       papersSearched, findingsConsidered: docs.length, reranked,
       nextAction: "Cite as [@citekey]; quotes are verbatim from the paper but extracted automatically — check them against the source before relying on numbers. A review or discussion section may restate another study's result (e.g. \"X et al. reported…\"): cite the original study for such numbers, not this paper.",
     };

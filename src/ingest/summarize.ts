@@ -18,7 +18,10 @@ export function buildSysPrompt(language: string): string {
       ? ""
       : `- Write the BACKGROUND/METHODS/RESULTS/CONCLUSIONS sections in ${structuredLang}, not English.\n`;
   const krRules = wantsBoth
-    ? "- Korean summary must stay concise (4-7 sentences) and cover the main findings in sentence form.\n"
+    ? "- Korean summary must stay concise (4-7 sentences) and cover the main findings in sentence form.\n" +
+      // Mistranslated terms were the most common error in a blinded review of summaries
+      // ("cauda equina syndrome" → a spinal-tumor syndrome, PACU → ICU); English terms stay exact.
+      "- Write the Korean summary as natural Korean sentences, but keep medical terms (diagnoses, procedures, devices, drugs, anatomy, outcome measures, study designs) in English exactly as the source writes them instead of translating them — e.g. \"Degenerative spondylolisthesis 환자에서 decompression 단독군과 fusion 추가군의 ODI 개선은 차이가 없었다(71.4% vs 72.9%).\" Only the terms stay English; never write whole sentences in English. Keep the key numbers.\n"
     : "";
   const krMarker = wantsBoth
     ? "===KR===\n<Concise Korean summary in sentence form>\n"

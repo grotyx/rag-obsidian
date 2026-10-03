@@ -219,12 +219,29 @@ export function parseRerankResponse(json: unknown, n: number): { index: number; 
 /** Cross-encoder rerank through an OpenRouter-style `/rerank` endpoint. Returns the hits
  *  reordered by relevance (scores aligned), or null on any failure so the caller keeps
  *  retrieval order. */
+/** Why a rerank call failed, in words a user can act on (pure; unit-tested). */
+export function rerankHttpReason(status: number, body: string): string {
+  if (status === 429) {
+    return /free/i.test(body)
+      ? "OpenRouter's daily free-model limit is used up (add credits, or switch the rerank model to a paid one such as voyageai/rerank-2.5-lite)"
+      : "the rerank service is rate-limiting requests";
+  }
+  if (status === 401 || status === 403) return "the API key was rejected by the rerank service";
+  if (status === 402) return "the OpenRouter account has no credits left";
+  if (status === 404) return "the rerank model was not found — check the Rerank model setting";
+  return `the rerank service answered HTTP ${status}`;
+}
+
 export async function hostedRerank<T extends { text: string; title?: string }>(
   api: RerankApi,
   query: string,
   hits: T[],
-  opts: { timeoutMs?: number; maxChars?: number } = {},
+  opts: { timeoutMs?: number; maxChars?: number; onFail?: (reason: string) => void } = {},
 ): Promise<{ hits: T[]; scores: number[] } | null> {
+  const fail = (reason: string): null => {
+    opts.onFail?.(reason);
+    return null;
+  };
   if (!hits.length) return null;
   const maxChars = opts.maxChars ?? 1000;
   const documents = hits.map((h) => `${h.title ?? ""}\n${h.text}`.trim().slice(0, maxChars));
@@ -241,11 +258,12 @@ export async function hostedRerank<T extends { text: string; title?: string }>(
       }),
       new Promise<null>((resolve) => { timer = window.setTimeout(() => resolve(null), opts.timeoutMs ?? 8000); }),
     ]);
-    if (!res || res.status >= 400) return null;
+    if (!res) return fail("the rerank service timed out");
+    if (res.status >= 400) return fail(rerankHttpReason(res.status, res.text));
     const parsed = parseRerankResponse(res.json, hits.length);
-    return parsed && { hits: parsed.map((p) => hits[p.index]), scores: parsed.map((p) => p.score) };
-  } catch {
-    return null;
+    return parsed ? { hits: parsed.map((p) => hits[p.index]), scores: parsed.map((p) => p.score) } : fail("the rerank service sent an unreadable reply");
+  } catch (e) {
+    return fail(`the rerank request failed (${e instanceof Error ? e.message : String(e)})`);
   } finally {
     window.clearTimeout(timer);
   }

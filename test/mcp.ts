@@ -315,10 +315,10 @@ async function serviceChecks(): Promise<void> {
   }) as any;
   assert.equal(search.results[0].citekey, "smith2024");
   assert.equal(search.results[0].path, "References/ref.md");
-  // MCP never translates (no plugin LLM) and reranks only when asked.
-  assert.deepEqual(searchArgs, ["question", { yearFrom: 2020, tags: ["Spine"] }, 4, { rerank: false, translate: false }]);
-  await service.callTool("search_library", { query: "question", rerank: true });
-  assert.deepEqual(searchArgs[3], { rerank: true, translate: false });
+  // MCP never translates (no plugin LLM) and reranks unless told not to.
+  assert.deepEqual(searchArgs, ["question", { yearFrom: 2020, tags: ["Spine"] }, 4, { rerank: true, translate: false }]);
+  await service.callTool("search_library", { query: "question", rerank: false });
+  assert.deepEqual(searchArgs[3], { rerank: false, translate: false });
   const ff = await service.callTool("search_findings", { query: "reoperation in older patients", papers: ["jones2023", "smith2024"], rerank: false }) as any;
   assert.equal(ff.results.length, 2, "quote-less finding skipped, paper without section ignored");
   assert.equal(ff.results[0].outcome, "reoperation", "lexical rank");

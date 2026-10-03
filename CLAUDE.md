@@ -134,7 +134,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (408) + MCP checks + live integration suite (216 checks)
+npm test               # unit (416) + MCP checks + live integration suite (216 checks)
 ```
 
 ## Testing approach (important)

@@ -1,4 +1,4 @@
-import { App, TFile, normalizePath, debounce, Platform } from "obsidian";
+import { App, TFile, normalizePath, debounce, Platform, Notice } from "obsidian";
 import { ScholarRagSettings } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
@@ -364,8 +364,10 @@ export class IndexManager {
     let hits = await this.store.search(vec, term, want * OVERFETCH, filters);
     if (this.settings.searchDiversity) hits = mmr(hits, Math.min(hits.length, want * 2));
     hits = capPerReference(hits, want);
+    this.lastRerank = { asked: rerank, ok: false };
     if (rerank) {
       const key = this.settings.openaiApiKey;
+      if (!key) this.rerankFailed("no OpenRouter API key is set");
       // `abstract`: score each hit's paper (title + abstract) instead of the passage itself.
       const api = { baseUrl: this.settings.openaiBaseUrl, apiKey: key, model: this.settings.rerankModel };
       if (key && this.rerankOn === "abstract" && this.rerankPerPaper) {
@@ -375,8 +377,9 @@ export class IndexManager {
           const ab = this.library.getItem(h.citekey)?.abstract;
           return { ...h, text: typeof ab === "string" && ab ? ab : h.text };
         });
-        const r = await hostedRerank(api, english, papers);
+        const r = await hostedRerank(api, english, papers, { onFail: (why) => this.rerankFailed(why) });
         if (r) {
+          this.lastRerank.ok = true;
           const rank = new Map(r.hits.map((p, i) => [p.citekey, { i, score: r.scores[i] }]));
           hits = hits
             .filter((h) => rank.has(h.citekey))
@@ -391,13 +394,29 @@ export class IndexManager {
               return { ...h, text: typeof ab === "string" && ab ? ab : h.text };
             })
           : hits;
-        const r = await hostedRerank(api, english, docs);
+        const r = await hostedRerank(api, english, docs, { onFail: (why) => this.rerankFailed(why) });
         // Reranked hits carry the cross-encoder's score so `score` stays in result order.
-        if (r) hits = r.hits.map((h, i) => ({ ...h, score: r.scores[i] }));
+        if (r) {
+          this.lastRerank.ok = true;
+          hits = r.hits.map((h, i) => ({ ...h, score: r.scores[i] }));
+        }
       }
     }
     // The bank row view is internal (MMR); never hand it to callers that serialize hits.
     return hits.slice(0, k).map(({ vector: _v, ...h }) => h);
+  }
+
+  /** Outcome of the last search's rerank step (MCP reports it; `reason` when it was skipped). */
+  lastRerank: { asked: boolean; ok: boolean; reason?: string } = { asked: false, ok: false };
+  private rerankNoticeAt = new Map<string, number>();
+
+  /** A skipped rerank silently drops search quality, so say why — once per reason per 30 minutes. */
+  rerankFailed(reason: string): void {
+    this.lastRerank.reason = reason;
+    const now = Date.now();
+    if (now - (this.rerankNoticeAt.get(reason) ?? 0) < 30 * 60 * 1000) return;
+    this.rerankNoticeAt.set(reason, now);
+    new Notice(`Reranking skipped — ${reason}. Results are in retrieval order.`, 10000);
   }
 
   /** Rerank a 3k pool and score each hit's *paper* (title + abstract, one document per paper): on the
