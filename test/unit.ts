@@ -9,6 +9,7 @@
  */
 import assert from "node:assert/strict";
 import { VectorStore } from "../src/index/store";
+import { TextIndex, tokenize } from "../src/index/textIndex";
 import { create, insertMultiple, search, MODE_HYBRID_SEARCH, AnyOrama, SearchParams } from "@orama/orama";
 
 import { parseLibrary } from "../src/ingest/import";
@@ -1459,7 +1460,7 @@ check(
   assert.deepEqual((await store3.search(queries[0], terms[0], 10)).map((h) => h.id), (await store.search(queries[0], terms[0], 10)).map((h) => h.id));
   passed++;
 
-  // (c) remove + re-add reuses rows; removed ids never come back
+  // (c) remove + re-add: removed ids never come back; freed rows are reused only after a text-index compaction
   const gone = new Set((await store.search(queries[0], "", 5)).map((h) => h.citekey));
   for (const ck of gone) await store.removeCitekey(ck);
   const after = await store.search(queries[0], "", 50);
@@ -1468,17 +1469,107 @@ check(
   const rowsBefore = store["idAt"].length;
   const nv = Array.from({ length: DIM }, () => rnd() - 0.5);
   await store.addChunks([mk(1000)], [nv]);
-  assert.equal(store["idAt"].length, rowsBefore, "freed row reused, bank not grown");
+  assert.equal(store["idAt"].length, rowsBefore + 1, "stale rows are not reused before a compaction");
   assert.equal((await store.search(nv, "", 1))[0].id, "c1000");
-  await store.addChunks([mk(1000)], [vecs[1]]); // same id again replaces in place
-  assert.equal(store["idAt"].length, rowsBefore);
+  store["ti"]?.compact();
+  await store.addChunks([mk(1001)], [vecs[1]]);
+  assert.equal(store["idAt"].length, rowsBefore + 1, "after a compaction a freed row is reused");
+  const nv2 = Array.from({ length: DIM }, () => rnd() - 0.5);
+  await store.addChunks([mk(1001)], [nv2]); // same id again replaces it
   assert.equal(store["rowOf"].size, store.count, "one live row per tracked chunk");
-  passed += 6;
+  assert.equal(store["ti"]?.size, store.count, "text index agrees");
+  assert.equal((await store.search(nv2, "", 1))[0].id, "c1001");
+  passed += 7;
 
   // (d) dimension mismatch throws
   await assert.rejects(store.search([1, 2, 3], "x", 3), /dim/);
   await assert.rejects(store.addChunks([mk(2000)], [[1, 2, 3]]), /dim/);
   passed += 2;
+}
+
+// ---------- index/textIndex.ts ----------
+{
+  // tokenizer: Orama's default English one
+  assert.deepEqual(tokenize("Spinal-Fusion, L4/5 don't"), ["spinal-fusion", "l4", "5", "don't"]);
+  assert.deepEqual(tokenize("Café ÀÈÌÒÙ"), ["cafe", "aeiou"]);
+  assert.deepEqual(tokenize("감압술 ODI 개선 odi"), ["odi"], "non-Latin script splits; tokens are unique");
+  assert.deepEqual(tokenize("  "), []);
+  passed += 5;
+
+  // text-only parity against a real Orama DB (same random corpus), incl. removal + compaction
+  let seed = 777;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const vocab = Array.from({ length: 120 }, (_, i) => (i % 7 === 0 ? `Term${i}-x` : `word${i}`)).concat(["spine", "fusion", "Spinal", "lumbar", "disc", "café", "한국어"]);
+  const docs = Array.from({ length: 400 }, (_, i) => ({
+    id: `k${Math.floor(i / 4)}#${i % 4}`, citekey: `k${Math.floor(i / 4)}`, title: `Title ${vocab[Math.floor(rnd() * vocab.length)]} ${i % 9}`,
+    section: i % 3 ? "Methods" : "Abstract", year: 2000 + (i % 25),
+    tags: i % 5 === 0 ? ["Spinal Fusion", "Pain"] : i % 5 === 1 ? ["Pain"] : [],
+    author: [i % 2 ? "kim" : "lee", ...(i % 6 === 0 ? ["park"] : [])],
+    text: Array.from({ length: 5 + Math.floor(rnd() * 40) }, () => vocab[Math.floor(rnd() * vocab.length)]).join(" "),
+  }));
+  const ti = new TextIndex();
+  docs.forEach((d, r) => ti.add(r, d));
+  const ref = create({
+    schema: { id: "string", citekey: "string", title: "string", section: "string", year: "number", tags: "enum[]", tagText: "string", author: "enum[]", text: "string" },
+  });
+  await insertMultiple(ref, docs.map((d) => ({ ...d, tagText: d.tags.join(" ") })));
+  const oramaIds = async (term: string, where?: Record<string, unknown>) => {
+    const r = await search(ref, { term, limit: 2000, boost: { tagText: 1.5 }, ...(where ? { where } : {}) } as SearchParams<AnyOrama>);
+    return (r.hits as unknown as { document: { id: string }; score: number }[]).map((h) => ({ id: h.document.id, score: h.score }));
+  };
+  const checkParity = async (label: string, term: string, f: Parameters<TextIndex["allowedRows"]>[0], where?: Record<string, unknown>, live?: Set<string>) => {
+    const want = (await oramaIds(term, where)).filter((h) => !live || live.has(h.id));
+    const got = ti.search(term, ti.allowedRows(f), 2000).map((h) => ({ id: ti.doc(h.row)?.id ?? "", score: h.score }));
+    assert.equal(got.length, want.length, `${label}: same match count`);
+    for (let i = 0; i < Math.min(10, want.length); i++) assert.ok(Math.abs(got[i].score - want[i].score) < 1e-6 * Math.max(1, want[i].score) || got[i].id === want[i].id, `${label}: rank ${i}`);
+    const topScore = new Map(want.map((h) => [h.id, h.score]));
+    for (const h of got) assert.ok(Math.abs(h.score - (topScore.get(h.id) ?? NaN)) < 1e-6 * Math.max(1, h.score), `${label}: score of ${h.id}`);
+    passed += 3;
+  };
+  const queries = ["spine fusion", "spin", "Term7-x lumbar", "word3 word10 disc", "title 4", "café", "k12", "nothingmatches", "pain", "spinal fusion pain"];
+  for (const q of queries) await checkParity(`q=${q}`, q, {});
+  await checkParity("filters", "spine disc", { yearFrom: 2005, yearTo: 2015, tags: ["Pain"], author: "Kim" }, { year: { between: [2005, 2015] }, tags: { containsAll: ["Pain"] }, author: { containsAll: ["kim"] } });
+  await checkParity("year gte", "lumbar", { yearFrom: 2010 }, { year: { gte: 2010 } });
+  await checkParity("year lte", "lumbar", { yearTo: 2010 }, { year: { lte: 2010 } });
+  assert.deepEqual(ti.search("", null, 10), []);
+  assert.equal(ti.allowedRows({ tags: ["no such tag"] })?.some((x) => x === 1), false);
+  passed += 2;
+
+  // remove (lazy) then compaction: results track a fresh index of the survivors, and Orama minus the removed
+  const dead = new Set<number>();
+  for (let r = 0; r < docs.length; r += 3) { ti.remove(r); dead.add(r); }
+  const fresh = new TextIndex();
+  const live = new Set<string>();
+  docs.forEach((d, r) => { if (!dead.has(r)) { fresh.add(r, d); live.add(d.id); } });
+  const same = (a: TextIndex, b: TextIndex, q: string) => {
+    const x = a.search(q, null, 50), y = b.search(q, null, 50);
+    assert.deepEqual(x.map((h) => h.row), y.map((h) => h.row), `rank ${q}`);
+    x.forEach((h, i) => assert.ok(Math.abs(h.score - y[i].score) < 1e-9, `score ${q}`));
+  };
+  for (const q of ["spine fusion", "lumbar", "word3 disc", "pain"]) same(ti, fresh, q);
+  assert.equal(ti.size, fresh.size);
+  const epoch = ti.epoch;
+  ti.compact();
+  assert.equal(ti.epoch, epoch + 1);
+  for (const q of ["spine fusion", "lumbar", "word3 disc", "pain"]) same(ti, fresh, q);
+  assert.ok(ti.search("spine", null, 2000).every((h) => !dead.has(h.row)), "removed rows never return");
+  assert.equal(ti.doc(0), undefined);
+  // re-adding into a freed row after compaction works, and a stale re-add compacts first
+  ti.add(0, docs[1]);
+  assert.equal(ti.doc(0)?.id, docs[1].id);
+  ti.remove(3);
+  ti.add(3, docs[7]);
+  assert.equal(ti.doc(3)?.id, docs[7].id);
+  passed += 18;
+
+  // UTF-8 fidelity of stored strings / tags / authors
+  const u = new TextIndex();
+  const odd = { id: "u#0", citekey: "kim2024", title: "척추 유합술 — café naïve 🙂", section: "초록", year: 2024, tags: ["척추", "Spinal Fusion"], author: ["김", "o'brien"], text: "요추 감압술 ODI 🙂 résumé 日本語" };
+  u.add(0, odd);
+  assert.deepEqual(u.doc(0), odd);
+  assert.equal(u.search("odi", null, 5)[0].row, 0);
+  assert.equal(u.allowedRows({ tags: ["척추"], author: "김" })?.[0], 1);
+  passed += 3;
 }
 
 // ---------- data/findings.ts: fenced format ----------

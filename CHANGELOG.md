@@ -21,6 +21,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 - `search_findings` flags `restated` findings — a quote reporting another study's result ("X et al.
   reported…", "[7]", "previous studies") — and ranks them below the paper's own results.
 
+### Changed
+
+- **The search index no longer uses Orama at runtime.** A compact BM25 index (`index/textIndex.ts`)
+  that keeps postings and passage text in typed arrays replaces it, with identical rankings (unit
+  parity against Orama; 30/30 identical top-10 on real queries). On a 106k-passage library the index
+  takes ~45 MB of JavaScript heap instead of ~1.85 GB, loads in 4.7 s instead of 18 s, and searches in
+  ~140 ms instead of ~240 ms — Obsidian's renderer has a fixed ~4.4 GB heap, which a large library
+  (and especially a rebuild) had been exhausting.
+- **Index rebuilds stream** in 400-note windows instead of holding every passage and embedding until
+  the end (a 19k-note rebuild had crashed the renderer).
+
 ### Fixed
 
 - **The search index no longer lives in the OS cache folder** (*Keep the search index outside the

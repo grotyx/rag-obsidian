@@ -1,35 +1,7 @@
-import {
-  create,
-  insertMultiple,
-  remove,
-  removeMultiple,
-  getByID,
-  search,
-  AnyOrama,
-  SearchParams,
-} from "@orama/orama";
 import { Chunk } from "./chunker";
+import { TextDoc, TextIndex } from "./textIndex";
 
-/** Orama's generics are driven by string-literal schema types (`"enum[]"`, `` `vector[${N}]` ``)
- *  that aren't worth threading through a runtime-built dimension — this wraps it loosely
- *  (`AnyOrama`) and describes only the document/hit shape actually read here. */
-interface StoredDoc {
-  id: string;
-  citekey: string;
-  title: string;
-  section: string;
-  year: number;
-  tags: string[];
-  author: string[];
-  text: string;
-}
-
-interface SearchHitRaw {
-  document: StoredDoc;
-  score: number;
-}
-
-/** Bump on any Orama schema change (or the on-disk persistence format): an index written
+/** Bump on any index schema change (or the on-disk persistence format): an index written
  *  under an older number cannot be restored into the new schema, so `IndexManager.restore`
  *  drops it and asks for a rebuild.
  *  Schema 4: stopped persisting the whole Orama DB (`@orama/plugin-data-persistence`, which
@@ -81,9 +53,7 @@ export function describeFilters(f: SearchFilters): string {
   return parts.join(" · ");
 }
 
-/** Candidates kept per arm before merging (Orama's own hybrid merges the full lists; the tail
- *  past the top 500 cannot reach a realistic `k`). */
-/** Text hits kept from Orama (it returns every match; past this rank the normalized BM25 share is small). */
+/** Text hits kept (every match is scored; past this rank the normalized BM25 share is small). */
 const TEXT_LIMIT = 2000;
 
 function unit(v: ArrayLike<number>, out: Float32Array, at: number): void {
@@ -93,20 +63,23 @@ function unit(v: ArrayLike<number>, out: Float32Array, at: number): void {
   for (let i = 0; i < v.length; i++) out[at + i] = v[i] / n;
 }
 
-/** Orama (BM25 + facets/filters) for the text arm; embeddings live in one packed Float32Array
- *  we scan ourselves (Orama's vector arm is a brute-force scan too, but holds `number[]`s). */
+/** `TextIndex` (BM25 + facets/filters, typed arrays) for the text arm; embeddings live in one packed
+ *  Float32Array we scan ourselves. Row `r` addresses both. */
 export class VectorStore {
   /** Gated fusion (default): measured on a 96-question held-out set it beat Orama's own hybrid
    *  formula (English nDCG@10 0.63 vs 0.55 with expansion). `false` reproduces Orama exactly — kept for the parity test. */
   gatedFusion = true;
   /** Size of the vector arm's top slice (500; tests shrink it). */
   vectorArm = 500;
-  private db: AnyOrama | null = null;
+  private ti: TextIndex | null = null;
   /** Row-major, L2-normalized (dot = cosine). Capacity grows ×1.5. */
   private bank = new Float32Array(0);
   private rowOf = new Map<string, number>();
   private idAt: (string | null)[] = [];
+  /** Rows whose text postings are gone (reusable) / not yet gone (see `TextIndex.epoch`). */
   private free: number[] = [];
+  private pending: number[] = [];
+  private seenEpoch = 0;
   dim = 0;
   modelId = "";
   chunkIds: Record<string, string[]> = {};
@@ -116,12 +89,12 @@ export class VectorStore {
   hashes: Record<string, string> = {};
 
   get ready(): boolean {
-    return this.db !== null;
+    return this.ti !== null;
   }
 
   /** Drop everything; store becomes not-ready until the next init/load. */
   reset(): void {
-    this.db = null;
+    this.ti = null;
     this.clearBank();
     this.dim = 0;
     this.modelId = "";
@@ -135,11 +108,21 @@ export class VectorStore {
     this.rowOf = new Map();
     this.idAt = [];
     this.free = [];
+    this.pending = [];
+  }
+
+  /** Freed rows become reusable once a compaction has dropped their stale text postings. */
+  private syncFree(): void {
+    if (!this.ti || this.ti.epoch === this.seenEpoch) return;
+    for (const r of this.pending) this.free.push(r);
+    this.pending = [];
+    this.seenEpoch = this.ti.epoch;
   }
 
   private takeRow(id: string): number {
     let row = this.rowOf.get(id);
     if (row === undefined) {
+      this.syncFree();
       row = this.free.pop();
       if (row === undefined) {
         row = this.idAt.length;
@@ -159,9 +142,10 @@ export class VectorStore {
   private freeRow(id: string): void {
     const row = this.rowOf.get(id);
     if (row === undefined) return;
+    this.syncFree();
     this.rowOf.delete(id);
     this.idAt[row] = null;
-    this.free.push(row);
+    this.pending.push(row);
   }
 
   /** Create a fresh DB for a given vector dimension + model id. Clears content. */
@@ -172,50 +156,37 @@ export class VectorStore {
     this.paths = {};
     this.hashes = {};
     this.clearBank();
-    this.db = create({
-      schema: {
-        id: "string",
-        citekey: "string",
-        title: "string",
-        section: "string",
-        year: "number",
-        // enum[] gives exact, whole-value matching (`containsAll`); string[] would tokenize,
-        // so a multi-word tag like "Spinal Fusion" could never be filtered on as one value.
-        tags: "enum[]",
-        // A tokenized copy of the same tags, `enum[]` can't participate in full-text relevance
-        // (that's the point of enum) — this is what lets a query mentioning "spinal fusion"
-        // rank a chunk whose only mesh_terms/tags hit is that phrase, boosted in `search()`.
-        tagText: "string",
-        author: "enum[]",
-        text: "string",
-      },
-    });
+    this.ti = new TextIndex();
+    this.seenEpoch = 0;
   }
 
   async addChunks(chunks: Chunk[], vectors: number[][]): Promise<void> {
-    if (!this.db) throw new Error("store not initialized");
+    const ti = this.ti;
+    if (!ti) throw new Error("store not initialized");
     for (const v of vectors.slice(0, chunks.length)) {
       if (v?.length !== this.dim) throw new Error(`Vector dim ${v?.length} ≠ index dim ${this.dim}.`);
     }
-    const docs = chunks.map((c) => ({
-      id: c.id,
-      citekey: c.citekey,
-      title: c.title,
-      section: c.section,
-      year: c.year,
-      tags: c.tags,
-      tagText: c.tags.join(" "),
-      author: c.authors,
-      text: c.text,
-    }));
-    // stale ids (e.g. meta/DB desync) would make insertMultiple throw DOCUMENT_ALREADY_EXISTS
-    for (const d of docs) {
-      if (getByID(this.db, d.id)) await remove(this.db, d.id);
+    // stale ids (e.g. meta/DB desync) are replaced: free the old row, take a clean one
+    for (const c of chunks) {
+      const old = this.rowOf.get(c.id);
+      if (old !== undefined) {
+        ti.remove(old);
+        this.freeRow(c.id);
+      }
     }
-    await insertMultiple(this.db, docs);
     chunks.forEach((c, i) => {
       const row = this.takeRow(c.id); // may reallocate the bank, so take the row first
       unit(vectors[i], this.bank, row * this.dim);
+      ti.add(row, {
+        id: c.id,
+        citekey: c.citekey,
+        title: c.title,
+        section: c.section,
+        year: c.year,
+        tags: c.tags,
+        author: c.authors,
+        text: c.text,
+      });
     });
     for (const c of chunks) {
       if (!this.chunkIds[c.citekey]) this.chunkIds[c.citekey] = [];
@@ -224,11 +195,12 @@ export class VectorStore {
   }
 
   async removeCitekey(citekey: string): Promise<void> {
-    if (!this.db) return;
-    const ids = this.chunkIds[citekey];
-    if (ids && ids.length) {
-      await removeMultiple(this.db, ids);
-      for (const id of ids) this.freeRow(id);
+    const ti = this.ti;
+    if (!ti) return;
+    for (const id of this.chunkIds[citekey] ?? []) {
+      const row = this.rowOf.get(id);
+      if (row !== undefined) ti.remove(row);
+      this.freeRow(id);
     }
     delete this.chunkIds[citekey];
     for (const [p, ck] of Object.entries(this.paths)) {
@@ -259,43 +231,18 @@ export class VectorStore {
     k: number,
     filters: SearchFilters = {}
   ): Promise<SearchHit[]> {
-    if (!this.db) throw new Error("Index not built yet — run “Rebuild index”.");
+    const ti = this.ti;
+    if (!ti) throw new Error("Index not built yet — run “Rebuild index”.");
     if (queryVec.length !== this.dim) {
       throw new Error(`Query dim ${queryVec.length} ≠ index dim ${this.dim}. Rebuild the index.`);
     }
-    const where: Record<string, unknown> = {};
-    // Orama allows exactly one operator per property, so a two-sided range must be `between`
-    // rather than `{ gte, lte }` (which throws INVALID_FILTER_OPERATION).
-    if (filters.yearFrom && filters.yearTo) where.year = { between: [filters.yearFrom, filters.yearTo] };
-    else if (filters.yearFrom) where.year = { gte: filters.yearFrom };
-    else if (filters.yearTo) where.year = { lte: filters.yearTo };
-    if (filters.tags?.length) where.tags = { containsAll: filters.tags };
-    if (filters.author) where.author = { containsAll: [filters.author.trim().toLowerCase()] };
-    const db = this.db;
-    const whereArg = Object.keys(where).length ? { where } : {};
-    // Text arm: Orama BM25 (a boost, not a filter, on tagged passages), top score → 1.
-    const text = await search(db, {
-      term: term || " ",
-      limit: TEXT_LIMIT,
-      boost: { tagText: 1.5 },
-      ...whereArg,
-    } as SearchParams<AnyOrama>);
-    const textHits = text.hits as unknown as SearchHitRaw[];
-    const docs = new Map<string, StoredDoc>();
-    const merged = new Map<string, number>();
+    const allowed = ti.allowedRows(filters);
+    // Text arm: BM25 (a boost, not a filter, on tagged passages), top score → 1.
+    const textHits = ti.search(term, allowed, TEXT_LIMIT);
+    const merged = new Map<number, number>();
     const maxText = textHits.length ? textHits[0].score : 0;
-    if (maxText > 0) {
-      for (const h of textHits) {
-        docs.set(h.document.id, h.document);
-        merged.set(h.document.id, (0.5 * h.score) / maxText);
-      }
-    }
+    if (maxText > 0) for (const h of textHits) merged.set(h.row, (0.5 * h.score) / maxText);
     // Vector arm: cosine vs every live row (inside the filter), > 0 only, top this.vectorArm, top → 1.
-    let allowed: Set<string> | null = null;
-    if (whereArg.where) {
-      const all = await search(db, { term: "", limit: Math.max(1, this.count), ...whereArg } as SearchParams<AnyOrama>);
-      allowed = new Set((all.hits as unknown as SearchHitRaw[]).map((h) => h.document.id));
-    }
     const q = new Float32Array(this.dim);
     unit(queryVec, q, 0);
     const dim = this.dim;
@@ -304,17 +251,16 @@ export class VectorStore {
     // only a top slice of the vector arm dropped that half for text-only hits and reordered results.
     const sim = new Float32Array(this.idAt.length);
     let maxVec = 0;
-    let cand: { id: string; s: number }[] = [];
+    let cand: { row: number; s: number }[] = [];
     let cut = 0;
     for (let row = 0; row < this.idAt.length; row++) {
-      const id = this.idAt[row];
-      if (id === null || (allowed && !allowed.has(id))) continue;
+      if (this.idAt[row] === null || (allowed && !allowed[row])) continue;
       let sc = 0;
       for (let j = 0, o = row * dim; j < dim; j++) sc += q[j] * this.bank[o + j];
       sim[row] = sc;
       if (sc > maxVec) maxVec = sc;
       if (sc <= cut) continue;
-      cand.push({ id, s: sc });
+      cand.push({ row, s: sc });
       if (cand.length >= this.vectorArm * 2) {
         cand.sort((x, y) => y.s - x.s);
         cand = cand.slice(0, this.vectorArm);
@@ -326,30 +272,28 @@ export class VectorStore {
     if (maxVec > 0) {
       // `gated`: only passages in the vector arm's top slice get its share — a keyword-only match the
       // embedding ranks far down is not lifted by a vector score it barely has.
-      const near = this.gatedFusion ? new Set(cand.map((c) => c.id)) : null;
-      for (const id of merged.keys()) {
-        if (near && !near.has(id)) continue;
-        const row = this.rowOf.get(id);
-        const sc = row === undefined ? 0 : sim[row];
-        if (sc > 0) merged.set(id, (merged.get(id) ?? 0) + (0.5 * sc) / maxVec);
+      const near = this.gatedFusion ? new Set(cand.map((c) => c.row)) : null;
+      for (const row of merged.keys()) {
+        if (near && !near.has(row)) continue;
+        const sc = sim[row];
+        if (sc > 0) merged.set(row, (merged.get(row) ?? 0) + (0.5 * sc) / maxVec);
       }
-      for (const c of cand) if (!merged.has(c.id)) merged.set(c.id, (0.5 * c.s) / maxVec);
+      for (const c of cand) if (!merged.has(c.row)) merged.set(c.row, (0.5 * c.s) / maxVec);
     }
     const top = [...merged].sort((x, y) => y[1] - x[1]).slice(0, k);
     const out: SearchHit[] = [];
-    for (const [id, score] of top) {
-      const d = docs.get(id) ?? (getByID(db, id) as unknown as StoredDoc | undefined);
+    for (const [row, score] of top) {
+      const d = ti.doc(row);
       if (!d) continue;
-      const row = this.rowOf.get(id);
       out.push({
-        id: String(d.id),
-        citekey: String(d.citekey),
-        title: String(d.title),
-        section: String(d.section),
+        id: d.id,
+        citekey: d.citekey,
+        title: d.title,
+        section: d.section,
         year: Number(d.year) || 0,
-        text: String(d.text),
+        text: d.text,
         score,
-        ...(row === undefined ? {} : { vector: this.bank.subarray(row * dim, (row + 1) * dim) }),
+        vector: this.bank.subarray(row * dim, (row + 1) * dim),
       });
     }
     return out;
@@ -363,29 +307,39 @@ export class VectorStore {
    *  embedding in the same order (`vectors`), instead of persisting the whole Orama DB
    *  (which wrote each vector twice, as JSON text). Order follows `this.chunkIds`. */
   async serialize(): Promise<{ docs: string; vectors: ArrayBuffer; meta: StoredMeta }> {
-    if (!this.db) throw new Error("store not initialized");
+    const ti = this.ti;
+    if (!ti) throw new Error("store not initialized");
     const ids: string[] = [];
     for (const arr of Object.values(this.chunkIds)) ids.push(...arr);
-    const docs: Array<Record<string, unknown>> = [];
     const vectors = new Float32Array(ids.length * this.dim);
     const dim = this.dim;
+    // documents stream out of the byte store a batch at a time (strings concatenate as ropes)
+    let docs = "[";
+    let batch: string[] = [];
     ids.forEach((id, i) => {
-      const doc = getByID(this.db as AnyOrama, id) as unknown as StoredDoc | undefined;
-      if (!doc) throw new Error(`index/meta desync — rebuild required (missing doc ${id})`);
-      docs.push({
-        id: doc.id,
-        citekey: doc.citekey,
-        title: doc.title,
-        section: doc.section,
-        year: doc.year,
-        tags: doc.tags,
-        author: doc.author,
-        text: doc.text,
-      });
       const row = this.rowOf.get(id);
-      if (row === undefined) throw new Error(`index/meta desync — rebuild required (missing vector ${id})`);
+      const doc = row === undefined ? undefined : ti.doc(row);
+      if (row === undefined || !doc) throw new Error(`index/meta desync — rebuild required (missing doc ${id})`);
+      batch.push(
+        JSON.stringify({
+          id: doc.id,
+          citekey: doc.citekey,
+          title: doc.title,
+          section: doc.section,
+          year: doc.year,
+          tags: doc.tags,
+          author: doc.author,
+          text: doc.text,
+        })
+      );
       vectors.set(this.bank.subarray(row * dim, (row + 1) * dim), i * dim);
+      if (batch.length >= 500) {
+        docs += (docs.length > 1 ? "," : "") + batch.join(",");
+        batch = [];
+      }
     });
+    if (batch.length) docs += (docs.length > 1 ? "," : "") + batch.join(",");
+    docs += "]";
     const meta: StoredMeta = {
       modelId: this.modelId,
       dim: this.dim,
@@ -395,22 +349,13 @@ export class VectorStore {
       hashes: this.hashes,
       schema: INDEX_SCHEMA,
     };
-    return { docs: JSON.stringify(docs), vectors: vectors.buffer, meta };
+    return { docs, vectors: vectors.buffer, meta };
   }
 
   async load(docsJson: string, vectors: ArrayBuffer, meta: StoredMeta): Promise<void> {
     // docs/vectors/meta written separately — a crash between writes can desync them; treat as absent.
     const tracked = Object.values(meta.chunkIds || {}).reduce((a, b) => a + b.length, 0);
-    const docs = JSON.parse(docsJson) as Array<{
-      id: string;
-      citekey: string;
-      title: string;
-      section: string;
-      year: number;
-      tags: string[];
-      author: string[];
-      text: string;
-    }>;
+    const docs = JSON.parse(docsJson) as Array<TextDoc | undefined>;
     if (docs.length !== tracked) {
       throw new Error(`index/meta desync (${docs.length} docs vs ${tracked} tracked) — rebuild required`);
     }
@@ -421,26 +366,20 @@ export class VectorStore {
       );
     }
     this.init(meta.dim, meta.modelId);
+    const ti = this.ti as TextIndex;
     const view = new Float32Array(vectors);
-    const insertDocs = docs.map((d) => ({
-      id: d.id,
-      citekey: d.citekey,
-      title: d.title,
-      section: d.section,
-      year: d.year,
-      tags: d.tags,
-      tagText: d.tags.join(" "),
-      author: d.author,
-      text: d.text,
-    }));
-    if (insertDocs.length) await insertMultiple(this.db as AnyOrama, insertDocs);
     this.bank = new Float32Array(docs.length * meta.dim);
-    docs.forEach((d, i) => {
+    for (let i = 0; i < docs.length; i++) {
+      const d = docs[i] as TextDoc;
+      docs[i] = undefined; // let the parsed document go as soon as it is indexed
       const o = i * meta.dim;
       unit(view.subarray(o, o + meta.dim), this.bank, o);
       this.rowOf.set(d.id, i);
       this.idAt.push(d.id);
-    });
+      ti.add(i, d);
+    }
+    ti.compact();
+    this.seenEpoch = ti.epoch;
     this.chunkIds = meta.chunkIds || {};
     this.paths = meta.paths || {};
     this.hashes = meta.hashes || {};
