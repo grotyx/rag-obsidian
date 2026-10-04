@@ -6,6 +6,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-10-04
+
 ### Changed
 
 - **Korean summaries keep medical terms in English** ("Degenerative spondylolisthesis 환자에서 decompression
