@@ -6,6 +6,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.8.4] — 2026-10-05
+
 ### Fixed
 
 - Concurrent MCP searches no longer report each other's rerank outcome (`reranked` / `rerankSkipped`
