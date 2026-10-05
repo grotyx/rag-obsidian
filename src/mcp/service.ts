@@ -4,6 +4,7 @@ import { detectId, fetchMetadata, SourceId } from "../ingest/metadata";
 import { fetchPmcFullText, fetchPubmedRecord, PubmedHit, searchPubmedPage } from "../ingest/pubmedSearch";
 import { STASH_MARKER, stashedText } from "../ingest/pdfStash";
 import { SearchFilters } from "../index/store";
+import type { RerankOutcome } from "../index/manager";
 import { summaryBlock, keywordsToTags } from "../data/reference";
 import { applyScreening, INCLUDE_VALUES, LEVELS, ScreeningFields } from "../data/screening";
 import { replaceSummaryBlock } from "../cite/bibliography";
@@ -377,11 +378,12 @@ export class McpService {
   }
 
   private async searchLibrary(args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    if (!this.plugin.indexManager.ready) throw new Error("INDEX_NOT_READY: call rebuild_search_index first");
+    if (!this.plugin.indexManager.ready) throw new Error(this.plugin.indexManager.rebuilding ? "INDEX_REBUILDING: a rebuild is running; retry when it finishes" : "INDEX_NOT_READY: call rebuild_search_index first");
     const filters = this.filtersOf(args);
+    const rr: RerankOutcome = { asked: false, ok: false };
     const hits = await this.plugin.indexManager.search(
       stringArg(args, "query"), filters, numberArg(args, "limit", this.plugin.settings.topK, 1, 30),
-      { rerank: args.rerank !== false, translate: false }
+      { rerank: args.rerank !== false, translate: false, outcome: rr }
     );
     const results = [];
     for (const hit of hits) {
@@ -394,7 +396,6 @@ export class McpService {
         // A reference reached through a vault symlink must not expose outside text over MCP.
       }
     }
-    const rr = this.plugin.indexManager.lastRerank ?? { asked: false, ok: false };
     return { results, reranked: rr.ok, ...(rr.asked && !rr.ok && rr.reason ? { rerankSkipped: rr.reason } : {}) };
   }
 
@@ -406,7 +407,7 @@ export class McpService {
     const rerank = args.rerank !== false;
     let keys = stringArrayArg(args, "papers");
     if (!keys) {
-      if (!this.plugin.indexManager.ready) throw new Error("INDEX_NOT_READY: call rebuild_search_index first");
+      if (!this.plugin.indexManager.ready) throw new Error(this.plugin.indexManager.rebuilding ? "INDEX_REBUILDING: a rebuild is running; retry when it finishes" : "INDEX_NOT_READY: call rebuild_search_index first");
       const hits = await this.plugin.indexManager.search(query, this.filtersOf(args), 30, { rerank, translate: false });
       keys = hits.map((h) => h.citekey);
     }

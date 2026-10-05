@@ -6,6 +6,18 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Fixed
+
+- Concurrent MCP searches no longer report each other's rerank outcome (`reranked` / `rerankSkipped`
+  came from one shared field; it is now per call).
+- Searching during a full index rebuild no longer answers from the part rebuilt so far: Search and
+  Chat say the index is being rebuilt, MCP returns `INDEX_REBUILDING`.
+
+### Docs
+
+- README in 8 languages (English, 한국어, 中文, 日本語, Español, Deutsch, Français, Português) and the
+  user guide in German, French and Portuguese (English screenshots); every page links all eight.
+
 ## [0.8.3] — 2026-10-05
 
 ### Changed

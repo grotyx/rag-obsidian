@@ -284,6 +284,9 @@ async function serviceChecks(): Promise<void> {
       indexedModelId: "test:embed",
       search: async (...args: unknown[]) => {
         searchArgs = args;
+        // Report a rerank through the per-call outcome, like the real manager.
+        const o = (args[3] as any)?.outcome;
+        if (o?.asked !== undefined) { o.asked = !!(args[3] as any).rerank; o.ok = o.asked; }
         return [{ id: "smith2024#0", citekey: "smith2024", title: "Trial", section: "abstract", year: 2024, text: "evidence", score: 0.9 }];
       },
       rebuild: async () => { rebuilt++; return 11; },
@@ -316,9 +319,12 @@ async function serviceChecks(): Promise<void> {
   assert.equal(search.results[0].citekey, "smith2024");
   assert.equal(search.results[0].path, "References/ref.md");
   // MCP never translates (no plugin LLM) and reranks unless told not to.
-  assert.deepEqual(searchArgs, ["question", { yearFrom: 2020, tags: ["Spine"] }, 4, { rerank: true, translate: false }]);
-  await service.callTool("search_library", { query: "question", rerank: false });
-  assert.deepEqual(searchArgs[3], { rerank: false, translate: false });
+  assert.deepEqual(searchArgs.slice(0, 3), ["question", { yearFrom: 2020, tags: ["Spine"] }, 4]);
+  assert.deepEqual(searchArgs[3], { rerank: true, translate: false, outcome: { asked: true, ok: true } });
+  assert.equal(search.reranked, true, "reranked comes from this call's own outcome");
+  const plain = await service.callTool("search_library", { query: "question", rerank: false }) as any;
+  assert.deepEqual(searchArgs[3], { rerank: false, translate: false, outcome: { asked: false, ok: false } });
+  assert.equal(plain.reranked, false);
   const ff = await service.callTool("search_findings", { query: "reoperation in older patients", papers: ["jones2023", "smith2024"], rerank: false }) as any;
   assert.equal(ff.results.length, 2, "quote-less finding skipped, paper without section ignored");
   assert.equal(ff.results[0].outcome, "reoperation", "lexical rank");

@@ -17,7 +17,7 @@
 
 <p align="center"><a href="#-installation">Install</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md">User guide</a> · <a href="#-features">Features</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/MCP.md">Claude Code / Codex</a> · <a href="#manuwright">manuwright</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/CHANGELOG.md">Changelog</a></p>
 
-<p align="center"><b>English</b> · <a href="README.ko.md">한국어</a></p>
+<p align="center"><b>English</b> · <a href="README.ko.md">한국어</a> · <a href="README.zh.md">中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.es.md">Español</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a></p>
 
 <table>
   <tr>
@@ -39,7 +39,7 @@ no account, no backend — just your vault.
 ## 📖 User guide
 
 A step-by-step guide with screenshots, from adding papers to exporting a Word manuscript:
-**[English](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md)** · [한국어](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md) · [中文](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/zh.md) · [日本語](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ja.md) · [Español](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/es.md)
+**[English](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md)** · [한국어](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md) · [中文](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/zh.md) · [日本語](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ja.md) · [Español](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/es.md) · [Deutsch](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/de.md) · [Français](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/fr.md) · [Português](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/pt.md)
 
 [![Citations and a generated bibliography in Obsidian](https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/en/08-bibliography.png)](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md)
 

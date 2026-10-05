@@ -1,6 +1,6 @@
 # Guía del usuario — Refwright
 
-[English](en.md) · [한국어](ko.md) · [中文](zh.md) · [日本語](ja.md) · **Español**
+[English](en.md) · [한국어](ko.md) · [中文](zh.md) · [日本語](ja.md) · **Español** · [Deutsch](de.md) · [Français](fr.md) · [Português](pt.md)
 
 Esta guía recorre el complemento paso a paso, desde reunir artículos hasta exportar un manuscrito a Word. Todas las capturas se tomaron usando el complemento real. Los números rojos de cada captura corresponden a los pasos numerados debajo.
 

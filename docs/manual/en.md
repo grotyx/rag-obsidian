@@ -1,6 +1,6 @@
 # User guide — Refwright
 
-**English** · [한국어](ko.md) · [中文](zh.md) · [日本語](ja.md) · [Español](es.md)
+**English** · [한국어](ko.md) · [中文](zh.md) · [日本語](ja.md) · [Español](es.md) · [Deutsch](de.md) · [Français](fr.md) · [Português](pt.md)
 
 This guide walks through the plugin from collecting papers to exporting a Word manuscript.
 Every screenshot was taken from the real plugin. The red numbers in each screenshot match

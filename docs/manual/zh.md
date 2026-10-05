@@ -1,6 +1,6 @@
 # 用户指南 — Refwright
 
-[English](en.md) · [한국어](ko.md) · **中文** · [日本語](ja.md) · [Español](es.md)
+[English](en.md) · [한국어](ko.md) · **中文** · [日本語](ja.md) · [Español](es.md) · [Deutsch](de.md) · [Français](fr.md) · [Português](pt.md)
 
 从收集论文到导出 Word 原稿，本指南按顺序说明整个流程。所有截图均来自实际操作的插件。截图中的红色数字与下方步骤编号一致。
 

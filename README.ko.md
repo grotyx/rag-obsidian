@@ -17,7 +17,7 @@
 
 <p align="center"><a href="#-설치">설치</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md">사용 설명서</a> · <a href="#-기능">기능</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/MCP.ko.md">Claude Code / Codex</a> · <a href="#manuwright">manuwright</a> · <a href="https://github.com/grotyx/rag-obsidian/blob/main/CHANGELOG.md">변경 기록</a></p>
 
-<p align="center"><a href="README.md">English</a> · <b>한국어</b></p>
+<p align="center"><a href="README.md">English</a> · <b>한국어</b> · <a href="README.zh.md">中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.es.md">Español</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a></p>
 
 <table>
   <tr>
@@ -39,7 +39,7 @@
 ## 📖 사용 설명서
 
 논문 추가부터 Word 원고 내보내기까지 화면과 함께 설명합니다:
-[English](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md) · **[한국어](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md)** · [中文](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/zh.md) · [日本語](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ja.md) · [Español](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/es.md)
+[English](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/en.md) · **[한국어](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md)** · [中文](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/zh.md) · [日本語](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ja.md) · [Español](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/es.md) · [Deutsch](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/de.md) · [Français](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/fr.md) · [Português](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/pt.md)
 
 [![Obsidian에서 인용과 참고문헌을 만든 화면](https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/ko/08-bibliography.png)](https://github.com/grotyx/rag-obsidian/blob/main/docs/manual/ko.md)
 

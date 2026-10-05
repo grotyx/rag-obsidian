@@ -7,6 +7,9 @@
 | 中文 | [zh.md](zh.md) |
 | 日本語 | [ja.md](ja.md) |
 | Español | [es.md](es.md) |
+| Deutsch | [de.md](de.md) (English screenshots) |
+| Français | [fr.md](fr.md) (English screenshots) |
+| Português | [pt.md](pt.md) (English screenshots) |
 
 ## Adding a language
 

@@ -307,8 +307,8 @@ npm run dev
 ## Version bump procedure
 
 Update **all three** on a release: `manifest.json`, `package.json`, `versions.json` (+ a
-CHANGELOG.md entry + the Version line in this file and the **version badge in both
-`README.md` and `README.ko.md`** — the Korean badge sat at 0.3.0 for four releases because
+CHANGELOG.md entry + the Version line in this file and the **version badge in every
+`README*.md`** (en, ko, zh, ja, es, de, fr, pt — `sed -i '' 's/version-OLD-/version-NEW-/' README*.md`) — the Korean badge sat at 0.3.0 for four releases because
 only the English one was being edited). Community releases use an exact `X.Y.Z` tag with no `v`
 prefix. **Push the tag and let `.github/workflows/release.yml` build, attest and publish** the
 release (the Community review recommends artifact attestations); don't `gh release create` by hand. A release commit may use `X.Y.Z: summary`.

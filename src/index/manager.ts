@@ -26,6 +26,9 @@ const EMBED_WIDTH = 4;
 
 
 /** Orchestrates the embedding index: build, incremental update, persistence, search. */
+/** One search's rerank step (MCP reports it; `reason` when it was skipped). */
+export type RerankOutcome = { asked: boolean; ok: boolean; reason?: string };
+
 export class IndexManager {
   private store = new VectorStore();
   // Default (vault-relative) location; still used whenever `indexLocal` is off or unsupported.
@@ -115,8 +118,12 @@ export class IndexManager {
     }
   }
 
+  /** True while `rebuildNow` streams a new index in; the store then holds only part of the library. */
+  rebuilding = false;
+
+  /** Searchable: built and not mid-rebuild (a partial index would answer as if it were the whole library). */
   get ready(): boolean {
-    return this.store.ready;
+    return this.store.ready && !this.rebuilding;
   }
   get count(): number {
     return this.store.count;
@@ -216,6 +223,7 @@ export class IndexManager {
     // The old index is dropped first so two copies never sit in memory; if the build fails the
     // last persisted index is restored from disk below.
     this.store.reset();
+    this.rebuilding = true;
     try {
       for (let w = 0; w < files.length; w += WINDOW) {
         const chunks: Chunk[] = [];
@@ -262,6 +270,8 @@ export class IndexManager {
       this.store.reset();
       await this.restore(); // back to the last persisted index (it never throws)
       throw e;
+    } finally {
+      this.rebuilding = false;
     }
     if (total === 0) {
       // don't keep a bogus dim — clear instead so reindexFile no-ops until a real build
@@ -361,8 +371,9 @@ export class IndexManager {
     query: string,
     filters: SearchFilters = {},
     k = this.settings.topK,
-    opts: { rerank?: boolean; translate?: boolean } = {}
+    opts: { rerank?: boolean; translate?: boolean; outcome?: RerankOutcome } = {}
   ): Promise<SearchHit[]> {
+    if (this.rebuilding) throw new Error("The search index is being rebuilt — search again when it finishes.");
     // A Korean question lands far from its English twin in embedding space (cosine ~0.45), so
     // translate first when allowed; MCP passes translate:false (its agent translates itself).
     const english = opts.translate !== false ? await this.toEnglish(query) : query;
@@ -380,10 +391,13 @@ export class IndexManager {
     let hits = await this.store.search(vec, term, want * OVERFETCH, filters);
     if (this.settings.searchDiversity) hits = mmr(hits, Math.min(hits.length, want * 2));
     hits = capPerReference(hits, want);
-    this.lastRerank = { asked: rerank, ok: false };
+    // Per call, not a shared field: concurrent MCP searches must not report each other's rerank.
+    const out = opts.outcome ?? { asked: false, ok: false };
+    out.asked = rerank;
+    out.ok = false;
     if (rerank) {
       const key = this.settings.openaiApiKey;
-      if (!key) this.rerankFailed("no OpenRouter API key is set");
+      if (!key) this.rerankFailed("no OpenRouter API key is set", out);
       // `abstract`: score each hit's paper (title + abstract) instead of the passage itself.
       const api = { baseUrl: this.settings.openaiBaseUrl, apiKey: key, model: this.settings.rerankModel };
       if (key && this.rerankOn === "abstract" && this.rerankPerPaper) {
@@ -393,9 +407,9 @@ export class IndexManager {
           const ab = this.library.getItem(h.citekey)?.abstract;
           return { ...h, text: typeof ab === "string" && ab ? ab : h.text };
         });
-        const r = await hostedRerank(api, english, papers, { onFail: (why) => this.rerankFailed(why) });
+        const r = await hostedRerank(api, english, papers, { onFail: (why) => this.rerankFailed(why, out) });
         if (r) {
-          this.lastRerank.ok = true;
+          out.ok = true;
           const rank = new Map(r.hits.map((p, i) => [p.citekey, { i, score: r.scores[i] }]));
           hits = hits
             .filter((h) => rank.has(h.citekey))
@@ -410,10 +424,10 @@ export class IndexManager {
               return { ...h, text: typeof ab === "string" && ab ? ab : h.text };
             })
           : hits;
-        const r = await hostedRerank(api, english, docs, { onFail: (why) => this.rerankFailed(why) });
+        const r = await hostedRerank(api, english, docs, { onFail: (why) => this.rerankFailed(why, out) });
         // Reranked hits carry the cross-encoder's score so `score` stays in result order.
         if (r) {
-          this.lastRerank.ok = true;
+          out.ok = true;
           hits = r.hits.map((h, i) => ({ ...h, score: r.scores[i] }));
         }
       }
@@ -422,13 +436,11 @@ export class IndexManager {
     return hits.slice(0, k).map(({ vector: _v, ...h }) => h);
   }
 
-  /** Outcome of the last search's rerank step (MCP reports it; `reason` when it was skipped). */
-  lastRerank: { asked: boolean; ok: boolean; reason?: string } = { asked: false, ok: false };
   private rerankNoticeAt = new Map<string, number>();
 
   /** A skipped rerank silently drops search quality, so say why — once per reason per 30 minutes. */
-  rerankFailed(reason: string): void {
-    this.lastRerank.reason = reason;
+  rerankFailed(reason: string, outcome?: RerankOutcome): void {
+    if (outcome) outcome.reason = reason;
     const now = Date.now();
     if (now - (this.rerankNoticeAt.get(reason) ?? 0) < 30 * 60 * 1000) return;
     this.rerankNoticeAt.set(reason, now);

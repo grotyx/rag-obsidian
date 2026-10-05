@@ -1,6 +1,6 @@
 # ユーザーガイド — Refwright
 
-[English](en.md) · [한국어](ko.md) · [中文](zh.md) · **日本語** · [Español](es.md)
+[English](en.md) · [한국어](ko.md) · [中文](zh.md) · **日本語** · [Español](es.md) · [Deutsch](de.md) · [Français](fr.md) · [Português](pt.md)
 
 論文を集めるところからWord原稿を書き出すところまで、順を追って説明します。すべてのスクリーンショットは実際にプラグインを操作して撮影したものです。画面の赤い番号は、その下の手順番号と対応しています。
 
