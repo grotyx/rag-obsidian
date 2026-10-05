@@ -494,7 +494,7 @@ export default class ScholarRagPlugin extends Plugin {
     try {
       await this.mcpServer.start();
     } catch (error) {
-      console.error("[RAG Obsidian] MCP server failed", error);
+      console.error("[Refwright] MCP server failed", error);
       new Notice(`MCP server failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -504,7 +504,7 @@ export default class ScholarRagPlugin extends Plugin {
     try {
       await this.mcpServer.restart();
     } catch (error) {
-      console.error("[RAG Obsidian] MCP restart failed", error);
+      console.error("[Refwright] MCP restart failed", error);
       new Notice(`MCP restart failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -609,7 +609,7 @@ export default class ScholarRagPlugin extends Plugin {
       );
       new Notice(`Citation graph: ${n} papers linked`);
     } catch (e) {
-      console.error("[RAG Obsidian] citation graph build failed", e);
+      console.error("[Refwright] citation graph build failed", e);
       new Notice(`Graph build failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       notice.hide();
@@ -624,7 +624,7 @@ export default class ScholarRagPlugin extends Plugin {
       );
       new Notice(`Index built: ${n} chunks`);
     } catch (e) {
-      console.error("[RAG Obsidian] rebuild failed", e);
+      console.error("[Refwright] rebuild failed", e);
       new Notice(`Rebuild failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       notice.hide();

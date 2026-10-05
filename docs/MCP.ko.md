@@ -2,7 +2,7 @@
 
 [English](MCP.md) · **한국어**
 
-Academic Paper Citation Manager 0.5.0부터 Claude Code와 Codex가 실행 중인 Obsidian vault를
+Refwright 0.5.0부터 Claude Code와 Codex가 실행 중인 Obsidian vault를
 직접 검색하고 Markdown 노트를 관리할 수 있으며, 0.5.2에서 외부 AI 요약 저장 흐름을
 추가했습니다. 외부 AI가 논문을 찾고 초안을 쓰며, 플러그인은 라이브러리·검색 인덱스·인용
 엔진과 안전한 파일 작업을 MCP 도구로 제공합니다.
@@ -34,7 +34,7 @@ mcp-bridge.cjs (Node 표준 라이브러리만 사용)
 ## 연결하기
 
 1. Obsidian Desktop에서 사용할 vault를 엽니다.
-2. **Settings → Academic Paper Citation Manager → External AI (MCP)** 로 이동합니다.
+2. **Settings → Refwright → External AI (MCP)** 로 이동합니다.
 3. **Enable MCP access**를 켭니다.
 4. 같은 화면에서 Claude Code 명령 또는 Codex 설정을 복사합니다.
 5. 외부 클라이언트를 다시 시작하거나 MCP 서버 목록을 새로 고칩니다.

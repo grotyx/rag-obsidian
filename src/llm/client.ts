@@ -80,7 +80,7 @@ export class LLMClient {
 
   private async anthropic(messages: ChatMessage[], system: string, opts: ChatOpts = {}): Promise<string> {
     const key = this.settings.anthropicApiKey;
-    if (!key) throw new Error("Anthropic API key not set (Settings → RAG Obsidian)");
+    if (!key) throw new Error("Anthropic API key not set (Settings → Refwright)");
     const res = await requestWithRetry({
       url: "https://api.anthropic.com/v1/messages",
       method: "POST",
@@ -111,7 +111,7 @@ export class LLMClient {
 
   private async openai(messages: ChatMessage[], system: string, opts: ChatOpts = {}): Promise<string> {
     const key = this.settings.openaiApiKey;
-    if (!key) throw new Error("API key not set — Settings → Academic Paper Citation Manager → OpenAI API key");
+    if (!key) throw new Error("API key not set — Settings → Refwright → OpenAI API key");
     const body: Record<string, unknown> = {
       model: this.settings.llmModel,
       messages: [{ role: "system", content: system }, ...messages],

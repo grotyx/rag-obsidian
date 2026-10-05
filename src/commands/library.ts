@@ -188,7 +188,7 @@ export async function enrichMetadata(plugin: ScholarRagPlugin): Promise<void> {
           await writes;
         } catch (err) {
           failed++;
-          console.error("[RAG Obsidian] Enrich metadata failed", t.file.path, err);
+          console.error("[Refwright] Enrich metadata failed", t.file.path, err);
         } finally {
           batch.tick(++done, failed);
         }

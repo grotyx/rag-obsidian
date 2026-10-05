@@ -167,7 +167,7 @@ export async function runCli(
   const bin = settings.cliPath || firstExisting(cliCandidates(provider, os.homedir(), process.platform), fs);
   if (!bin) {
     throw new Error(
-      `No ${provider} executable found — set "CLI executable" under Settings → Academic Paper Citation Manager.`
+      `No ${provider} executable found — set "CLI executable" under Settings → Refwright.`
     );
   }
 

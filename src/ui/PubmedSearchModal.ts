@@ -99,7 +99,7 @@ export class PubmedSearchModal extends Modal {
       this.renderResults(hits);
     } catch (e) {
       loading.remove();
-      console.error("[RAG Obsidian] PubMed search failed", e);
+      console.error("[Refwright] PubMed search failed", e);
       this.resultsEl.createEl("p", {
         text: `Search failed: ${e instanceof Error ? e.message : String(e)}`,
       });
@@ -148,7 +148,7 @@ export class PubmedSearchModal extends Modal {
             else
               // A throw here would otherwise leave the status bar stuck on a finished batch.
               this.addSelected().catch((e) => {
-                console.error("[RAG Obsidian] add selected failed", e);
+                console.error("[Refwright] add selected failed", e);
                 this.endBatch("Adding failed (see console)");
               });
           });
@@ -221,7 +221,7 @@ export class PubmedSearchModal extends Modal {
               opts.summarySourceLabel = label;
             } catch (e) {
               new Notice(`Summary failed for PMID ${hit.pmid}; adding without summary.`);
-              console.error("[RAG Obsidian] summarize failed", e);
+              console.error("[Refwright] summarize failed", e);
             }
           }
         }
@@ -248,7 +248,7 @@ export class PubmedSearchModal extends Modal {
       // Empty slot: the batch was cancelled before this paper started.
       if (!p) continue;
       if (p.error) {
-        console.error("[RAG Obsidian] add failed", p.hit.pmid, p.error);
+        console.error("[Refwright] add failed", p.hit.pmid, p.error);
         new Notice(`Failed PMID ${p.hit.pmid}: ${errMsg(p.error)}`);
         continue;
       }

@@ -140,7 +140,7 @@ export class AddReferenceModal extends Modal {
       await this.app.workspace.getLeaf(true).openFile(file);
     } catch (e) {
       notice.hide();
-      console.error("[RAG Obsidian] fetch failed", e);
+      console.error("[Refwright] fetch failed", e);
       new Notice(`Failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       this.busy = false;
@@ -161,7 +161,7 @@ export class AddReferenceModal extends Modal {
       this.close();
       await this.app.workspace.getLeaf(true).openFile(file);
     } catch (e) {
-      console.error("[RAG Obsidian] add failed", e);
+      console.error("[Refwright] add failed", e);
       new Notice(`Failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       this.busy = false;

@@ -76,7 +76,7 @@ export class IndexManager {
         const base = (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
         if (typeof base === "string") return { io: new NodeFileIO(), dir: await localIndexDir(base) };
       } catch (e) {
-        console.error("[RAG Obsidian] could not resolve local index dir — using vault storage", e);
+        console.error("[Refwright] could not resolve local index dir — using vault storage", e);
       }
     }
     return { io: this.app.vault.adapter, dir: this.vaultDir };
@@ -157,7 +157,7 @@ export class IndexManager {
       if (!(await this.io.exists(this.metaPath))) return;
       const meta = JSON.parse(await this.io.read(this.metaPath)) as StoredMeta;
       if (meta.modelId !== this.modelId) {
-        console.debug("[RAG Obsidian] embedding model changed since last build — rebuild required");
+        console.debug("[Refwright] embedding model changed since last build — rebuild required");
         return;
       }
       if ((meta.schema ?? 1) !== INDEX_SCHEMA) {
@@ -167,9 +167,9 @@ export class IndexManager {
       const docs = await this.io.read(this.docsPath);
       const vectors = await this.io.readBinary(this.vectorsPath);
       await this.store.load(docs, vectors, meta);
-      console.debug(`[RAG Obsidian] index restored: ${this.store.count} chunks`);
+      console.debug(`[Refwright] index restored: ${this.store.count} chunks`);
     } catch (e) {
-      console.error("[RAG Obsidian] failed to restore index", e);
+      console.error("[Refwright] failed to restore index", e);
       this.restoreError = e instanceof Error ? e.message : String(e);
     }
   }
@@ -225,7 +225,7 @@ export class IndexManager {
           const citekey = cs[0]?.citekey;
           if (!citekey) continue;
           if (seen.has(citekey)) {
-            console.warn(`[RAG Obsidian] duplicate citekey "${citekey}" — skipping ${f.path}`);
+            console.warn(`[Refwright] duplicate citekey "${citekey}" — skipping ${f.path}`);
             continue;
           }
           seen.add(citekey);
@@ -290,14 +290,14 @@ export class IndexManager {
       // Keep the first note's chunks — rebuild() skips later duplicates the same way.
       const holder = Object.entries(this.store.paths).find(([p, ck]) => ck === citekey && p !== file.path);
       if (holder) {
-        console.warn(`[RAG Obsidian] duplicate citekey "${citekey}" — skipping reindex of ${file.path}`);
+        console.warn(`[Refwright] duplicate citekey "${citekey}" — skipping reindex of ${file.path}`);
         return false;
       }
       // embed + dim-check BEFORE touching the index, so a model mismatch can't drop the note
       const vecs = await this.getProvider().embed(chunks.map((c) => c.embedText));
       if (vecs[0]?.length !== this.store.dim) {
         console.warn(
-          `[RAG Obsidian] embedding dim ${vecs[0]?.length} ≠ index dim ${this.store.dim} — rebuild required; ${file.path} left as-is`
+          `[Refwright] embedding dim ${vecs[0]?.length} ≠ index dim ${this.store.dim} — rebuild required; ${file.path} left as-is`
         );
         return false;
       }
@@ -347,7 +347,7 @@ export class IndexManager {
         try {
           if (await this.reindexNow(f)) changed = true;
         } catch (e) {
-          console.error("[RAG Obsidian] reindex failed", p, e);
+          console.error("[Refwright] reindex failed", p, e);
         }
       }
       if (changed) await this.persist(); // once per burst, not once per note
@@ -471,7 +471,7 @@ export class IndexManager {
       this.translations.set(query, en);
       return en;
     } catch (e) {
-      console.warn("[RAG Obsidian] query translation failed — searching the original", e);
+      console.warn("[Refwright] query translation failed — searching the original", e);
       this.translations.set(query, query); // don't pay for the same failing call on every search
       return query;
     }
@@ -505,7 +505,7 @@ export class IndexManager {
       if (!this.meshLoaded && (await adapter.exists(this.meshPath))) this.mesh.load(JSON.parse(await adapter.read(this.meshPath)));
       this.meshLoaded = true;
     } catch (e) {
-      console.warn("[RAG Obsidian] MeSH thesaurus unreadable — ignoring", e);
+      console.warn("[Refwright] MeSH thesaurus unreadable — ignoring", e);
     }
     let vocab = null;
     const vp = this.settings.searchVocabulary.trim();
@@ -513,7 +513,7 @@ export class IndexManager {
       try {
         vocab = parseVocabulary(JSON.parse(await adapter.read(normalizePath(vp))));
       } catch (e) {
-        console.warn(`[RAG Obsidian] search vocabulary "${vp}" unreadable — ignoring`, e);
+        console.warn(`[Refwright] search vocabulary "${vp}" unreadable — ignoring`, e);
       }
     }
     return buildExpander(vocab, this.mesh.entries());

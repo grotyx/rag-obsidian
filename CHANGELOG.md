@@ -1,10 +1,18 @@
 # Changelog
 
-All notable changes to Academic Paper Citation Manager (plugin id
+All notable changes to Refwright (formerly Academic Paper Citation Manager; plugin id
 `academic-paper-citation-manager`; `rag-obsidian` through 0.5.2).
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
 ## [Unreleased]
+
+## [0.8.3] — 2026-10-05
+
+### Changed
+
+- **Renamed to "Refwright"** (display name only, a companion to the manuscript tool manuwright). The
+  plugin id stays `academic-paper-citation-manager`, so settings, the search index, keychain entries,
+  hotkeys and the MCP server name (`rag-obsidian`) are unchanged.
 
 ## [0.8.2] — 2026-10-04
 

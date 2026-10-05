@@ -1,4 +1,4 @@
-# ユーザーガイド — Academic Paper Citation Manager
+# ユーザーガイド — Refwright
 
 [English](en.md) · [한국어](ko.md) · [中文](zh.md) · **日本語** · [Español](es.md)
 
@@ -24,7 +24,7 @@
 
 ## 0. セットアップ
 
-**設定 → コミュニティプラグイン → 閲覧** で "Academic Paper Citation Manager" を検索し、インストールして有効化します。次にAIキーを一度だけ入力します。
+**設定 → コミュニティプラグイン → 閲覧** で "Refwright" を検索し、インストールして有効化します。次にAIキーを一度だけ入力します。
 
 ![プラグイン設定のEmbedding providerとAPIキー入力欄](img/ja/13-settings.png)
 
@@ -146,7 +146,7 @@
 
 ## 10. 原稿を仕上げてWordに書き出す
 
-すべてのコマンドはコマンドパレット（<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>）から使えます。"Academic Paper Citation Manager" と入力すると一覧が出ます。
+すべてのコマンドはコマンドパレット（<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>）から使えます。"Refwright" と入力すると一覧が出ます。
 
 ![プラグインのコマンドが並んだコマンドパレット](img/ja/14-command-palette.png)
 

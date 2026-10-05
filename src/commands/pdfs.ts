@@ -70,7 +70,7 @@ export async function indexLinkedPdfs(plugin: ScholarRagPlugin, only?: TFile): P
           await writes;
         } catch (err) {
           failed++;
-          console.error("[RAG Obsidian] PDF text extraction failed", t.pdf.path, err);
+          console.error("[Refwright] PDF text extraction failed", t.pdf.path, err);
         } finally {
           batch.tick(++done, failed);
         }
@@ -178,7 +178,7 @@ export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: str
         else pass2.push(pdf);
       } catch (err) {
         failed++;
-        console.error("[RAG Obsidian] Link PDFs (name pass) failed", pdf.path, err);
+        console.error("[Refwright] Link PDFs (name pass) failed", pdf.path, err);
       } finally {
         batch.tick(++done, failed);
       }
@@ -202,7 +202,7 @@ export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: str
           await writes;
         } catch (err) {
           failed++;
-          console.error("[RAG Obsidian] Link PDFs (content pass) failed", pdf.path, err);
+          console.error("[Refwright] Link PDFs (content pass) failed", pdf.path, err);
         } finally {
           batch.tick(++done, failed);
         }

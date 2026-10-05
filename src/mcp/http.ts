@@ -334,7 +334,7 @@ export class McpHttpServer {
     if (!info) return;
     const { fs } = loadDesktopNode();
     const warn = (error: unknown): void => {
-      if ((error as { code?: string }).code !== "ENOENT") console.warn("[RAG Obsidian] MCP discovery cleanup failed", error);
+      if ((error as { code?: string }).code !== "ENOENT") console.warn("[Refwright] MCP discovery cleanup failed", error);
     };
     let raw: string;
     try {

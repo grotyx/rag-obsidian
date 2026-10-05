@@ -116,7 +116,7 @@ export async function backfillSummaries(
               meshTried = merged.length < MIN_TAGS;
             } catch (err) {
               // Never lose a summary that already cost a full paper's worth of tokens.
-              console.warn("[RAG Obsidian] MeSH suggestion failed", e.citekey, err);
+              console.warn("[Refwright] MeSH suggestion failed", e.citekey, err);
             }
           }
           if (merged.length > existing.length) tags = merged;
@@ -134,7 +134,7 @@ export async function backfillSummaries(
       // Empty slot: the batch was cancelled before this one started.
       if (!r) continue;
       if (r.error) {
-        console.error("[RAG Obsidian] backfill failed", r.entry.citekey, r.error);
+        console.error("[Refwright] backfill failed", r.entry.citekey, r.error);
         continue;
       }
       if (!r.summary && !r.tags.length && !r.meshTried) continue;

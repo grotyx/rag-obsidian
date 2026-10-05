@@ -39,7 +39,7 @@ export async function buildMeshSynonyms(plugin: ScholarRagPlugin): Promise<void>
     });
     summary = `MeSH synonyms: ${added} headings added${failed ? `, ${failed} failed (run again to retry)` : ""}`;
   } catch (e) {
-    console.error("[RAG Obsidian] MeSH synonyms failed", e);
+    console.error("[Refwright] MeSH synonyms failed", e);
   } finally {
     batch.finish(summary);
   }

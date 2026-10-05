@@ -242,7 +242,7 @@ def run(p, browser):
     open_file(p, 'Draft.md')
     p.evaluate('app.commands.executeCommandById("command-palette:open")')
     p.wait_for_timeout(600)
-    p.keyboard.type('Academic Paper Citation Manager: ', delay=20)
+    p.keyboard.type('Refwright: ', delay=20)
     p.wait_for_timeout(700)
     shot(p, '14-command-palette', [('.prompt-input', 1)])
     p.keyboard.press('Escape')

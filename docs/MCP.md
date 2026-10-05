@@ -33,7 +33,7 @@ running Obsidian plugin
 ## Connect a client
 
 1. Open the target vault in Obsidian Desktop.
-2. Go to **Settings → Academic Paper Citation Manager → External AI (MCP)**.
+2. Go to **Settings → Refwright → External AI (MCP)**.
 3. Enable **MCP access**.
 4. Copy the generated Claude Code command or Codex configuration.
 5. Restart or refresh the external client's MCP connections.

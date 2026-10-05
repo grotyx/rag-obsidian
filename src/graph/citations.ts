@@ -130,7 +130,7 @@ export class CitationGraph {
         w = await resolveWork(e.item, this.settings.openalexMailto);
       } catch (err) {
         failed++;
-        console.warn(`[RAG Obsidian] OpenAlex lookup failed for "${e.citekey}" — keeping the previous node`, err);
+        console.warn(`[Refwright] OpenAlex lookup failed for "${e.citekey}" — keeping the previous node`, err);
         w = null;
       }
       if (w && w.openalexId) {
@@ -146,7 +146,7 @@ export class CitationGraph {
       }
       onProgress?.(++done, entries.length);
     }
-    if (failed) console.warn(`[RAG Obsidian] citation-graph build: ${failed} lookup(s) failed, previous nodes kept`);
+    if (failed) console.warn(`[Refwright] citation-graph build: ${failed} lookup(s) failed, previous nodes kept`);
     this.data = data;
     this.missingCache.clear();
     await this.persist();

@@ -1,14 +1,16 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/assets/logo.svg" width="128" alt="Academic Paper Citation Manager logo">
+  <img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/assets/logo.svg" width="128" alt="Refwright logo">
 </p>
 
-<h1 align="center">Academic Paper Citation Manager</h1>
+<h1 align="center">Refwright</h1>
+
+<p align="center"><i>Formerly “Academic Paper Citation Manager” — same plugin, same id, same settings.</i></p>
 
 <p align="center">Your markdown notes <b>are</b> the reference library.<br>Search PubMed, get AI summaries, cite in any journal style — a Zotero / EndNote replacement inside Obsidian.</p>
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.8.2-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.8.3-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -121,7 +123,7 @@ A step-by-step guide with screenshots, from adding papers to exporting a Word ma
 ### Option A — Community plugins (recommended)
 
 1. Obsidian → **Settings → Community plugins** → turn off Restricted mode if it is on.
-2. **Browse** → search **Academic Paper Citation Manager** → **Install** → **Enable**.
+2. **Browse** → search **Refwright** → **Install** → **Enable**.
 
 Obsidian updates it like any other plugin (**Settings → Community plugins → Check for updates**).
 Desktop only (Obsidian 1.11.4+).
@@ -193,7 +195,7 @@ open the synced vault and enable the plugin — no Node, no build.
 
 ### Connect Claude Code or Codex
 
-On Obsidian Desktop, open **Settings → Academic Paper Citation Manager → External AI (MCP)**,
+On Obsidian Desktop, open **Settings → Refwright → External AI (MCP)**,
 enable access, then copy the generated Claude Code command or Codex configuration. Keep this
 vault open while using the tools. See the [complete MCP guide](docs/MCP.md) for the tool list,
 safe editing workflow, example prompts, security model, and troubleshooting.

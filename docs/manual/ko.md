@@ -1,4 +1,4 @@
-# 사용 설명서 — Academic Paper Citation Manager
+# 사용 설명서 — Refwright
 
 [English](en.md) · **한국어** · [中文](zh.md) · [日本語](ja.md) · [Español](es.md)
 
@@ -25,7 +25,7 @@
 
 ## 0. 시작 설정
 
-**설정 → 커뮤니티 플러그인 → 탐색**에서 "Academic Paper Citation Manager"를 검색해
+**설정 → 커뮤니티 플러그인 → 탐색**에서 "Refwright"를 검색해
 설치하고 활성화합니다. 그다음 AI 키를 한 번만 넣습니다.
 
 ![플러그인 설정의 Embedding provider와 API 키 입력란](img/ko/13-settings.png)

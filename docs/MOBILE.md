@@ -1,6 +1,6 @@
 # Mobile support
 
-Academic Paper Citation Manager is declared `isDesktopOnly: true` as of 0.6.0 and cannot be
+Refwright is declared `isDesktopOnly: true` as of 0.6.0 and cannot be
 installed from the Obsidian Community directory on mobile.
 
 The plugin bundle includes the optional live MCP server, which depends on Node APIs available only

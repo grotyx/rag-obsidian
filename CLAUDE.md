@@ -1,9 +1,9 @@
-# Academic Paper Citation Manager — Project Rules (orchestrator)
+# Refwright — Project Rules (orchestrator)
 
-> Display name: **Academic Paper Citation Manager** · plugin id:
+> Display name: **Refwright** (was "Academic Paper Citation Manager" through 0.8.2) · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.8.2 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.8.3 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [User guide](docs/manual/README.md) (screenshots, en/ko/zh/ja/es; `scripts/manual/capture.py` reshoots them) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.

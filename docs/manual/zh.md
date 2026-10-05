@@ -1,4 +1,4 @@
-# 用户指南 — Academic Paper Citation Manager
+# 用户指南 — Refwright
 
 [English](en.md) · [한국어](ko.md) · **中文** · [日本語](ja.md) · [Español](es.md)
 
@@ -24,7 +24,7 @@
 
 ## 0. 设置
 
-在 **设置 → 第三方插件 → 浏览** 中搜索 "Academic Paper Citation Manager"，安装并启用。然后输入一次 AI 密钥。
+在 **设置 → 第三方插件 → 浏览** 中搜索 "Refwright"，安装并启用。然后输入一次 AI 密钥。
 
 ![插件设置中的 Embedding provider 和 API 密钥](img/zh/13-settings.png)
 
@@ -146,7 +146,7 @@
 
 ## 10. 完成原稿并导出为 Word
 
-所有命令都在命令面板中（<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>）。输入 "Academic Paper Citation Manager" 即可列出全部命令。
+所有命令都在命令面板中（<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>）。输入 "Refwright" 即可列出全部命令。
 
 ![列出插件命令的命令面板](img/zh/14-command-palette.png)
 

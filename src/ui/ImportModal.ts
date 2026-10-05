@@ -118,7 +118,7 @@ export class ImportModal extends Modal {
         }
         notice.setMessage(`Importing ${added + skipped}/${items.length}…`);
       } catch (e) {
-        console.error("[RAG Obsidian] import failed", e);
+        console.error("[Refwright] import failed", e);
       }
     }
     notice.hide();

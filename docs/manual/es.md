@@ -1,4 +1,4 @@
-# Guía del usuario — Academic Paper Citation Manager
+# Guía del usuario — Refwright
 
 [English](en.md) · [한국어](ko.md) · [中文](zh.md) · [日本語](ja.md) · **Español**
 
@@ -24,7 +24,7 @@ Esta guía recorre el complemento paso a paso, desde reunir artículos hasta exp
 
 ## 0. Configuración
 
-Instálalo desde **Preferencias → Complementos de la comunidad → Explorar**: busca "Academic Paper Citation Manager", instálalo y actívalo. Luego introduce tu clave de IA una sola vez.
+Instálalo desde **Preferencias → Complementos de la comunidad → Explorar**: busca "Refwright", instálalo y actívalo. Luego introduce tu clave de IA una sola vez.
 
 ![Ajustes del complemento: proveedor de embeddings y clave de API](img/es/13-settings.png)
 
@@ -146,7 +146,7 @@ Muestra cómo se citan entre sí tus artículos. Haz clic una vez en **Build cit
 
 ## 10. Terminar el manuscrito y exportarlo a Word
 
-Todos los comandos están en la paleta de comandos (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>). Escribe "Academic Paper Citation Manager" para listarlos.
+Todos los comandos están en la paleta de comandos (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>). Escribe "Refwright" para listarlos.
 
 ![Paleta de comandos con los comandos del complemento](img/es/14-command-palette.png)
 

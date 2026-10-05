@@ -101,7 +101,7 @@ export async function resummarizeOutdated(plugin: ScholarRagPlugin): Promise<voi
         else skipped++;
       } catch (err) {
         failed++;
-        console.error("[RAG Obsidian] re-summarize failed", e.citekey, err);
+        console.error("[Refwright] re-summarize failed", e.citekey, err);
       }
       notice.setMessage(`Re-summarizing ${done + skipped + failed}/${todo.length}…`);
     }

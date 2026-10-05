@@ -1,14 +1,16 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/assets/logo.svg" width="128" alt="Academic Paper Citation Manager logo">
+  <img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/assets/logo.svg" width="128" alt="Refwright logo">
 </p>
 
-<h1 align="center">Academic Paper Citation Manager</h1>
+<h1 align="center">Refwright</h1>
+
+<p align="center"><i>옛 이름 “Academic Paper Citation Manager” — 같은 플러그인, 같은 id, 설정 그대로.</i></p>
 
 <p align="center"><b>마크다운 노트가 곧 참고문헌 라이브러리</b>입니다.<br>PubMed 검색, AI 요약, 저널 스타일 인용까지 — Obsidian 안의 Zotero / EndNote 대체.</p>
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.8.2-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.8.3-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -115,7 +117,7 @@
 ### 방법 A — 커뮤니티 플러그인 (권장)
 
 1. Obsidian → **설정 → 커뮤니티 플러그인** → 제한 모드가 켜져 있으면 끕니다.
-2. **탐색** → **Academic Paper Citation Manager** 검색 → **설치** → **활성화**
+2. **탐색** → **Refwright** 검색 → **설치** → **활성화**
 
 업데이트는 다른 플러그인처럼 **설정 → 커뮤니티 플러그인 → 업데이트 확인**으로 받습니다.
 데스크톱 전용입니다(Obsidian 1.11.4 이상).
@@ -187,7 +189,7 @@ vault를 열고 활성화만 — Node·빌드 불필요.
 
 ### Claude Code 또는 Codex 연결
 
-Obsidian Desktop에서 **설정 → Academic Paper Citation Manager → External AI (MCP)**를 열어
+Obsidian Desktop에서 **설정 → Refwright → External AI (MCP)**를 열어
 접근을 켠 뒤, 생성된 Claude Code 명령 또는 Codex 설정을 복사합니다. 도구를 사용하는 동안 이
 vault를 열어 두어야 합니다. 도구 목록, 안전한 수정 흐름, 예시 명령, 보안 모델과 문제 해결은
 [MCP 전체 안내서](docs/MCP.ko.md)를 참고하세요.

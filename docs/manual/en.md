@@ -1,4 +1,4 @@
-# User guide — Academic Paper Citation Manager
+# User guide — Refwright
 
 **English** · [한국어](ko.md) · [中文](zh.md) · [日本語](ja.md) · [Español](es.md)
 
@@ -180,7 +180,7 @@ citation data from OpenAlex (about 40 seconds for 56 papers).
 ## 10. Finish the manuscript and export to Word
 
 Every command is in the command palette (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>). Type
-"Academic Paper Citation Manager" to list them.
+"Refwright" to list them.
 
 ![Command palette listing the plugin commands](img/en/14-command-palette.png)
 

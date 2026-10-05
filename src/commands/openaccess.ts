@@ -228,7 +228,7 @@ export async function downloadOaPdfsAll(plugin: ScholarRagPlugin): Promise<void>
               }
               if (res.status === "error") {
                 failed++;
-                console.error("[RAG Obsidian] OA PDF download failed", e.file.path, res.message);
+                console.error("[Refwright] OA PDF download failed", e.file.path, res.message);
                 return;
               }
               const safe = safePdfName(e.citekey);
@@ -238,7 +238,7 @@ export async function downloadOaPdfsAll(plugin: ScholarRagPlugin): Promise<void>
                 // gated this entry on "no PDF", so an existing file at this path is never the
                 // note's own PDF, and it must not be overwritten.
                 failed++;
-                console.error("[RAG Obsidian] OA PDF download: invalid citekey or existing file", e.citekey);
+                console.error("[Refwright] OA PDF download: invalid citekey or existing file", e.citekey);
                 return;
               }
               const dir = normalizePath("PDFs");
@@ -256,14 +256,14 @@ export async function downloadOaPdfsAll(plugin: ScholarRagPlugin): Promise<void>
                   const { text } = await extractPdfText(res.buffer);
                   await plugin.app.vault.process(e.file, (body) => appendStash(body, text));
                 } catch (err) {
-                  console.error("[RAG Obsidian] OA PDF text stash failed", e.file.path, err);
+                  console.error("[Refwright] OA PDF text stash failed", e.file.path, err);
                 }
               }
             });
           await writes;
         } catch (err) {
           failed++;
-          console.error("[RAG Obsidian] OA PDF download failed", e.file.path, err);
+          console.error("[Refwright] OA PDF download failed", e.file.path, err);
         } finally {
           batch.tick(++done, failed);
         }
@@ -365,7 +365,7 @@ export async function checkRetractionAll(plugin: ScholarRagPlugin, recheck = fal
             .then(async () => {
               if (!res.ok) {
                 failed++;
-                console.error("[RAG Obsidian] Retraction check failed", e.file.path, res.reason);
+                console.error("[Refwright] Retraction check failed", e.file.path, res.reason);
                 return;
               }
               await plugin.app.fileManager.processFrontMatter(e.file, (fm: Record<string, unknown>) => (fm.retracted = res.retracted));
@@ -380,7 +380,7 @@ export async function checkRetractionAll(plugin: ScholarRagPlugin, recheck = fal
           await writes;
         } catch (err) {
           failed++;
-          console.error("[RAG Obsidian] Retraction check failed", e.file.path, err);
+          console.error("[Refwright] Retraction check failed", e.file.path, err);
         } finally {
           batch.tick(++done, failed);
         }
