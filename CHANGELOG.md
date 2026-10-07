@@ -6,6 +6,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.8.5] — 2026-10-07
+
 ### Fixed
 - A PDF that pdfjs never finishes no longer stalls "Link PDF files in a folder", "Index linked PDFs" or the OA download batch: extraction fails that file after 120 s, and the status-bar ✕ now stops in-flight extractions at once instead of waiting on them.
 

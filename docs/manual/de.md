@@ -27,7 +27,7 @@ Screenshot entsprechen den nummerierten Schritten darunter.
 ## 0. Einrichtung
 
 Installieren Sie das Plugin über **Settings → Community plugins → Browse**: Suchen Sie nach
-„Academic Paper Citation Manager“, installieren und aktivieren Sie es. Geben Sie anschließend
+„Refwright“, installieren und aktivieren Sie es. Geben Sie anschließend
 einmalig Ihren KI-Schlüssel ein.
 
 ![Plugin-Einstellungen: Embedding-Anbieter und API-Schlüssel](img/en/13-settings.png)
