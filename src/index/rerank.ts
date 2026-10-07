@@ -223,7 +223,7 @@ export function parseRerankResponse(json: unknown, n: number): { index: number; 
 export function rerankHttpReason(status: number, body: string): string {
   if (status === 429) {
     return /free/i.test(body)
-      ? "OpenRouter's daily free-model limit is used up (add credits, or switch the rerank model to a paid one such as voyageai/rerank-2.5-lite)"
+      ? "OpenRouter's daily free-model limit is used up (add credits, or switch the rerank model to a paid one such as voyageai/rerank-3-lite)"
       : "the rerank service is rate-limiting requests";
   }
   if (status === 401 || status === 403) return "the API key was rejected by the rerank service";

@@ -94,7 +94,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   searchVocabulary: "",
   searchDiversity: false,
   hostedRerank: true,
-  rerankModel: "voyageai/rerank-2.5-lite",
+  rerankModel: "voyageai/rerank-3-lite",
 
   llmProvider: "openai",
   llmModel: "deepseek/deepseek-v4-flash-0731",
