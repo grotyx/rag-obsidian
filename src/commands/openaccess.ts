@@ -253,7 +253,7 @@ export async function downloadOaPdfsAll(plugin: ScholarRagPlugin): Promise<void>
               downloaded++;
               if (!hasStashedText(await plugin.app.vault.cachedRead(e.file))) {
                 try {
-                  const { text } = await extractPdfText(res.buffer);
+                  const { text } = await extractPdfText(res.buffer, { signal: batch.signal });
                   await plugin.app.vault.process(e.file, (body) => appendStash(body, text));
                 } catch (err) {
                   console.error("[Refwright] OA PDF text stash failed", e.file.path, err);

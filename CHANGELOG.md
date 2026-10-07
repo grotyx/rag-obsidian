@@ -6,6 +6,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Fixed
+- A PDF that pdfjs never finishes no longer stalls "Link PDF files in a folder", "Index linked PDFs" or the OA download batch: extraction fails that file after 120 s, and the status-bar ✕ now stops in-flight extractions at once instead of waiting on them.
+
 ### Changed
 - Default rerank model is now `voyageai/rerank-3-lite` (same price as `rerank-2.5-lite`, nDCG@10 0.79 vs 0.78 on a 10-question English recheck). A stored `rerank-2.5-lite` or free Nemotron setting moves to it on load; any other chosen model is kept.
 

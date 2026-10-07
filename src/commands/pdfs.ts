@@ -60,7 +60,7 @@ export async function indexLinkedPdfs(plugin: ScholarRagPlugin, only?: TFile): P
       PDF_WIDTH,
       async (t) => {
         try {
-          const { text } = await extractPdfText(await plugin.app.vault.readBinary(t.pdf));
+          const { text } = await extractPdfText(await plugin.app.vault.readBinary(t.pdf), { signal: batch.signal });
           writes = writes
             .catch(() => {}) // an earlier note's failed write must not fail this one
             .then(async () => {
@@ -191,7 +191,7 @@ export async function linkPdfsInFolder(plugin: ScholarRagPlugin, folderPath: str
       PDF_WIDTH,
       async (pdf) => {
         try {
-          const { text } = await extractPdfText(await plugin.app.vault.readBinary(pdf));
+          const { text } = await extractPdfText(await plugin.app.vault.readBinary(pdf), { signal: batch.signal });
           writes = writes
             .catch(() => {}) // an earlier note's failed write must not fail this one
             .then(async () => {

@@ -1457,6 +1457,21 @@ async function main() {
       scanned = e instanceof Error ? e.message : String(e);
     }
     ok(/no extractable text/i.test(scanned), `extractPdfText: an image-only PDF throws for every caller → "${scanned}"`);
+
+    // A PDF pdfjs never finishes must not hold a batch (or its cancel button) open forever.
+    let destroyed = 0;
+    setPdfjsLoader(async () => ({
+      GlobalWorkerOptions: { workerSrc: "" },
+      getDocument: () => ({ promise: new Promise<never>(() => {}), destroy: async () => void destroyed++ }),
+    }));
+    const why = async (p: Promise<unknown>) => p.then(() => "resolved", (e: unknown) => (e instanceof Error ? e.message : String(e)));
+    const timedOut = await why(extractPdfText(new ArrayBuffer(8), { timeoutMs: 50 }));
+    ok(/timed out/i.test(timedOut), `extractPdfText: a stuck PDF times out → "${timedOut}"`);
+    const ctl = new AbortController();
+    const pending = why(extractPdfText(new ArrayBuffer(8), { signal: ctl.signal, timeoutMs: 60_000 }));
+    ctl.abort();
+    const cancelled = await pending;
+    ok(cancelled === "Cancelled" && destroyed === 2, `extractPdfText: cancel rejects a stuck PDF at once and destroys its task → "${cancelled}", destroyed ${destroyed}`);
   }
 
   log("\nDONE.");

@@ -37,7 +37,10 @@ interface PdfDocument {
 
 export type PdfjsLike = {
   GlobalWorkerOptions: { workerSrc: string };
-  getDocument: (opts: { data: Uint8Array; isEvalSupported: boolean }) => { promise: Promise<PdfDocument> };
+  getDocument: (opts: { data: Uint8Array; isEvalSupported: boolean }) => {
+    promise: Promise<PdfDocument>;
+    destroy?: () => Promise<void>;
+  };
 };
 
 let _pdfjs: PdfjsLike | null = null;
@@ -54,9 +57,40 @@ async function getPdfjs(): Promise<PdfjsLike> {
   return _pdfjs;
 }
 
-export async function extractPdfText(data: ArrayBuffer): Promise<{ text: string; pages: number }> {
+/** A malformed PDF can leave pdfjs waiting forever; past this the file counts as failed. */
+export const PDF_EXTRACT_TIMEOUT_MS = 120_000;
+
+/** Extract a PDF's text. Rejects after `timeoutMs`, or as soon as `signal` aborts, so one stuck
+ *  file can't hold a batch (or its cancel button) open forever. */
+export async function extractPdfText(
+  data: ArrayBuffer,
+  opts: { signal?: AbortSignal; timeoutMs?: number } = {}
+): Promise<{ text: string; pages: number }> {
   const pdfjs = await getPdfjs();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(data), isEvalSupported: false }).promise;
+  const task = pdfjs.getDocument({ data: new Uint8Array(data), isEvalSupported: false });
+  let timer = 0;
+  let onAbort = (): void => {};
+  const stop = new Promise<never>((_, reject) => {
+    const fail = (why: string) => {
+      void task.destroy?.().catch(() => {});
+      reject(new Error(why));
+    };
+    if (opts.signal?.aborted) return fail("Cancelled");
+    onAbort = () => fail("Cancelled");
+    opts.signal?.addEventListener("abort", onAbort);
+    const ms = opts.timeoutMs ?? PDF_EXTRACT_TIMEOUT_MS;
+    timer = window.setTimeout(() => fail(`PDF text extraction timed out after ${Math.round(ms / 1000)}s`), ms);
+  });
+  try {
+    return await Promise.race([readText(task.promise), stop]);
+  } finally {
+    window.clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+async function readText(docPromise: Promise<PdfDocument>): Promise<{ text: string; pages: number }> {
+  const doc = await docPromise;
   const pages = num(doc.numPages) ?? 0;
   let text = "";
   for (let i = 1; i <= pages; i++) {
