@@ -6,6 +6,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Changed
+- Default rerank model is now `voyageai/rerank-3-lite` (same price as `rerank-2.5-lite`, nDCG@10 0.79 vs 0.78 on a 10-question English recheck). A stored `rerank-2.5-lite` or free Nemotron setting moves to it on load; any other chosen model is kept.
+
 ## [0.8.4] — 2026-10-05
 
 ### Fixed
