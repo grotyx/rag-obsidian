@@ -571,11 +571,11 @@ async function addReferenceTagsChecks(): Promise<void> {
   assert.deepEqual(rerun.tagsAdded, [], "re-adding a duplicate with an already-present tag adds nothing");
 }
 
-/** set_reference_fields: whitelist enforcement, hash guard, field + mirrored-tag writes, and the
- *  include pending -> include transition that must drop the stale 'pending' tag. */
+/** set_reference_fields: whitelist enforcement, hash guard, field writes (never tags), legacy
+ *  mirrored tags removed when their field is set, guideline set/clear, list_references filters. */
 async function screeningFieldChecks(): Promise<void> {
   const fake = fakeApp({
-    "References/kq.md": "---\ncitekey: kq2024\ntitle: Trial\ntags:\n  - existing-tag\n---\n\nBody\n",
+    "References/kq.md": "---\ncitekey: kq2024\ntitle: Trial\ntags:\n  - existing-tag\n  - kq-05\n  - pending\n  - level-1\n  - design-old\n---\n\nBody\n",
   });
   const file = fake.files.get("References/kq.md")?.file;
   const item = { type: "article-journal", title: "Trial", citekey: "kq2024", tags: ["existing-tag"] };
@@ -618,18 +618,22 @@ async function screeningFieldChecks(): Promise<void> {
   assert.equal(pending.fields.level, "2");
   assert.equal(pending.fields.design, "Randomized controlled trial");
   assert.equal(pending.fields.screening_note, "looks relevant");
-  for (const tag of ["kq-01", "kq-03", "pending", "level-2", "design-randomized-controlled-trial", "existing-tag"]) {
-    assert.ok(pending.tags.includes(tag), `missing mirrored tag: ${tag}`);
-  }
+  assert.deepEqual(pending.tags, ["existing-tag"], "no mirrored tags are added; legacy kq-/pending/level-/design- tags are removed");
 
   const included = await service.callTool("set_reference_fields", {
-    citekey: "kq2024", expected_hash: pending.hash, fields: { include: "include" },
+    citekey: "kq2024", expected_hash: pending.hash, fields: { include: "include", guideline: " BE " },
   }) as any;
-  assert.ok(!included.tags.includes("pending"), "switching include away from pending drops the stale tag");
-  assert.ok(included.tags.includes("include"));
+  assert.ok(!included.tags.includes("include") && !included.tags.includes("pending"));
   assert.equal(included.fields.include, "include");
+  assert.equal(included.fields.guideline, "BE", "guideline is trimmed and stored");
   assert.deepEqual(included.fields.kq, ["1", "3"], "fields not touched by this call keep their prior value");
   assert.equal(included.fields.level, "2");
+
+  const cleared = await service.callTool("set_reference_fields", {
+    citekey: "kq2024", expected_hash: included.hash, fields: { guideline: "" },
+  }) as any;
+  assert.equal(cleared.fields.guideline, null, "an empty guideline removes the field");
+  included.hash = cleared.hash;
 
   const retagged = await service.callTool("set_reference_fields", {
     citekey: "kq2024", expected_hash: included.hash,
@@ -638,20 +642,31 @@ async function screeningFieldChecks(): Promise<void> {
   assert.ok(retagged.tags.includes("extra-tag"));
   assert.ok(!retagged.tags.includes("existing-tag"), "remove_tags takes effect");
 
-  const withScreening = { ...item, kq: ["1"], include: "include", level: "2", design: "rct" };
+  const withScreening = { ...item, kq: ["1"], include: "include", level: "2", design: "rct", guideline: "BE" };
   const screenedService = new McpService(
     { ...plugin, library: { ...plugin.library, entries: () => [{ citekey: "kq2024", item: withScreening, file, year: "2024", authors: "", title: "Trial" }] } },
     vault
   );
   const listed = (await screenedService.callTool("list_references", {}) as any).references[0];
   assert.deepEqual(
-    { kq: listed.kq, include: listed.include, level: listed.level, design: listed.design },
-    { kq: ["1"], include: "include", level: "2", design: "rct" },
+    { kq: listed.kq, include: listed.include, level: listed.level, design: listed.design, guideline: listed.guideline },
+    { kq: ["1"], include: "include", level: "2", design: "rct", guideline: "BE" },
     "list_references surfaces the screening fields"
   );
 
+  const count = async (args: Record<string, unknown>) => ((await screenedService.callTool("list_references", args)) as any).references.length;
+  assert.equal(await count({ kq: "01" }), 1, "kq filter matches 01 against stored \"1\"");
+  assert.equal(await count({ kq: "1" }), 1);
+  assert.equal(await count({ kq: "2" }), 0);
+  assert.equal(await count({ include: "include" }), 1);
+  assert.equal(await count({ include: "exclude" }), 0);
+  assert.equal(await count({ guideline: "BE" }), 1);
+  assert.equal(await count({ guideline: "XX" }), 0);
+  assert.equal(await count({ kq: "1", include: "include", guideline: "BE" }), 1, "filters combine with AND");
+  await assert.rejects(() => screenedService.callTool("list_references", { include: "maybe" }), /INVALID_ARGUMENT/);
+
   const engineFields = (CiteEngine as unknown as { PLUGIN_FIELDS: Set<string> }).PLUGIN_FIELDS;
-  for (const key of ["kq", "include", "level", "design", "screening_note"]) {
+  for (const key of ["kq", "include", "level", "design", "screening_note", "guideline", "search_chunk", "sweep_category", "imported_from"]) {
     assert.ok(engineFields.has(key), `PLUGIN_FIELDS must strip ${key} from citeproc rendering`);
   }
 }

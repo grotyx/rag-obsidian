@@ -6,6 +6,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Changed
+- Screening results are stored only in note properties (`kq`, `include`, `level`, `design`, `screening_note`) and are no longer copied into tags. Setting a field also removes the old copy-tag (`kq-01`, `include`, `level-2`, `design-…`) from that note. The Screening pane and the MCP `set_reference_fields` tool both follow this.
+- New `guideline` property (for example `BE`), settable through `set_reference_fields`, and `list_references` can filter by `kq`, `include` and `guideline` instead of tags.
+
 ## [0.8.5] — 2026-10-07
 
 ### Fixed

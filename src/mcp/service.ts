@@ -72,12 +72,15 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "list_references",
-    description: "List reference metadata without model or network calls. Use to browse known papers; use search_library for evidence passages.",
+    description: "List reference metadata without model or network calls. Use to browse known papers, filtering by metadata, tags or screening fields (kq, include, guideline); use search_library for evidence passages.",
     inputSchema: objectSchema({
       limit: integer("Page size.", 1, 100), cursor: string("Path cursor returned by the previous page."),
       status: string("Reading status."), year_from: integer("Earliest publication year.", 1000, 3000),
       year_to: integer("Latest publication year.", 1000, 3000), author: string("Author family name."),
       tags: strings("Tags every reference must contain."),
+      kq: string("Key-question id the reference's kq field must contain, e.g. \"3\" (matches \"03\")."),
+      include: { type: "string", enum: [...INCLUDE_VALUES], description: "Screening decision the include field must equal." },
+      guideline: string("Guideline the reference's guideline field must equal, e.g. \"BE\"."),
     }), annotations: readOnly,
   },
   {
@@ -171,7 +174,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "set_reference_fields",
-    description: "Set screening fields on a reference (key questions, include/exclude/pending decision, evidence level, study design, a free-text note) for a systematic-review workflow. Each field is mirrored into the note's tags (e.g. kq-01, include, level-2, design-rct) so list_references/search_library can filter by them. Hash-guarded like the note-edit tools; get the current hash from get_reference or a prior call's result.",
+    description: "Set screening fields on a reference (key questions, include/exclude/pending decision, evidence level, study design, a free-text note) for a systematic-review workflow. Results are stored in the note's own fields (kq, include, level, design, screening_note, guideline), not in tags; filter with list_references. Setting a field also removes the legacy mirrored tag (kq-*, include/exclude/pending, level-*, design-*). Hash-guarded like the note-edit tools; get the current hash from get_reference or a prior call's result.",
     inputSchema: objectSchema({
       citekey: string("Exact citekey returned by another library tool."),
       expected_hash: string("Whole-note SHA-256 from get_reference or a prior set_reference_fields result."),
@@ -182,8 +185,9 @@ export const MCP_TOOLS: McpTool[] = [
           kq: strings("Key-question ids this reference bears on, e.g. [\"1\", \"3\"]."),
           include: { type: "string", enum: [...INCLUDE_VALUES], description: "Screening decision." },
           level: { type: "string", enum: [...LEVELS], description: "Evidence level." },
-          design: string("Study design (free text; slugified into a design-<slug> tag)."),
+          design: string("Study design (free text)."),
           screening_note: string("Free-text screening note."),
+          guideline: string("Guideline the record was screened for, e.g. \"BE\"; empty string clears it."),
           add_tags: strings("Additional tags to add, merged and deduped."),
           remove_tags: strings("Tags to remove."),
         },
@@ -488,6 +492,10 @@ export class McpService {
     const author = optionalString(args, "author")?.trim().toLowerCase();
     const status = optionalString(args, "status")?.trim().toLowerCase();
     const tags = stringArrayArg(args, "tags") ?? [];
+    const kq = optionalString(args, "kq")?.trim();
+    const include = enumArg(args, "include", INCLUDE_VALUES);
+    const guideline = optionalString(args, "guideline")?.trim();
+    const kqKey = (v: unknown): string => { const s = String(v).trim(); return /^\d+$/.test(s) ? String(Number(s)) : s; };
     const cursor = optionalString(args, "cursor") ?? "";
     const limit = numberArg(args, "limit", 50, 1, 100);
     const all = (await this.safeEntries())
@@ -496,6 +504,9 @@ export class McpService {
       .filter((entry) => !author || entry.authors.toLowerCase().includes(author))
       .filter((entry) => !status || (typeof entry.item.status === "string" && entry.item.status.toLowerCase() === status))
       .filter((entry) => tags.every((tag) => tagsOf(entry.item).includes(tag)))
+      .filter((entry) => !kq || (Array.isArray(entry.item.kq) && entry.item.kq.some((v) => kqKey(v) === kqKey(kq))))
+      .filter((entry) => !include || entry.item.include === include)
+      .filter((entry) => !guideline || entry.item.guideline === guideline)
       .sort((a, b) => a.file.path.localeCompare(b.file.path));
     const page = all.slice(0, limit);
     return {
@@ -506,6 +517,7 @@ export class McpService {
         summarySource: entry.item.summary_source ?? null,
         kq: Array.isArray(entry.item.kq) ? entry.item.kq : null,
         include: entry.item.include ?? null, level: entry.item.level ?? null, design: entry.item.design ?? null,
+        guideline: entry.item.guideline ?? null,
       })),
       ...(all.length > limit ? { nextCursor: page[page.length - 1].file.path } : {}),
     };
@@ -665,7 +677,7 @@ export class McpService {
       throw new Error("INVALID_ARGUMENT: fields must be an object");
     }
     const fields = fieldsRaw as Record<string, unknown>;
-    const allowedFields = new Set(["kq", "include", "level", "design", "screening_note", "add_tags", "remove_tags"]);
+    const allowedFields = new Set(["kq", "include", "level", "design", "screening_note", "guideline", "add_tags", "remove_tags"]);
     const badKey = Object.keys(fields).find((k) => !allowedFields.has(k));
     if (badKey) throw new Error(`INVALID_ARGUMENT: unknown field: ${badKey}`);
 
@@ -675,6 +687,7 @@ export class McpService {
       level: enumArg(fields, "level", LEVELS),
       design: optionalNonEmptyString(fields, "design"),
       screening_note: optionalString(fields, "screening_note"),
+      guideline: optionalString(fields, "guideline"),
       add_tags: boundedStringArrayArg(fields, "add_tags"),
       remove_tags: boundedStringArrayArg(fields, "remove_tags"),
     };

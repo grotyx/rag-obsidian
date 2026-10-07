@@ -1144,16 +1144,26 @@ check(
   const r3 = applyScreening(fm3, { include: "include" });
   check(r3.fields.include === "include", "applyScreening: include succeeds when kq already exists on the note");
 
-  // tags mirrored, and swapping a decision/level replaces the stale tag rather than stacking it.
-  const fm4: Record<string, unknown> = { tags: [] };
-  applyScreening(fm4, { kq: ["1", "3"], include: "pending", level: "2", design: "Randomized controlled trial" });
-  const afterPending = applyScreening(fm4, { include: "exclude" });
-  check(!afterPending.tags.includes("pending"), "applyScreening: switching pending -> exclude drops the stale include-state tag");
-  check(afterPending.tags.includes("exclude"), "applyScreening: exclude tag mirrored");
-  const afterLevel = applyScreening(fm4, { level: "3" });
-  check(!afterLevel.tags.includes("level-2") && afterLevel.tags.includes("level-3"), "applyScreening: level-2 -> level-3 replaces the tag");
-  check(afterLevel.tags.includes("kq-01") && afterLevel.tags.includes("kq-03"), "applyScreening: kq tags survive an unrelated field update");
-  check(afterLevel.tags.includes("design-randomized-controlled-trial"), "applyScreening: design tag slugified");
+  // results live in fields only: nothing is mirrored into tags, user tags survive.
+  const fm4: Record<string, unknown> = { tags: ["mine"] };
+  const r4 = applyScreening(fm4, { kq: ["1", "3"], include: "pending", level: "2", design: "Randomized controlled trial", guideline: " BE " });
+  check(r4.tags.length === 1 && r4.tags[0] === "mine", "applyScreening: setting fields adds no tags");
+  check(fm4.include === "pending" && fm4.level === "2" && fm4.guideline === "BE", "applyScreening: values stored in fields, guideline trimmed");
+  check(r4.fields.guideline === "BE", "applyScreening: result reports guideline");
+  applyScreening(fm4, { guideline: "  " });
+  check(!("guideline" in fm4), "applyScreening: blank guideline removes the field");
+
+  // legacy mirrored tags are dropped when their field is set, and only then.
+  const fm6: Record<string, unknown> = { tags: ["mine", "kq-01", "kq-xyz", "pending", "level-2", "design-rct", "design-foo"] };
+  const r6 = applyScreening(fm6, { include: "exclude" });
+  check(!r6.tags.includes("pending") && r6.tags.includes("kq-01") && r6.tags.includes("level-2"), "applyScreening: include drops legacy include-state tag only");
+  applyScreening(fm6, { kq: ["2"] });
+  applyScreening(fm6, { level: "3" });
+  const r6b = applyScreening(fm6, { design: "RCT" });
+  check(
+    JSON.stringify(r6b.tags) === JSON.stringify(["mine"]),
+    "applyScreening: kq / level / design each drop their legacy mirrored tags"
+  );
 
   // an invalid design (empty/blank, not just any free text) is rejected before anything is written.
   const fm5: Record<string, unknown> = { tags: [] };

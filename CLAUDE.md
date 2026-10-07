@@ -57,7 +57,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `data/library.ts` | CRUD over `References/`, `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` (add-time) + `matchKeys`/`duplicateGroups` (report, groups on any shared identifier) + `BackfillScope`/`inScope` (pure filter for fill-gaps scoping) |
 | `data/pdfMatch.ts` | `matchPdf` — PDF ↔ reference by file name = citekey, then DOI / PMID / title+year in the first 4,000 chars only (reference lists name other papers) |
 | `data/findings.ts` | `parseFindings` / `findingText` / `evidenceSection` — the `## Evidence (extracted)` callout (Dataview `[key:: value]` fields + verbatim quote per finding); read by MCP `search_findings`, excluded from chunking by `index/chunker.ts` |
-| `data/screening.ts` | `applyScreening` — the one screening write (kq / include / level / design / note + mirrored tags), shared by the MCP `set_reference_fields` tool and the Screening pane; include needs ≥1 KQ |
+| `data/screening.ts` | `applyScreening` — the one screening write (kq / include / level / design / note / guideline, stored in fields only — never mirrored into tags; legacy mirrored tags are dropped when their field is set), shared by the MCP `set_reference_fields` tool and the Screening pane; include needs ≥1 KQ |
 | `data/prisma.ts` | `prismaCounts` / `prismaMarkdown` — PRISMA 2020 numbers and the Mermaid + table note (`commands/prisma.ts` gathers the records) |
 | `data/merge.ts` | duplicate merge logic: `pickKeeper`, `mergeFrontmatter`, `mergeBodies` (`renameCiteKeys` lives in `cite/bibliography.ts`) |
 | `ingest/metadata.ts` | `detectId` + Crossref / PubMed / arXiv fetchers → CSLItem |
@@ -111,7 +111,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `mcp/bridge.ts` | source generator for the standalone Node stdio bridge written beside `main.js` |
 | `mcp/http.ts` | desktop-only authenticated loopback lifecycle, discovery file, setup snippets, realpath containment |
 | `mcp/vault.ts` | Markdown-only vault CRUD, pagination, hash-based concurrency checks, serialized writes |
-| `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch, including external source-read/summary-save (`get_reference_source` prefers a linked PDF's stashed extracted text over PMC full text over the abstract) and `set_reference_fields` (screening kq/include/level/design/screening_note, mirrored into tags); deliberately bypasses chat/summary/rerank LLM paths |
+| `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch, including external source-read/summary-save (`get_reference_source` prefers a linked PDF's stashed extracted text over PMC full text over the abstract) and `set_reference_fields` (screening kq/include/level/design/screening_note/guideline, fields only; `list_references` filters on kq/include/guideline); deliberately bypasses chat/summary/rerank LLM paths |
 | `write/docx.ts` + `write/pandoc.ts` | "Export manuscript to Word": Pandoc with the bundled `styles/manuscript-reference.docx` (esbuild `.docx` binary loader); `pandocCandidates` is the pure probe list |
 | `write/refcheck.ts` | `referenceProblems` / `refcheckReport` for "Check references in this manuscript" |
 | `write/manuscript.ts` | pure citation compilation shared by the Obsidian command and MCP output-copy tool |

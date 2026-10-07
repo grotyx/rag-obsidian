@@ -1,10 +1,10 @@
-import { keywordsToTags, tagSlug } from "./reference";
+import { keywordsToTags } from "./reference";
 
-/** Screening decision values (mirrored 1:1 into a tag of the same name). */
+/** Screening decision values (stored in the `include` frontmatter field). */
 export const INCLUDE_VALUES = ["include", "exclude", "pending"] as const;
 export type IncludeValue = (typeof INCLUDE_VALUES)[number];
 
-/** Evidence levels (mirrored into `level-<n>`). */
+/** Evidence levels (stored in the `level` frontmatter field). */
 export const LEVELS = ["1", "2", "3", "4", "5"] as const;
 export type Level = (typeof LEVELS)[number];
 
@@ -49,6 +49,8 @@ export interface ScreeningFields {
   level?: Level;
   design?: string;
   screening_note?: string;
+  /** Guideline the record was screened for (e.g. "BE"); empty string clears it. */
+  guideline?: string;
   add_tags?: string[];
   remove_tags?: string[];
 }
@@ -61,19 +63,21 @@ export interface ScreeningResult {
     level: string | null;
     design: string | null;
     screening_note: string | null;
+    guideline: string | null;
   };
 }
 
 /** Validate + apply screening fields onto a note's frontmatter object (mutated in place — the
- *  same shape Obsidian's `processFrontMatter` callback receives) and mirror them into `fm.tags`.
- *  Shared by the MCP `set_reference_fields` tool and the screening pane so the two can never
- *  disagree about which tags a decision produces. Throws (writing nothing) when `include` is
+ *  same shape Obsidian's `processFrontMatter` callback receives). Results live only in their own
+ *  fields, never in tags; setting a field also drops the legacy mirrored tag (`kq-*`, `include` /
+ *  `exclude` / `pending`, `level-*`, `design-*`) older versions wrote, so notes clean up as they are
+ *  re-screened. Shared by the MCP `set_reference_fields` tool and the screening pane. Throws (writing nothing) when `include` is
  *  being set to "include" with no key question attached — the same rule external screening
  *  tooling has always required an include decision to carry. */
 export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFields): ScreeningResult {
   let tags: string[] = Array.isArray(fm.tags) ? fm.tags.map(String) : typeof fm.tags === "string" ? [fm.tags] : [];
-  const dropPrefixed = (prefix: string) => {
-    tags = tags.filter((t) => !t.startsWith(prefix));
+  const dropLegacy = (match: (t: string) => boolean) => {
+    tags = tags.filter((t) => !match(t));
   };
   const addTag = (t: string) => {
     if (!tags.includes(t)) tags.push(t);
@@ -89,25 +93,26 @@ export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFie
 
   if (fields.kq !== undefined) {
     fm.kq = fields.kq;
-    dropPrefixed("kq-");
-    for (const k of fields.kq) addTag(/^\d+$/.test(k) ? `kq-${k.padStart(2, "0")}` : `kq-${tagSlug(k)}`);
+    dropLegacy((t) => t.startsWith("kq-"));
   }
   if (fields.include !== undefined) {
     fm.include = fields.include;
-    tags = tags.filter((t) => t !== "include" && t !== "exclude" && t !== "pending");
-    addTag(fields.include);
+    dropLegacy((t) => (INCLUDE_VALUES as readonly string[]).includes(t));
   }
   if (fields.level !== undefined) {
     fm.level = fields.level;
-    dropPrefixed("level-");
-    addTag(`level-${fields.level}`);
+    dropLegacy((t) => t.startsWith("level-"));
   }
   if (fields.design !== undefined) {
     fm.design = fields.design;
-    dropPrefixed("design-");
-    addTag(`design-${tagSlug(fields.design)}`);
+    dropLegacy((t) => t.startsWith("design-"));
   }
   if (fields.screening_note !== undefined) fm.screening_note = fields.screening_note;
+  if (fields.guideline !== undefined) {
+    const g = fields.guideline.trim();
+    if (g) fm.guideline = g;
+    else delete fm.guideline;
+  }
   if (fields.add_tags) for (const t of keywordsToTags(fields.add_tags)) addTag(t);
   if (fields.remove_tags) {
     const drop = new Set(keywordsToTags(fields.remove_tags));
@@ -123,6 +128,7 @@ export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFie
       level: typeof fm.level === "string" ? fm.level : null,
       design: typeof fm.design === "string" ? fm.design : null,
       screening_note: typeof fm.screening_note === "string" ? fm.screening_note : null,
+      guideline: typeof fm.guideline === "string" ? fm.guideline : null,
     },
   };
 }

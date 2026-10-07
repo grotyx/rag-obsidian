@@ -38,7 +38,7 @@ function matchesStatus(e: Entry, status: StatusFilter): boolean {
 /** One-record-at-a-time abstract screening: decide include/exclude/pending, tag key questions,
  *  evidence level and study design, and write it through the same `applyScreening` the MCP
  *  `set_reference_fields` tool uses, so a human and an external AI screener can never disagree
- *  about what tags a decision produces. */
+ *  about what a decision writes (frontmatter fields only, never tags). */
 export class ScreeningView extends ItemView {
   private plugin: ScholarRagPlugin;
   private scopeTag = ""; // "" = all references
