@@ -823,17 +823,20 @@ async function main() {
     // A just-created reference must resolve before Obsidian's metadata cache catches up, because
     // MCP immediately follows add_reference with get_reference_source.
     const freshFiles = new Map<string, TFile>();
+    const freshText = new Map<string, string>();
     let freshFrontmatter: Record<string, unknown> | null = null;
     const freshApp: any = {
       vault: {
         getAbstractFileByPath: (p: string) => freshFiles.get(p) ?? null,
         getMarkdownFiles: () => [...freshFiles.values()],
         createFolder: async () => undefined,
-        create: async (p: string) => {
+        create: async (p: string, content: string) => {
           const f = new TFile(p);
           freshFiles.set(p, f);
+          freshText.set(p, content);
           return f;
         },
+        cachedRead: async (f: TFile) => freshText.get(f.path) ?? "",
       },
       metadataCache: { getFileCache: () => freshFrontmatter ? { frontmatter: freshFrontmatter } : null },
     };
@@ -845,6 +848,19 @@ async function main() {
       freshLibrary.getFile(freshCitekey) === freshFile && freshLibrary.getItem(freshCitekey)?.title === freshItem.title,
       "a just-created reference resolves before metadata-cache refresh"
     );
+    // Citekeys stay unique while the metadata cache has parsed nothing: a note already on disk
+    // from before this session (only its text is readable), and two overlapping creates.
+    const sameKeyItem = (t: string): CSLItem => ({ type: "article-journal", title: t, author: [{ family: "Same", given: "A" }], issued: { "date-parts": [[2024]] } });
+    const before = new TFile("References/older.md");
+    freshFiles.set(before.path, before);
+    freshText.set(before.path, `---\ncitekey: ${generateCitekey(sameKeyItem("Spine outcomes alpha"), settings)}\n---\n`);
+    const [fa, fb] = await Promise.all([
+      freshLibrary.createReference(sameKeyItem("Spine outcomes alpha two")),
+      freshLibrary.createReference(sameKeyItem("Spine outcomes alpha three")),
+    ]);
+    const keyOf = (f: TFile) => /^citekey: (\S+)/m.exec(freshText.get(f.path) ?? "")?.[1];
+    const threeKeys = new Set([keyOf(before), keyOf(fa), keyOf(fb)]);
+    ok(threeKeys.size === 3, `citekeys stay unique before the metadata cache parses anything: ${[...threeKeys].join(", ")}`);
     freshFrontmatter = { ...freshItem, citekey: freshCitekey, title: "Updated after cache refresh" };
     ok(
       freshLibrary.getItem(freshCitekey)?.title === "Updated after cache refresh",

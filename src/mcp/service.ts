@@ -125,7 +125,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "add_reference",
-    description: "Add a reference from an explicit DOI, PMID:123, arXiv ID, or OpenAlex work ID. Returns an existing duplicate when present. Optional tags are written on create and merged onto an existing duplicate's note (safe to re-run over overlapping search results). It never itself calls an LLM or creates a summary; follow the returned nextAction unless the user requested metadata only.",
+    description: "Add a reference from an explicit DOI, PMID:123, arXiv ID, or OpenAlex work ID. Returns an existing duplicate when present. A new note is tagged with its PubMed MeSH headings and author keywords; optional tags are added on create and merged onto an existing duplicate's note (safe to re-run over overlapping search results). It never itself calls an LLM or creates a summary; follow the returned nextAction unless the user requested metadata only.",
     inputSchema: objectSchema({
       identifier: string("Explicit DOI, prefixed PMID, arXiv ID, or OpenAlex work ID/URL."),
       tags: strings("Optional topic/screening tags (1-64 chars each) to set on the note, merged with any it already has."),
@@ -637,8 +637,19 @@ export class McpService {
     if (/^\d+$/.test(raw)) throw new Error("AMBIGUOUS_IDENTIFIER: use an explicit PMID such as PMID:12345");
     const id = detectId(raw);
     if (id.kind === "unknown") throw new Error("INVALID_IDENTIFIER: use an explicit identifier; search_pubmed can resolve a title");
-    const item = await this.deps.fetchMetadata(id, this.plugin.settings.pubmedApiKey, this.plugin.settings.openalexMailto);
+    const { pubmedApiKey, openalexMailto } = this.plugin.settings;
+    const item = await this.deps.fetchMetadata(id, pubmedApiKey, openalexMailto);
     const normalizedTags = tags ? keywordsToTags(tags) : [];
+    // A new note gets the PubMed record's MeSH headings and author keywords as tags, like the
+    // PubMed search modal (no LLM here, so no suggested-heading top-up). Best effort.
+    let meshTags: string[] = [];
+    if (item.PMID && !this.plugin.library.findDuplicate(item)) {
+      try {
+        const rec = await this.deps.fetchPubmedRecord(String(item.PMID), pubmedApiKey, openalexMailto);
+        meshTags = keywordsToTags([...rec.descriptors, ...rec.keywords]);
+        if (rec.pmc && !item.PMCID) item.PMCID = rec.pmc;
+      } catch { /* metadata alone is still a valid note */ }
+    }
     return this.vault.mutate(async () => {
       const duplicate = this.plugin.library.findDuplicate(item);
       if (duplicate) {
@@ -663,9 +674,10 @@ export class McpService {
         return { status: "existing", citekey: duplicate, path: file.path, metadata: item, tagsAdded, nextAction: this.summaryNextAction(duplicate) };
       }
       await this.vault.assertPath(`${this.plugin.library.folder()}/__mcp_write_probe__.md`, true);
-      const file = await this.plugin.library.createReference(item, normalizedTags.length ? { tags: normalizedTags } : {});
+      const newTags = [...new Set([...meshTags, ...normalizedTags])];
+      const file = await this.plugin.library.createReference(item, newTags.length ? { tags: newTags } : {});
       const citekey = this.plugin.library.findDuplicate(item) ?? file.basename;
-      return { status: "created", citekey, path: file.path, metadata: item, tagsAdded: normalizedTags, nextAction: this.summaryNextAction(citekey) };
+      return { status: "created", citekey, path: file.path, metadata: item, tagsAdded: newTags, nextAction: this.summaryNextAction(citekey) };
     });
   }
 

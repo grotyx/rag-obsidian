@@ -162,7 +162,7 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | `save_reference_summary` | Save the external model's structured summary under a hash guard | Edits a reference note |
 | `list_tags` | List library tags and counts | Read-only |
 | `search_pubmed` | Search PubMed (`limit` up to 150; `totalCount`/`truncated` report if the query matched more than was returned) | Network; read-only |
-| `add_reference` | Add a paper from an explicit identifier, with optional `tags` (merged onto an existing duplicate too) | Network; creates or edits a note |
+| `add_reference` | Add a paper from an explicit identifier, tagged with its PubMed MeSH headings and author keywords, plus optional `tags` (merged onto an existing duplicate too) | Network; creates or edits a note |
 | `set_reference_fields` | Set screening fields (key questions, include/exclude/pending, evidence level, design, note) and `guideline` for a systematic-review workflow, stored as note fields (never tags; legacy mirrored tags are removed) | Edits a reference note |
 | `list_notes` | Page through Markdown note paths | Read-only |
 | `read_note` | Read a bounded range and return the whole-note SHA-256 | Read-only |

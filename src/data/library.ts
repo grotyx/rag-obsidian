@@ -94,8 +94,9 @@ export class Library {
     return this.knownCitekeys().has(citekey);
   }
 
-  uniqueCitekey(base: string): string {
+  uniqueCitekey(base: string, also: Iterable<string> = []): string {
     const set = this.knownCitekeys();
+    for (const k of also) set.add(k);
     if (!set.has(base)) return base;
     for (const s of "abcdefghijklmnopqrstuvwxyz") {
       if (!set.has(base + s)) return base + s;
@@ -115,9 +116,32 @@ export class Library {
     return `${base}-${Date.now()}`;
   }
 
-  async createReference(item: CSLItem, opts: BuildNoteOpts = {}): Promise<TFile> {
+  /** Citekeys of reference notes the metadata cache has not parsed yet (right after start-up, or
+   *  a note synced in from elsewhere): `list()` cannot see them, so a new key could repeat one. */
+  private async unparsedCitekeys(): Promise<string[]> {
+    const prefix = this.folder() + "/";
+    const keys: string[] = [];
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      if (!file.path.startsWith(prefix) || this.app.metadataCache.getFileCache(file)?.frontmatter) continue;
+      const m = /^citekey:\s*["']?([^"'\s]+)/m.exec(await this.app.vault.cachedRead(file));
+      if (m) keys.push(m[1]);
+    }
+    return keys;
+  }
+
+  // Creates run one at a time: a key is picked from what exists, so two overlapping creates
+  // (MCP add_reference + a modal batch) could otherwise pick the same one.
+  private createChain: Promise<unknown> = Promise.resolve();
+
+  createReference(item: CSLItem, opts: BuildNoteOpts = {}): Promise<TFile> {
+    const run = this.createChain.then(() => this.createReferenceNow(item, opts));
+    this.createChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async createReferenceNow(item: CSLItem, opts: BuildNoteOpts): Promise<TFile> {
     await this.ensureFolder();
-    const citekey = this.uniqueCitekey(generateCitekey(item, this.settings));
+    const citekey = this.uniqueCitekey(generateCitekey(item, this.settings), await this.unparsedCitekeys());
     const filename = this.uniqueFilename(generateFilename(item));
     const path = normalizePath(`${this.folder()}/${filename}.md`);
     this.createdCitekeys.set(citekey, { path, item });

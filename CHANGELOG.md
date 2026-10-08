@@ -6,6 +6,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.8.7] — 2026-10-08
+
+### Fixed
+- Two references added at about the same time (or added right after Obsidian starts, before it has read every note) could get the same citekey. New notes are now created one at a time, and notes Obsidian has not parsed yet are read directly when a key is chosen.
+- MCP `add_reference` now tags a new note with its PubMed MeSH headings and author keywords (as the PubMed search window does), and keeps the PMC id. Bulk imports through Claude Code / Codex were landing untagged.
+
 ### Changed
 - The key setting is now labelled **API key (OpenRouter or OpenAI)** (was "OpenAI API key"), so it is clear the default base URL expects an OpenRouter key; searching settings for "OpenAI API key" still finds it.
 

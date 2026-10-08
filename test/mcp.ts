@@ -305,6 +305,7 @@ async function serviceChecks(): Promise<void> {
     vaultPath: "/vault/Research",
     searchPubmed: async () => ({ hits: [{ pmid: "123", pmc: "", item }], total: 1 }),
     fetchMetadata: async () => ({ type: "article-journal", title: "New", PMID: "999" }),
+    fetchPubmedRecord: async () => ({ abstract: "", descriptors: [], keywords: [], pmc: "" }),
     fetchPubmedRecord: async () => ({ abstract: "PubMed abstract", descriptors: [], keywords: [], pmc: "PMC123" }),
     fetchPmcFullText: async () => "Complete article body with quantitative results.",
   });
@@ -487,6 +488,7 @@ async function serviceChecks(): Promise<void> {
   const blocked = new McpService(plugin, blockedVault, {
     searchPubmed: async () => ({ hits: [], total: 0 }),
     fetchMetadata: async () => ({ type: "article-journal", title: "Blocked", PMID: "999" }),
+    fetchPubmedRecord: async () => ({ abstract: "", descriptors: [], keywords: [], pmc: "" }),
   });
   const safeSearch = await blocked.callTool("search_library", { query: "q" }) as any;
   assert.deepEqual(safeSearch.results, []);
@@ -515,6 +517,7 @@ async function serviceChecks(): Promise<void> {
   };
   const concurrentService = new McpService(concurrentPlugin, vault, {
     fetchMetadata: async () => ({ type: "article-journal", title: "Concurrent", PMID: "777" }),
+    fetchPubmedRecord: async () => ({ abstract: "", descriptors: [], keywords: [], pmc: "" }),
   });
   const concurrent = await Promise.all([
     concurrentService.callTool("add_reference", { identifier: "PMID:777" }),
@@ -551,11 +554,14 @@ async function addReferenceTagsChecks(): Promise<void> {
 
   const create = new McpService(plugin, vault, {
     fetchMetadata: async () => ({ type: "article-journal", title: "New", PMID: "111" }),
+    fetchPubmedRecord: async () => ({ abstract: "", descriptors: ["Spinal Fusion", "Humans"], keywords: ["spine"], pmc: "PMC42" }),
   });
   const created = await create.callTool("add_reference", { identifier: "PMID:111", tags: ["Spine", "New Finding"] }) as any;
   assert.equal(created.status, "created");
-  assert.deepEqual(created.tagsAdded, ["spine", "new-finding"]);
-  assert.deepEqual(createOpts, { tags: ["spine", "new-finding"] }, "normalized tags reach createReference's opts");
+  // MeSH headings + author keywords from the PubMed record lead, "Humans" is dropped, "spine" is not doubled.
+  assert.deepEqual(created.tagsAdded, ["spinal-fusion", "spine", "new-finding"]);
+  assert.deepEqual(createOpts, { tags: ["spinal-fusion", "spine", "new-finding"] }, "MeSH and caller tags reach createReference's opts");
+  assert.equal(created.metadata.PMCID, "PMC42", "the PubMed record's PMC id is kept on the new note");
 
   const dup = new McpService(plugin, vault, {
     fetchMetadata: async () => ({ type: "article-journal", title: "Dup", PMID: "555" }),
