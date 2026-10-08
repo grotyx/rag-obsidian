@@ -29,7 +29,7 @@ Instálalo desde **Preferencias → Complementos de la comunidad → Explorar**:
 ![Ajustes del complemento: proveedor de embeddings y clave de API](img/es/13-settings.png)
 
 1. Deja **Embedding provider** en `OpenAI / compatible`. La URL base predeterminada es OpenRouter, así que una sola clave cubre búsqueda, chat y resúmenes.
-2. Pega tu clave de OpenRouter en **OpenAI API key**. La clave se guarda en el llavero del sistema, no en los archivos del vault.
+2. Pega tu clave de **OpenRouter** ([openrouter.ai/keys](https://openrouter.ai/keys)) en **API key (OpenRouter or OpenAI)**. La clave se guarda en el llavero del sistema, no en los archivos del vault. También sirve una clave de OpenAI, pero solo si cambias **OpenAI base URL** a `https://api.openai.com/v1`; con la URL predeterminada debe ser una clave de OpenRouter.
 
 > **No hace falta clave para citar.** Añadir artículos, las citas con `@` y las bibliografías funcionan sin clave de IA. La clave solo es necesaria para resúmenes, búsqueda semántica y chat.
 
@@ -166,4 +166,4 @@ Todos los comandos están en la paleta de comandos (<kbd>Cmd/Ctrl</kbd>+<kbd>P</
 
 ---
 
-<sub>Capturas de pantalla: complemento v0.7.8 en una biblioteca de prueba de 56 artículos. Las respuestas del chat son la salida del modelo sin editar. Los mantenedores regeneran las capturas con `python scripts/manual/capture.py es`.</sub>
+<sub>Capturas de pantalla: complemento v0.8.7 en una biblioteca de prueba de 56 artículos. Las respuestas del chat son la salida del modelo sin editar. Los mantenedores regeneran las capturas con `python scripts/manual/capture.py es`.</sub>

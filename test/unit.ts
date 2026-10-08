@@ -1290,12 +1290,12 @@ check(
   const defs = (tab as any).buildDefinitions();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allRows = defs.flatMap((g: any) => g.items);
-  const apiKeyRow = allRows.find((r: { name: string }) => r.name === "OpenAI API key");
-  check(!!apiKeyRow, 'settings: "OpenAI API key" row exists in the definitions even while the provider is Ollama');
+  const apiKeyRow = allRows.find((r: { name: string }) => r.name === "API key (OpenRouter or OpenAI)");
+  check(!!apiKeyRow, 'settings: "API key (OpenRouter or OpenAI)" row exists in the definitions even while the provider is Ollama');
   settings.llmProvider = "ollama"; // neither embeddings nor chat use the OpenAI endpoint
-  check(apiKeyRow.visible() === false, 'settings: "OpenAI API key" row is not visible while both providers are Ollama');
+  check(apiKeyRow.visible() === false, 'settings: "API key (OpenRouter or OpenAI)" row is not visible while both providers are Ollama');
   settings.llmProvider = "openai"; // chat alone needs the key — the row must show (review finding)
-  check(apiKeyRow.visible() === true, 'settings: "OpenAI API key" row shows when only the chat LLM uses OpenAI');
+  check(apiKeyRow.visible() === true, 'settings: "API key (OpenRouter or OpenAI)" row shows when only the chat LLM uses OpenAI');
   settings.llmProvider = "ollama";
   settings.embeddingProvider = "openai"; // live mutation of the SAME settings object, no rebuild
   check(

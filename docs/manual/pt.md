@@ -26,15 +26,16 @@ correspondem aos passos numerados logo abaixo dela.
 
 ## 0. Configuração
 
-Instale em **Settings → Community plugins → Browse**: pesquise "Academic Paper
-Citation Manager", instale e ative. Depois, informe sua chave de IA uma única vez.
+Instale em **Settings → Community plugins → Browse**: pesquise "Refwright", instale e ative. Depois, informe sua chave de IA uma única vez.
 
 ![Configurações do plugin: provedor de embeddings e chave de API](img/en/13-settings.png)
 
 1. Deixe **Embedding provider** em `OpenAI / compatible`. A URL base padrão é a do
    OpenRouter, então uma única chave cobre a busca, o chat e os resumos.
-2. Cole sua chave do OpenRouter em **OpenAI API key**. A chave fica guardada no chaveiro
-   do sistema, e não nos arquivos do vault.
+2. Cole sua chave do **OpenRouter** ([openrouter.ai/keys](https://openrouter.ai/keys)) em **API key (OpenRouter or OpenAI)**. A chave fica guardada no chaveiro
+   do sistema, e não nos arquivos do vault. Uma chave da OpenAI também funciona, mas só se você
+   mudar **OpenAI base URL** para `https://api.openai.com/v1`; com a URL padrão, ela precisa ser
+   do OpenRouter.
 
 > **Não é preciso chave para citar.** Adicionar artigos, citações com `@` e bibliografias funcionam
 > sem uma chave de IA. A chave só é necessária para resumos, busca semântica e chat.
@@ -202,5 +203,5 @@ Todos os comandos estão na paleta de comandos (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>
 
 ---
 
-<sub>Capturas de tela: plugin v0.7.8 em um vault de teste com 56 artigos. As respostas do chat são saídas do modelo, sem edição.
+<sub>Capturas de tela: plugin v0.8.7 em um vault de teste com 56 artigos. As respostas do chat são saídas do modelo, sem edição.
 Os mantenedores regeneram as capturas com `python scripts/manual/capture.py en`.</sub>

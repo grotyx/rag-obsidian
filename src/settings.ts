@@ -393,8 +393,8 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       text("ollamaUrl", "Ollama URL", undefined, DEFAULT_SETTINGS.ollamaUrl, undefined, () => s.embeddingProvider === "ollama" || s.llmProvider === "ollama"),
       text("openaiBaseUrl", "OpenAI base URL", undefined, DEFAULT_SETTINGS.openaiBaseUrl, undefined, () => s.embeddingProvider === "openai" || s.llmProvider === "openai"),
       {
-        name: "OpenAI API key",
-        aliases: ["API key"],
+        name: "API key (OpenRouter or OpenAI)",
+        aliases: ["API key", "OpenAI API key", "OpenRouter API key"],
         visible: () => s.embeddingProvider === "openai" || s.llmProvider === "openai",
         render: (setting) => {
           setting.addText((t) => {

@@ -111,7 +111,7 @@ export class LLMClient {
 
   private async openai(messages: ChatMessage[], system: string, opts: ChatOpts = {}): Promise<string> {
     const key = this.settings.openaiApiKey;
-    if (!key) throw new Error("API key not set — Settings → Refwright → OpenAI API key");
+    if (!key) throw new Error("API key not set — Settings → Refwright → API key (OpenRouter or OpenAI)");
     const body: Record<string, unknown> = {
       model: this.settings.llmModel,
       messages: [{ role: "system", content: system }, ...messages],

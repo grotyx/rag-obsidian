@@ -285,7 +285,7 @@ manuwright 是可选的：插件可独立使用，manuwright 也可在没有 Obs
 | OpenAI base URL (shared) | `https://openrouter.ai/api/v1` |
 | Chat model | 任意 OpenRouter id，例如 `deepseek/deepseek-v4-flash` |
 | Embedding model | `openai/text-embedding-3-small` |
-| OpenAI API key | 你的 OpenRouter 密钥（[openrouter.ai/keys](https://openrouter.ai/keys)） |
+| API key (OpenRouter or OpenAI) | 你的 OpenRouter 密钥（[openrouter.ai/keys](https://openrouter.ai/keys)） |
 
 **使用 Google Gemini？**选择 **OpenAI** 提供商，并指向 Google 的端点：
 
@@ -296,7 +296,7 @@ manuwright 是可选的：插件可独立使用，manuwright 也可在没有 Obs
 | Embedding provider | `OpenAI` |
 | Embedding model | `gemini-embedding-001` |
 | OpenAI base URL (shared) | `https://generativelanguage.googleapis.com/v1beta/openai` |
-| OpenAI API key | 你的 Gemini 密钥（[Google AI Studio](https://aistudio.google.com/apikey)） |
+| API key (OpenRouter or OpenAI) | 你的 Gemini 密钥（[Google AI Studio](https://aistudio.google.com/apikey)） |
 
 ---
 

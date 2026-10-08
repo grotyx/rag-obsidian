@@ -29,7 +29,7 @@
 ![プラグイン設定のEmbedding providerとAPIキー入力欄](img/ja/13-settings.png)
 
 1. **Embedding provider** は初期値の `OpenAI / compatible` のままにします。既定のベースURLはOpenRouterなので、キー1つで検索・チャット・要約すべてをカバーします。
-2. **OpenAI API key** にOpenRouterのキーを貼り付けます。キーはOSのキーチェーンに保存され、Vault内のファイルには残りません。
+2. **API key (OpenRouter or OpenAI)** に **OpenRouter** のキー（[openrouter.ai/keys](https://openrouter.ai/keys)）を貼り付けます。キーはOSのキーチェーンに保存され、Vault内のファイルには残りません。OpenAIのキーも使えますが、**OpenAI base URL** を `https://api.openai.com/v1` に変えた場合だけです。既定のURLのままならOpenRouterのキーが必要です。
 
 > **引用だけなら鍵は不要です。** 論文の追加、`@` による引用、参考文献リストの生成はAIキーなしで動きます。キーが必要なのは要約・セマンティック検索・チャットだけです。
 
@@ -166,4 +166,4 @@
 
 ---
 
-<sub>スクリーンショット：プラグイン v0.7.8、テスト用ライブラリの論文56本。チャットの回答はモデルの出力をそのまま掲載しています。メンテナーは `python scripts/manual/capture.py ja` でスクリーンショットを再生成します。</sub>
+<sub>スクリーンショット：プラグイン v0.8.7、テスト用ライブラリの論文56本。チャットの回答はモデルの出力をそのまま掲載しています。メンテナーは `python scripts/manual/capture.py ja` でスクリーンショットを再生成します。</sub>

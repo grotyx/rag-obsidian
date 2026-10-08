@@ -6,6 +6,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Changed
+- The key setting is now labelled **API key (OpenRouter or OpenAI)** (was "OpenAI API key"), so it is clear the default base URL expects an OpenRouter key; searching settings for "OpenAI API key" still finds it.
+
+### Docs
+- User guide: the setup step names OpenRouter and links to its key page, and says an OpenAI key needs the base URL changed first; install instructions search for "Refwright"; every screenshot re-shot with the Refwright name.
+
 ## [0.8.6] — 2026-10-08
 
 ### Changed

@@ -290,7 +290,7 @@ une URL de base, des centaines de modèles :
 | OpenAI base URL (shared) | `https://openrouter.ai/api/v1` |
 | Chat model | n'importe quel identifiant OpenRouter, p. ex. `deepseek/deepseek-v4-flash` |
 | Embedding model | `openai/text-embedding-3-small` |
-| OpenAI API key | votre clé OpenRouter ([openrouter.ai/keys](https://openrouter.ai/keys)) |
+| API key (OpenRouter or OpenAI) | votre clé OpenRouter ([openrouter.ai/keys](https://openrouter.ai/keys)) |
 
 **Vous utilisez Google Gemini ?** Choisissez le fournisseur **OpenAI** et pointez-le vers le point d'accès de Google :
 
@@ -301,7 +301,7 @@ une URL de base, des centaines de modèles :
 | Embedding provider | `OpenAI` |
 | Embedding model | `gemini-embedding-001` |
 | OpenAI base URL (shared) | `https://generativelanguage.googleapis.com/v1beta/openai` |
-| OpenAI API key | votre clé Gemini ([Google AI Studio](https://aistudio.google.com/apikey)) |
+| API key (OpenRouter or OpenAI) | votre clé Gemini ([Google AI Studio](https://aistudio.google.com/apikey)) |
 
 ---
 

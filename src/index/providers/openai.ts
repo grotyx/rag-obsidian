@@ -19,7 +19,7 @@ export class OpenAIProvider implements EmbeddingProvider {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    if (!this.key) throw new Error("API key not set — Settings → Refwright → OpenAI API key");
+    if (!this.key) throw new Error("API key not set — Settings → Refwright → API key (OpenRouter or OpenAI)");
     const res = await requestUrl({
       url: `${this.base}/embeddings`,
       method: "POST",

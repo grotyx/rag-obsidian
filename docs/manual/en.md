@@ -26,15 +26,16 @@ the numbered steps below it.
 
 ## 0. Setup
 
-Install from **Settings → Community plugins → Browse**: search for "Academic Paper
-Citation Manager", install it, and enable it. Then enter your AI key once.
+Install from **Settings → Community plugins → Browse**: search for "Refwright", install it, and enable it. Then enter your AI key once.
 
 ![Plugin settings: embedding provider and API key](img/en/13-settings.png)
 
 1. Leave **Embedding provider** at `OpenAI / compatible`. The default base URL is
    OpenRouter, so one key covers search, chat and summaries.
-2. Paste your OpenRouter key into **OpenAI API key**. The key is kept in your system
-   keychain, not in the vault files.
+2. Paste your **OpenRouter** key ([openrouter.ai/keys](https://openrouter.ai/keys)) into **API key (OpenRouter or OpenAI)**. The key is kept in your system
+   keychain, not in the vault files. An OpenAI key also works, but only after you change
+   **OpenAI base URL** to `https://api.openai.com/v1` — with the default URL it must be an
+   OpenRouter key.
 
 > **No key needed for citing.** Adding papers, `@` citations and bibliographies all work
 > without an AI key. The key is only for summaries, semantic search and chat.
@@ -202,5 +203,5 @@ Every command is in the command palette (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>). Type
 
 ---
 
-<sub>Screenshots: plugin v0.7.8 on a test vault of 56 papers. Chat answers are unedited model
+<sub>Screenshots: plugin v0.8.7 on a test vault of 56 papers. Chat answers are unedited model
 output. Maintainers regenerate the screenshots with `python scripts/manual/capture.py en`.</sub>

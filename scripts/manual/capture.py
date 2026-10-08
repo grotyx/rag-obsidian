@@ -257,7 +257,7 @@ def run(p, browser):
       n.scrollIntoView({block:"start"}); document.querySelector(".mod-settings .vertical-tab-content").scrollTop -= 60;}''')
     sp.wait_for_timeout(400)
     shot(sp, '13-settings', [('.mod-settings .setting-item::text=Embedding provider', 1),
-                             ('.mod-settings .setting-item::text=OpenAI API key', 2)])
+                             ('.mod-settings .setting-item::text=API key (OpenRouter', 2)])
     sp.evaluate('app.setting.close()') if sp is p else sp.close()
 
 

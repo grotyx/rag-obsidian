@@ -26,15 +26,16 @@ aux étapes numérotées qui la suivent.
 
 ## 0. Configuration
 
-Installez le plugin depuis **Settings → Community plugins → Browse** : recherchez « Academic Paper
-Citation Manager », installez-le et activez-le. Saisissez ensuite une seule fois votre clé d'IA.
+Installez le plugin depuis **Settings → Community plugins → Browse** : recherchez « Refwright », installez-le et activez-le. Saisissez ensuite une seule fois votre clé d'IA.
 
 ![Réglages du plugin : fournisseur d'embeddings et clé API](img/en/13-settings.png)
 
 1. Laissez **Embedding provider** sur `OpenAI / compatible`. L'URL de base par défaut est
    celle d'OpenRouter : une seule clé couvre donc la recherche, le chat et les résumés.
-2. Collez votre clé OpenRouter dans **OpenAI API key**. La clé est conservée dans le trousseau
-   de votre système, et non dans les fichiers du vault.
+2. Collez votre clé **OpenRouter** ([openrouter.ai/keys](https://openrouter.ai/keys)) dans **API key (OpenRouter or OpenAI)**. La clé est conservée dans le trousseau
+   de votre système, et non dans les fichiers du vault. Une clé OpenAI fonctionne aussi, mais
+   seulement si vous remplacez **OpenAI base URL** par `https://api.openai.com/v1` ; avec l'URL
+   par défaut, il faut une clé OpenRouter.
 
 > **Aucune clé n'est nécessaire pour citer.** L'ajout d'articles, les citations `@` et les bibliographies fonctionnent tous
 > sans clé d'IA. La clé ne sert qu'aux résumés, à la recherche sémantique et au chat.
@@ -202,5 +203,5 @@ Toutes les commandes se trouvent dans la palette de commandes (<kbd>Cmd/Ctrl</kb
 
 ---
 
-<sub>Captures d'écran : plugin v0.7.8 sur un vault de test de 56 articles. Les réponses du chat sont la sortie brute
+<sub>Captures d'écran : plugin v0.8.7 sur un vault de test de 56 articles. Les réponses du chat sont la sortie brute
 du modèle, sans retouche. Les mainteneurs régénèrent les captures avec `python scripts/manual/capture.py en`.</sub>

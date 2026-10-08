@@ -32,8 +32,9 @@
 
 1. **Embedding provider**는 기본값 `OpenAI / compatible` 그대로 둡니다. 기본 주소가
    OpenRouter라서 키 하나로 검색·채팅·요약이 모두 됩니다.
-2. **OpenAI API key** 칸에 OpenRouter 키를 붙여 넣습니다. 키는 운영체제 키체인에
-   저장되고 볼트 파일에는 남지 않습니다.
+2. **API key (OpenRouter or OpenAI)** 칸에 **OpenRouter** 키([openrouter.ai/keys](https://openrouter.ai/keys))를 붙여 넣습니다. 키는 운영체제 키체인에
+   저장되고 볼트 파일에는 남지 않습니다. OpenAI 키도 쓸 수 있지만 **OpenAI base URL**을
+   `https://api.openai.com/v1`로 바꿨을 때만입니다. 기본 주소 그대로라면 OpenRouter 키여야 합니다.
 
 > **인용만 쓴다면 키가 필요 없습니다.** 논문 추가, `@` 인용, 참고문헌 생성은 AI 키 없이
 > 동작합니다. 키는 요약·의미 검색·채팅에만 씁니다.
@@ -174,8 +175,7 @@ OpenAlex에서 인용 정보를 가져옵니다(56편에 약 40초).
 
 ## 10. 원고 마무리와 Word 내보내기
 
-모든 명령은 명령 팔레트(<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>)에서 "Academic Paper Citation
-Manager"를 치면 모아서 볼 수 있습니다.
+모든 명령은 명령 팔레트(<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>)에서 "Refwright"를 치면 모아서 볼 수 있습니다.
 
 ![플러그인 명령이 나열된 명령 팔레트](img/ko/14-command-palette.png)
 
@@ -197,5 +197,5 @@ Manager"를 치면 모아서 볼 수 있습니다.
 
 ---
 
-<sub>화면: 플러그인 v0.7.8, 논문 56편 테스트 볼트. 채팅 답변은 모델 출력 그대로입니다.
+<sub>화면: 플러그인 v0.8.7, 논문 56편 테스트 볼트. 채팅 답변은 모델 출력 그대로입니다.
 관리자는 `python scripts/manual/capture.py ko`로 화면을 다시 찍습니다.</sub>

@@ -34,8 +34,10 @@ einmalig Ihren KI-Schlüssel ein.
 
 1. Lassen Sie **Embedding provider** auf `OpenAI / compatible`. Die Standard-Basis-URL ist
    OpenRouter, sodass ein einziger Schlüssel für Suche, Chat und Zusammenfassungen genügt.
-2. Fügen Sie Ihren OpenRouter-Schlüssel in **OpenAI API key** ein. Der Schlüssel wird im
-   Schlüsselbund Ihres Systems gespeichert, nicht in den Dateien des Vaults.
+2. Fügen Sie Ihren **OpenRouter**-Schlüssel ([openrouter.ai/keys](https://openrouter.ai/keys)) in **API key (OpenRouter or OpenAI)** ein. Der Schlüssel wird im
+   Schlüsselbund Ihres Systems gespeichert, nicht in den Dateien des Vaults. Ein OpenAI-Schlüssel
+   funktioniert auch, aber nur, wenn Sie **OpenAI base URL** auf `https://api.openai.com/v1`
+   ändern — mit der Standard-URL muss es ein OpenRouter-Schlüssel sein.
 
 > **Zum Zitieren ist kein Schlüssel nötig.** Artikel hinzufügen, `@`-Zitate und
 > Literaturverzeichnisse funktionieren ohne KI-Schlüssel. Der Schlüssel wird nur für
@@ -217,5 +219,5 @@ Alle Befehle finden Sie in der Befehlspalette (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>)
 
 ---
 
-<sub>Screenshots: Plugin v0.7.8 in einem Test-Vault mit 56 Artikeln. Die Chat-Antworten sind unbearbeitete
+<sub>Screenshots: Plugin v0.8.7 in einem Test-Vault mit 56 Artikeln. Die Chat-Antworten sind unbearbeitete
 Modellausgaben. Maintainer erzeugen die Screenshots mit `python scripts/manual/capture.py en` neu.</sub>

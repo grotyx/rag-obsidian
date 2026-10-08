@@ -29,7 +29,7 @@
 ![插件设置中的 Embedding provider 和 API 密钥](img/zh/13-settings.png)
 
 1. **Embedding provider** 保持默认值 `OpenAI / compatible` 即可。默认地址是 OpenRouter，一个密钥即可覆盖搜索、聊天和摘要功能。
-2. 将 OpenRouter 密钥粘贴到 **OpenAI API key** 中。密钥保存在系统密钥链中，不会写入库文件。
+2. 将 **OpenRouter** 密钥（[openrouter.ai/keys](https://openrouter.ai/keys)）粘贴到 **API key (OpenRouter or OpenAI)** 中。密钥保存在系统密钥链中，不会写入库文件。也可以用 OpenAI 密钥，但必须先把 **OpenAI base URL** 改为 `https://api.openai.com/v1`；保持默认地址时必须是 OpenRouter 密钥。
 
 > **仅做引用无需密钥。** 添加论文、`@` 引用和生成参考文献都不需要 AI 密钥。密钥仅用于摘要、语义搜索和聊天。
 
@@ -166,4 +166,4 @@
 
 ---
 
-<sub>截图：插件 v0.7.8，测试库共 56 篇论文。聊天回答为模型原始输出，未经编辑。维护者用 `python scripts/manual/capture.py zh` 重新生成截图。</sub>
+<sub>截图：插件 v0.8.7，测试库共 56 篇论文。聊天回答为模型原始输出，未经编辑。维护者用 `python scripts/manual/capture.py zh` 重新生成截图。</sub>

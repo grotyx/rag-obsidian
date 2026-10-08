@@ -286,7 +286,7 @@ manuwright는 선택 사항입니다. 플러그인은 혼자서도 쓸 수 있�
 | Embedding provider | `OpenAI` |
 | Embedding model | `gemini-embedding-001` |
 | OpenAI base URL (공유) | `https://generativelanguage.googleapis.com/v1beta/openai` |
-| OpenAI API key | Gemini 키 ([Google AI Studio](https://aistudio.google.com/apikey)) |
+| API key (OpenRouter or OpenAI) | Gemini 키 ([Google AI Studio](https://aistudio.google.com/apikey)) |
 
 ---
 
