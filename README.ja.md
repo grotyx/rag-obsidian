@@ -2,7 +2,7 @@
   <img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/assets/logo.svg" width="128" alt="Refwright logo">
 </p>
 
-<h1 align="center">Refwright</h1>
+<h1 align="center">RefWright</h1>
 
 <p align="center"><i>旧称「Academic Paper Citation Manager」— プラグイン本体もIDも設定も変わりません。</i></p>
 
