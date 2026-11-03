@@ -6,6 +6,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.11.2] — 2026-11-04
+
+Fixes from an independent Codex review of 0.8.9–0.11.1.
+
+### Fixed
+- **The "Systematic review tools" setting could not be switched** — clicking it changed nothing. It now turns the tools on and off (a test now flips every toggle in the settings tab to catch this class of bug).
+- Merging duplicates no longer reverts a property (title, screening decision, study id, risk of bias) edited while the merge runs: the merged note is written in one step, only if the keeper is unchanged.
+- Merging duplicates keeps the removed notes' extracted evidence (`## Evidence (extracted)`) in the kept note instead of sending it to the trash.
+- MCP `search_library` / `search_findings` check vault containment before candidate text is sent to the hosted reranker, not after.
+- Requesting a search-index rebuild while another index job is queued no longer starts a second full (paid) rebuild.
+- An index recovered from its temporary metadata file is made durable straight away, so a second interrupted save cannot leave it unrestorable.
+- Changing the references folder updates duplicate detection immediately.
+- The PubMed search log records the search the imported papers came from, even if another search was run during the import.
+- Snowballing keeps filling the list after dropping papers already in the library, instead of cutting at 200 first (which could leave no candidates).
+
 ## [0.11.1] — 2026-11-04
 
 Fixes from a code review of 0.10.0–0.11.0.

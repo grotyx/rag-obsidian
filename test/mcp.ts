@@ -312,7 +312,7 @@ async function serviceChecks(): Promise<void> {
     library: {
       folder: () => "References",
       entries: () => [{ citekey: "smith2024", item, file, year: "2024", authors: "Smith", title: "Trial" }],
-      getFile: (citekey: string) => citekey === "smith2024" ? file : citekey === "jones2023" ? fake.files.get("References/ev.md")?.file : null,
+      getFile: (citekey: string) => citekey === "outside2020" ? { path: "Elsewhere/x.md" } : citekey === "smith2024" ? file : citekey === "jones2023" ? fake.files.get("References/ev.md")?.file : null,
       getItem: (citekey: string) => citekey === "smith2024" ? item : citekey === "jones2023" ? { ...item, title: "Cages", issued: { "date-parts": [[2023]] } } : null,
       findDuplicate: (candidate: Record<string, unknown>) => candidate.PMID === "123" ? "smith2024" : null,
       createReference: async () => { created = true; return { path: "References/new.md" }; },
@@ -338,10 +338,21 @@ async function serviceChecks(): Promise<void> {
   assert.equal(search.results[0].path, "References/ref.md");
   // MCP never translates (no plugin LLM) and reranks unless told not to.
   assert.deepEqual(searchArgs.slice(0, 3), ["question", { yearFrom: 2020, tags: ["Spine"] }, 4]);
-  assert.deepEqual(searchArgs[3], { rerank: true, translate: false, outcome: { asked: true, ok: true } });
+  const { eligible, ...searchOpts } = searchArgs[3] as { eligible: (k: string) => Promise<boolean> };
+  assert.deepEqual(searchOpts, { rerank: true, translate: false, outcome: { asked: true, ok: true } });
+  // The guard the manager runs BEFORE the hosted rerank: in-vault real path yes; outside / unknown no.
+  assert.equal(await eligible("smith2024"), true);
+  assert.equal(await eligible("nobody"), false, "an unknown citekey is not eligible");
+  const eligVault = new McpVault(plugin.app, (path) => path.startsWith("References/"), ".obsidian", async (p) => {
+    if (!p.startsWith("References/")) throw new Error("outside vault");
+  });
+  await new McpService(plugin, eligVault, { vaultPath: "/vault/Research" }).callTool("search_library", { query: "q" });
+  const guarded = (searchArgs[3] as { eligible: (k: string) => Promise<boolean> }).eligible;
+  assert.equal(await guarded("smith2024"), true);
+  assert.equal(await guarded("outside2020"), false, "a reference whose real path leaves the vault is not eligible");
   assert.equal(search.reranked, true, "reranked comes from this call's own outcome");
   const plain = await service.callTool("search_library", { query: "question", rerank: false }) as any;
-  assert.deepEqual(searchArgs[3], { rerank: false, translate: false, outcome: { asked: false, ok: false } });
+  assert.deepEqual({ ...(searchArgs[3] as object), eligible: undefined }, { rerank: false, translate: false, outcome: { asked: false, ok: false }, eligible: undefined });
   assert.equal(plain.reranked, false);
   const ff = await service.callTool("search_findings", { query: "reoperation in older patients", papers: ["jones2023", "smith2024"], rerank: false }) as any;
   assert.equal(ff.results.length, 2, "quote-less finding skipped, paper without section ignored");
@@ -360,6 +371,12 @@ async function serviceChecks(): Promise<void> {
   assert.equal(rebuilt, 1, "no second rebuild while one is running");
   assert.equal(((await service.callTool("library_status", {})) as any).rebuilding, true);
   plugin.indexManager.rebuilding = false;
+  // Queued but not yet running: rebuilding is still false, rebuildPending is what guards and reports.
+  plugin.indexManager.rebuildPending = true;
+  assert.deepEqual(await service.callTool("rebuild_search_index", {}), { status: "already-running" });
+  assert.equal(rebuilt, 1, "no second rebuild while one is pending");
+  assert.equal(((await service.callTool("library_status", {})) as any).rebuilding, true, "pending counts as rebuilding in library_status");
+  plugin.indexManager.rebuildPending = false;
   const realRebuild = plugin.indexManager.rebuild;
   const loggedErrors: unknown[][] = [];
   const realError = console.error;

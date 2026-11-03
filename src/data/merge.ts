@@ -3,6 +3,8 @@
  *  (kept obsidian-free so it's covered by test/unit.ts, like the rest of src/data). */
 import { hasStashedText, stashedText, STASH_MARKER } from "../ingest/pdfStash";
 import { extractSummaryBlock, replaceSummaryBlock } from "../cite/bibliography";
+import { parseYaml, stringifyYaml } from "obsidian";
+import { evidenceSection, Finding, parseFindings } from "./findings";
 
 export interface MergeNote {
   citekey: string;
@@ -153,6 +155,8 @@ export function mergeBodies(keeperBody: string, others: OtherBody[], summaryDono
     }
   }
 
+  prefix = mergeEvidence(prefix, others.map((o) => o.body));
+
   for (const { citekey, body } of others) {
     const section = mergedFromSection(citekey, body);
     if (section) prefix = `${prefix.replace(/\s*$/, "")}\n\n${section}`;
@@ -170,6 +174,68 @@ export function mergeBodies(keeperBody: string, others: OtherBody[], summaryDono
 
   if (movedStash !== null) return `${prefix.replace(/\s*$/, "")}\n\n${STASH_MARKER}\n\n${movedStash}\n`;
   return hasKeeperStash ? `${prefix.replace(/\s*$/, "")}\n\n${suffix}` : prefix;
+}
+
+const FINDING_KEYS = ["kind", "outcome", "intervention", "comparator", "predictor", "subgroup", "timepoint", "n", "studies", "effect", "ci", "p", "direction", "heterogeneity"] as const;
+
+function findingKey(f: Finding): string {
+  return [...FINDING_KEYS.map((k) => f[k] ?? ""), f.quote].join("\u0001").replace(/\s+/g, " ").toLowerCase();
+}
+
+function findingLines(f: Finding): string {
+  const fields = FINDING_KEYS.filter((k) => f[k]).map((k) => `[${k}:: ${f[k]}]`).join(" ");
+  return `> - ${fields}\n>   "${f.quote}"`;
+}
+
+/** Carry the others' `## Evidence (extracted)` findings into `prefix` (the keeper body above its
+ *  stash): appended to the keeper's own section, or a new section when it has none. A finding
+ *  the keeper (or an earlier loser) already has — same fields and quote after whitespace/case
+ *  normalisation — is not added twice. Unknown fields on a loser's finding are not carried (the
+ *  parser drops them). */
+function mergeEvidence(prefix: string, otherBodies: string[]): string {
+  const have = parseFindings(prefix);
+  const seen = new Set(have.map(findingKey));
+  const added: Finding[] = [];
+  for (const body of otherBodies) {
+    for (const f of parseFindings(body.split(STASH_MARKER)[0])) {
+      const key = findingKey(f);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      added.push(f);
+    }
+  }
+  if (!added.length) return prefix;
+  const lines = added.map(findingLines).join("\n");
+  const section = evidenceSection(prefix);
+  if (!section) {
+    const n = added.length;
+    return `${prefix.replace(/\s*$/, "")}\n\n## Evidence (extracted)\n\n> [!quote]- ${n} finding${n === 1 ? "" : "s"}\n${lines}\n`;
+  }
+  const at = prefix.indexOf(section);
+  const body = section.replace(/\s*$/, "");
+  const tail = section.slice(body.length);
+  const total = have.length + added.length;
+  const grown = body.replace(/^(> \[!quote\]-? )\d+ findings/m, `$1${total} findings`);
+  return prefix.slice(0, at) + `${grown}\n${lines}${tail || "\n"}` + prefix.slice(at + section.length);
+}
+
+/** Frontmatter and body of a whole note. `null` when the YAML block does not parse — the
+ *  caller must leave such a note alone rather than rewrite it. */
+export function splitNote(text: string): { fm: Record<string, unknown>; body: string } | null {
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
+  if (!m) return { fm: {}, body: text };
+  try {
+    const fm: unknown = parseYaml(m[1]);
+    if (fm !== null && fm !== undefined && (typeof fm !== "object" || Array.isArray(fm))) return null;
+    return { fm: (fm ?? {}) as Record<string, unknown>, body: text.slice(m[0].length) };
+  } catch {
+    return null;
+  }
+}
+
+/** Inverse of `splitNote`. */
+export function joinNote(fm: Record<string, unknown>, body: string): string {
+  return Object.keys(fm).length ? `---\n${stringifyYaml(fm).trimEnd()}\n---\n${body}` : body;
 }
 
 /** `## Merged from <citekey>` holding the other note's non-empty `## Notes` / `## Highlights`

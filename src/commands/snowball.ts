@@ -1,13 +1,12 @@
 import { App, FuzzySuggestModal, Notice, normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { citingWorks, fetchTitles } from "../graph/openalex";
-import { aggregateSnowball, snowballMarkdown, SnowballRecord, SnowballWork } from "../data/snowball";
+import { aggregateSnowball, pickSnowballCandidates, snowballMarkdown, SnowballRecord, SnowballWork } from "../data/snowball";
 import { startBatch } from "../ui/progress";
 import { mapPool } from "../util/pool";
 import { localDate } from "../data/reference";
 import { hasKq, kqChoices } from "../data/screening";
 
-const TOP = 200;
 const WIDTH = 3;
 
 type Scope = { kind: "all" } | { kind: "kq"; kq: string };
@@ -76,19 +75,14 @@ export async function snowball(plugin: ScholarRagPlugin, scope: Scope): Promise<
 
     const known = (w: SnowballWork): boolean =>
       !!plugin.library.findDuplicate({ type: "article-journal", title: w.title ?? "", DOI: w.doi, PMID: w.pmid, openalex_id: w.id });
-    let rows = aggregateSnowball(records, known).slice(0, TOP);
-    // backward-only works have no title yet: fetch for the top ranked only, then re-check the library by title
-    const untitled = rows.filter((c) => !c.title).map((c) => c.id);
-    if (untitled.length) {
-      const titles = await fetchTitles(untitled, mailto).catch(() => new Map<string, { title: string; citedByCount: number }>());
-      for (const c of rows) c.title ||= titles.get(c.id)?.title || undefined;
-      rows = rows.filter((c) => !known(c));
-    }
+    const { rows, limitHit } = await pickSnowballCandidates(aggregateSnowball(records, known), known, (ids) =>
+      fetchTitles(ids, mailto)
+    );
     const now = new Date();
     const hhmm = `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
     const scopeLabel = scope.kind === "all" ? "all included records" : `included records for ${scope.kq}`;
     const md = snowballMarkdown(
-      { scope: scopeLabel, processed: records.length, failures, date: `${localDate(now)} ${hhmm.slice(0, 2)}:${hhmm.slice(2)}` },
+      { scope: scopeLabel, processed: records.length, failures, limitHit, date: `${localDate(now)} ${hhmm.slice(0, 2)}:${hhmm.slice(2)}` },
       rows
     );
     batch.finish(`Snowball: ${rows.length} candidates`);

@@ -19,6 +19,14 @@ import {
  *  codebase, so those are the only cases worth a real message. */
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : typeof e === "string" ? e : "unknown error");
 
+/** One finished search: what ran, what it returned, and when the results arrived. */
+interface SearchRun {
+  query: string;
+  total: number;
+  pmids: string[];
+  date: string; // ISO timestamp
+}
+
 export class PubmedSearchModal extends Modal {
   private plugin: ScholarRagPlugin;
   private query = "";
@@ -30,7 +38,7 @@ export class PubmedSearchModal extends Modal {
   private addBtn: ButtonComponent | null = null;
   private batch: Batch | null = null;
   /** The search the shown results came from — the query box may have been edited since. */
-  private searched: { query: string; total: number; pmids: string[] } | null = null;
+  private searched: SearchRun | null = null;
 
   constructor(app: App, plugin: ScholarRagPlugin) {
     super(app);
@@ -96,7 +104,7 @@ export class PubmedSearchModal extends Modal {
         email: this.plugin.settings.openalexMailto,
       });
       loading.remove();
-      this.searched = { query: q, total, pmids: hits.map((h) => h.pmid) };
+      this.searched = { query: q, total, pmids: hits.map((h) => h.pmid), date: new Date().toISOString() };
       if (!hits.length) {
         this.resultsEl.createEl("p", { text: "No results." });
         return;
@@ -169,14 +177,13 @@ export class PubmedSearchModal extends Modal {
   }
 
   /** One Markdown record per search run (PRISMA-S). Never blocks or fails the import. */
-  private async writeSearchLog(imported: string[]): Promise<void> {
-    const s = this.searched;
+  private async writeSearchLog(s: SearchRun | null, imported: string[]): Promise<void> {
     if (!s || this.plugin.settings.reviewTools !== true) return;
     try {
       const { path, content } = searchLogNote({
         source: "PubMed",
         query: s.query,
-        date: new Date().toISOString(),
+        date: s.date,
         total: s.total,
         returnedPmids: s.pmids,
         importedPmids: imported,
@@ -198,6 +205,9 @@ export class PubmedSearchModal extends Modal {
       new Notice("Select at least one paper");
       return;
     }
+    // The import is slow and the user may run another search meanwhile: log the search these
+    // papers came from, not whatever `this.searched` holds when the import ends.
+    const searched = this.searched;
     const apiKey = this.plugin.settings.pubmedApiKey;
     const email = this.plugin.settings.openalexMailto;
     const llm = new LLMClient(this.plugin.settings);
@@ -207,7 +217,7 @@ export class PubmedSearchModal extends Modal {
     const fresh = chosen.filter((hit) => !this.plugin.library.findDuplicate(hit.item));
     const skipped = chosen.length - fresh.length;
     if (!fresh.length) {
-      await this.writeSearchLog([]); // the search was acted on even though nothing is new
+      await this.writeSearchLog(searched, []); // the search was acted on even though nothing is new
       new Notice(`All ${skipped} selected paper(s) are already in the library.`);
       return;
     }
@@ -305,7 +315,7 @@ export class PubmedSearchModal extends Modal {
         ".";
     } finally {
       // Always runs: a stranded batch leaves the status bar stuck and refuses every later batch.
-      await this.writeSearchLog(importedPmids);
+      await this.writeSearchLog(searched, importedPmids);
       this.endBatch(summary);
     }
     new Notice(summary);

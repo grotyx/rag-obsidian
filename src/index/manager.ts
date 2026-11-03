@@ -192,6 +192,11 @@ export class IndexManager {
       const docs = await this.io.read(`${this.dir}/${meta.gen ? `docs-${meta.gen}.json` : "docs.json"}`);
       const vectors = await this.io.readBinary(`${this.dir}/${meta.gen ? `vectors-${meta.gen}.f32` : "vectors.f32"}`);
       await this.store.load(docs, vectors, meta);
+      // The tmp was the only commit record, and the next persist stages its metadata in that same
+      // file — make it the real meta.json before anything can overwrite it.
+      if (metaFile !== this.metaPath) {
+        try { await this.io.rename(metaFile, this.metaPath); } catch (e) { console.warn("[Refwright] could not promote meta.json.tmp", e); }
+      }
       console.debug(`[Refwright] index restored: ${this.store.count} chunks`);
     } catch (e) {
       console.error("[Refwright] failed to restore index", e);
@@ -224,7 +229,20 @@ export class IndexManager {
 
   /** Full rebuild from scratch over all reference notes. */
   rebuild(onProgress?: (done: number, total: number) => void): Promise<number> {
-    return this.serialized(() => this.rebuildNow(onProgress));
+    // Set synchronously, before the job waits in the queue: a second request while one is pending
+    // or running joins it instead of queueing another paid rebuild.
+    if (this.pendingRebuild) return this.pendingRebuild;
+    const p = this.serialized(() => this.rebuildNow(onProgress));
+    this.pendingRebuild = p;
+    const clear = () => { if (this.pendingRebuild === p) this.pendingRebuild = null; };
+    p.then(clear, clear);
+    return p;
+  }
+
+  private pendingRebuild: Promise<number> | null = null;
+  /** True from the moment a rebuild is requested until it settles (`rebuilding` starts only when its job runs). */
+  get rebuildPending(): boolean {
+    return this.pendingRebuild !== null;
   }
 
   private async rebuildNow(onProgress?: (done: number, total: number) => void): Promise<number> {
@@ -402,7 +420,11 @@ export class IndexManager {
     query: string,
     filters: SearchFilters = {},
     k = this.settings.topK,
-    opts: { rerank?: boolean; translate?: boolean; outcome?: RerankOutcome } = {}
+    opts: {
+      rerank?: boolean; translate?: boolean; outcome?: RerankOutcome;
+      /** Asked per citekey before MMR/rerank/capping; an ineligible reference is dropped so none of its text reaches the hosted reranker. */
+      eligible?: (citekey: string) => Promise<boolean>;
+    } = {}
   ): Promise<SearchHit[]> {
     if (this.rebuilding) throw new Error("The search index is being rebuilt — search again when it finishes.");
     // Query vectors from another model are meaningless against the stored ones, even at equal dimension.
@@ -426,6 +448,15 @@ export class IndexManager {
     // Over-fetch, then cap per reference: a paper whose stashed PDF text splits into dozens of
     // chunks would otherwise fill the whole result set on its own.
     let hits = await this.store.search(vec, term, want * OVERFETCH, filters);
+    if (opts.eligible) {
+      const ok = new Map<string, boolean>();
+      const keep: typeof hits = [];
+      for (const h of hits) {
+        if (!ok.has(h.citekey)) ok.set(h.citekey, await opts.eligible(h.citekey));
+        if (ok.get(h.citekey)) keep.push(h);
+      }
+      hits = keep;
+    }
     if (this.settings.searchDiversity) hits = mmr(hits, Math.min(hits.length, want * 2));
     hits = capPerReference(hits, want);
     // Per call, not a shared field: concurrent MCP searches must not report each other's rerank.

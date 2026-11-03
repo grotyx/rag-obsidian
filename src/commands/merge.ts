@@ -1,6 +1,6 @@
 import { TFile } from "obsidian";
 import type ScholarRagPlugin from "../../main";
-import { planMerge, renameWikilinks, WikilinkRename } from "../data/merge";
+import { joinNote, planMerge, renameWikilinks, splitNote, WikilinkRename } from "../data/merge";
 import { renameCiteKeys } from "../cite/bibliography";
 
 export interface MergeGroupPlan {
@@ -63,60 +63,54 @@ export async function mergeDuplicateGroups(
   for (let i = 0; i < plans.length; i++) {
     if (stale.has(i)) continue;
     const plan = plans[i];
-    const losers = plan.loserFiles.map((file) => ({
-      file,
-      citekey: fmCitekey(plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? {}),
-    }));
-
-    const keeperFm = plugin.app.metadataCache.getFileCache(plan.keeperFile)?.frontmatter ?? {};
-    const keeperCitekey = fmCitekey(keeperFm);
-    const keeperBody = await plugin.app.vault.read(plan.keeperFile);
-    const others = await Promise.all(
-      losers.map(async (l) => ({
-        citekey: l.citekey,
-        fm: plugin.app.metadataCache.getFileCache(l.file)?.frontmatter ?? {},
-        body: await plugin.app.vault.read(l.file),
-      }))
-    );
+    // Everything below comes from the text captured here, never from the metadata cache (which
+    // lags behind writes), so the single write at the end can be checked against exactly this.
+    const keeperText = await plugin.app.vault.read(plan.keeperFile);
+    const keeperNote = splitNote(keeperText);
+    const loserTexts = await Promise.all(plan.loserFiles.map((file) => plugin.app.vault.read(file)));
+    const loserNotes = loserTexts.map(splitNote);
+    if (!keeperNote || loserNotes.some((n) => !n)) {
+      skippedChanged++; // unparseable frontmatter: leave the group exactly as it is
+      continue;
+    }
+    const keeperCitekey = fmCitekey(keeperNote.fm);
+    const losers = plan.loserFiles.map((file, j) => ({ file, citekey: fmCitekey(loserNotes[j]!.fm) }));
+    const others = losers.map((l, j) => ({ citekey: l.citekey, fm: loserNotes[j]!.fm, body: loserNotes[j]!.body }));
     const { fm: mergedFm, body: mergedBody } = planMerge(
-      { citekey: keeperCitekey, fm: keeperFm, body: keeperBody },
+      { citekey: keeperCitekey, fm: keeperNote.fm, body: keeperNote.body },
       others
     );
 
     // A loser edited since its text was copied would lose that edit: abandon the group.
     let loserChanged = false;
     for (let j = 0; j < losers.length; j++) {
-      if ((await plugin.app.vault.read(losers[j].file)) !== others[j].body) loserChanged = true;
+      if ((await plugin.app.vault.read(losers[j].file)) !== loserTexts[j]) loserChanged = true;
     }
     if (loserChanged) {
       skippedChanged++;
       continue;
     }
 
-    // Body first: `mergedBody` is the whole file as read above (old frontmatter included), so
-    // writing it after processFrontMatter would put the old frontmatter back. If the keeper
-    // changed since that read (editor, sync, MCP), leave it exactly as it is now.
+    // One write: frontmatter and body together, only if the keeper is still the text that was
+    // read. A title/screening edit made meanwhile (editor, sync, MCP) is never reverted.
     let keeperChanged = false;
     await plugin.app.vault.process(plan.keeperFile, (current) => {
-      if (current !== keeperBody) {
+      if (current !== keeperText) {
         keeperChanged = true;
         return current;
       }
-      return mergedBody;
+      return joinNote(mergedFm, mergedBody);
     });
     if (keeperChanged) {
       skippedChanged++;
       continue;
     }
-    await plugin.app.fileManager.processFrontMatter(plan.keeperFile, (fm) => {
-      Object.assign(fm, mergedFm);
-    });
 
     // (c) one combined citekey map and one combined wikilink-rename list, across all groups.
     losers.forEach((l, j) => {
       if (l.citekey && keeperCitekey) citeMap[l.citekey] = keeperCitekey;
       wikiRenames.push({ path: l.file.path.replace(/\.md$/, ""), keeperBasename: plan.keeperFile.basename });
-      allLosers.push({ file: l.file, snapshot: others[j].body });
+      allLosers.push({ file: l.file, snapshot: loserTexts[j] });
     });
     groupsMerged++;
   }

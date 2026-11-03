@@ -181,6 +181,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         // every consumer (Library.folder()), not here, so clearing the field to retype it
         // doesn't snap back to the default on a framework re-read (see Library.folder()).
         s.referencesFolder = String(value);
+        this.plugin.library.invalidateKeyCache(); // citekey and identifier caches belong to the old folder
         break;
       case "citekeyStyle":
         s.citekeyStyle = value as "authoryeartitle" | "authoryear";
@@ -314,6 +315,9 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         break;
       case "mcpNoteTools":
         s.mcpNoteTools = value as boolean;
+        break;
+      case "reviewTools":
+        s.reviewTools = value as boolean;
         break;
       case "mcpEnabled":
         await this.plugin.setMcpEnabled(value as boolean);

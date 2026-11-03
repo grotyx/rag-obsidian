@@ -68,6 +68,7 @@ import {
   mergeBodies,
   planMerge,
   renameWikilinks,
+  splitNote,
   MergeNote,
   MergeSourceNote,
 } from "../src/data/merge";
@@ -95,7 +96,7 @@ import { DEFAULT_SETTINGS, effective } from "../src/types";
 import { applyScreening, hasKq, kqChoices, kqKey } from "../src/data/screening";
 import { robMarkdown, RobRecord, toRobRecord } from "../src/data/rob";
 import { prismaCounts, prismaMarkdown, PrismaRecord, toPrismaRecord } from "../src/data/prisma";
-import { aggregateSnowball, snowballMarkdown, SnowballRecord, SnowballWork } from "../src/data/snowball";
+import { aggregateSnowball, pickSnowballCandidates, snowballMarkdown, SnowballRecord, SnowballWork } from "../src/data/snowball";
 import { searchLogNote, suffixedPath, parseSearchLog, searchLogTotals, countedSearchLogs } from "../src/data/searchLog";
 
 let passed = 0;
@@ -1512,15 +1513,19 @@ check(
 // ---------- settings.ts: declarative definitions (searchable rows, no snap-back, visible()) ----------
 {
   const settings = { ...DEFAULT_SETTINGS, embeddingProvider: "ollama" as const };
+  let saves = 0;
+  let keyCacheDrops = 0;
   const fakePlugin = {
     settings,
-    saveSettings: async () => {},
+    saveSettings: async () => { saves++; },
+    library: { invalidateKeyCache: () => { keyCacheDrops++; } },
+    indexManager: { relocate: async () => {} },
     hasSecretStorage: () => true,
     mcpStatus: () => ({ running: false, port: 0 }),
     mcpSetupSnippets: () => null,
     restartMcp: async () => {},
     stopMcp: async () => {},
-    setMcpEnabled: async () => {},
+    setMcpEnabled: async (v: boolean) => { settings.mcpEnabled = v; },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1528,7 +1533,16 @@ check(
 
   // A text control's change handler must not snap an emptied field back to a default — the
   // fallback belongs at the point of consumption (Library.folder(), llm/client.ts), not here.
+  // Every toggle declared in the definitions must actually reach settings + save (review finding:
+  // "Systematic review tools" had no setControlValue case, so it could not be changed).
+  saves = 0;
+  await tab.setControlValue("reviewTools", true);
+  check(settings.reviewTools === true && saves === 1, "setControlValue: reviewTools on is stored and saved");
+  await tab.setControlValue("reviewTools", false);
+  check(settings.reviewTools === false && saves === 2, "setControlValue: reviewTools off is stored and saved");
+  keyCacheDrops = 0;
   await tab.setControlValue("referencesFolder", "");
+  check(keyCacheDrops === 1, "setControlValue: changing referencesFolder drops the library caches");
   check(settings.referencesFolder === "", "setControlValue: clearing referencesFolder stores empty, not a default snap-back");
   await tab.setControlValue("ollamaUrl", "");
   check(settings.ollamaUrl === "", "setControlValue: clearing ollamaUrl stores empty, not a default snap-back");
@@ -1549,6 +1563,15 @@ check(
   const allRows = defs.flatMap((g: any) => g.items);
   const apiKeyRow = allRows.find((r: { name: string }) => r.name === "API key (OpenRouter or OpenAI)");
   const reviewRow = allRows.find((r: { name: string }) => r.name === "Systematic review tools");
+  // Every declared toggle must be wired: flipping it through setControlValue changes the setting.
+  for (const row of allRows.filter((r: { control?: { type: string } }) => r.control?.type === "toggle")) {
+    const key = row.control.key as string;
+    const before = !!(settings as unknown as Record<string, unknown>)[key];
+    await tab.setControlValue(key, !before);
+    const after = !!(settings as unknown as Record<string, unknown>)[key];
+    check(after === !before, `settings: toggle "${row.name}" (${key}) is wired to setControlValue`);
+    await tab.setControlValue(key, before);
+  }
   check(reviewRow?.control?.type === "toggle" && reviewRow.control.key === "reviewTools", 'settings: "Systematic review tools" is a toggle on reviewTools');
   check(!!apiKeyRow, 'settings: "API key (OpenRouter or OpenAI)" row exists in the definitions even while the provider is Ollama');
   settings.llmProvider = "ollama"; // neither embeddings nor chat use the OpenAI endpoint
@@ -2112,8 +2135,9 @@ check(
     check(r1.groupsMerged === 0 && r1.skippedChanged === 1 && r1.notesTrashed === 0 && h1.trashed.length === 0, "mergeDuplicateGroups: that group is reported skipped and nothing is trashed");
 
     const h2 = setup({});
-    h2.plugin.app.fileManager.processFrontMatter = (async () => {
+    h2.plugin.app.vault.getMarkdownFiles = (() => {
       h2.files.get(h2.loser.path)!.text = LOSE + "\nlate edit\n"; // after merge, before trashing
+      return [...h2.files.values()].map((e) => e.f);
     }) as never;
     const r2 = await mergeDuplicateGroups(h2.plugin as never, [h2.plan]);
     check(r2.groupsMerged === 1 && r2.notesTrashed === 0 && r2.losersKept === 1, "mergeDuplicateGroups: a loser edited before trashing is kept and reported");
@@ -2129,6 +2153,78 @@ check(
     }) as never;
     const r3 = await mergeDuplicateGroups(h3.plugin as never, [h3.plan]);
     check(r3.skippedChanged === 1 && !h3.files.get(h3.keeper.path)!.text.includes("loser text") && h3.trashed.length === 0, "mergeDuplicateGroups: a loser edited after its text was copied abandons the group");
+  }
+
+  // ---------- commands/merge.ts: one guarded write, evidence carried over ----------
+  {
+    const mk = (path: string, text: string) => Object.assign(new TFile(path), { stat: { mtime: 1 } });
+    const build = (keepText: string, loseText: string) => {
+      const files = new Map<string, { f: TFile; text: string }>();
+      const keeper = mk("References/keep2020.md", "");
+      const loser = mk("References/lose2020.md", "");
+      files.set(keeper.path, { f: keeper, text: keepText });
+      files.set(loser.path, { f: loser, text: loseText });
+      let fmCalls = 0;
+      const plugin = {
+        app: {
+          vault: {
+            getAbstractFileByPath: (p: string) => files.get(p)?.f ?? null,
+            read: async (f: TFile) => files.get(f.path)!.text,
+            cachedRead: async (f: TFile) => files.get(f.path)!.text,
+            process: async (f: TFile, fn: (c: string) => string) => {
+              const e = files.get(f.path)!;
+              e.text = fn(e.text);
+              return e.text;
+            },
+            getMarkdownFiles: () => [...files.values()].map((e) => e.f),
+          },
+          metadataCache: { getFileCache: () => ({ frontmatter: { citekey: "stale-cache" } }), resolvedLinks: {} },
+          fileManager: {
+            processFrontMatter: async () => { fmCalls++; },
+            trashFile: async (f: TFile) => { files.delete(f.path); },
+          },
+        },
+      };
+      const plan = { keeperFile: keeper, loserFiles: [loser], expectedMtimes: new Map([[keeper.path, 1], [loser.path, 1]]) };
+      return { plugin, plan, files, keeper, loser, fmCalls: () => fmCalls };
+    };
+    const KEEP = "---\ncitekey: keep2020\ntitle: Old title\n---\n\n## Notes\n\nk\n";
+    const LOSE = "---\ncitekey: lose2020\nDOI: 10.1/x\n---\n\n## Notes\n\nl\n";
+
+    // (a) a title corrected after the snapshot is never reverted: the group is skipped
+    const a = build(KEEP, LOSE);
+    const origRead = a.plugin.app.vault.read;
+    a.plugin.app.vault.read = (async (f: TFile) => {
+      const t = await origRead(f);
+      if (f === a.keeper) a.files.get(f.path)!.text = t.replace("Old title", "New title");
+      return t;
+    }) as never;
+    const ra = await mergeDuplicateGroups(a.plugin as never, [a.plan]);
+    check(a.files.get(a.keeper.path)!.text.includes("title: New title") && ra.skippedChanged === 1 && ra.groupsMerged === 0 && a.files.has(a.loser.path), "mergeDuplicateGroups: a keeper title edited after the snapshot is kept and the group skipped");
+
+    // one write carries frontmatter + body, nothing goes through processFrontMatter
+    const b = build(KEEP, LOSE);
+    const rb = await mergeDuplicateGroups(b.plugin as never, [b.plan]);
+    const merged = b.files.get(b.keeper.path)!.text;
+    check(rb.groupsMerged === 1 && b.fmCalls() === 0 && merged.startsWith("---\ncitekey: keep2020\ntitle: Old title\nDOI: 10.1/x\n---\n") && merged.includes("## Merged from lose2020"), "mergeDuplicateGroups: frontmatter and body land in one write, keeper citekey from the text not the cache");
+
+    // (b) a loser-only finding survives; (c) an identical one is not doubled
+    const row = (o: string, q: string) => `> - [kind:: comparative] [outcome:: ${o}]\n>   "${q}"`;
+    const kEv = KEEP + `\n## Evidence (extracted)\n\n> [!quote]- 1 findings\n${row("fusion", "Fusion was 96%.")}\n`;
+    const lEv = LOSE + `\n## Evidence (extracted)\n\n> [!quote]- 2 findings\n${row("Fusion", "fusion  was 96%.")}\n${row("pain", "Pain fell.")}\n`;
+    const c = build(kEv, lEv);
+    await mergeDuplicateGroups(c.plugin as never, [c.plan]);
+    const fs = parseFindings(splitNote(c.files.get(c.keeper.path)!.text)!.body);
+    check(fs.length === 2 && fs.some((f) => f.outcome === "pain" && f.quote === "Pain fell."), "mergeDuplicateGroups: a loser-only finding survives and parses back");
+    check(fs.filter((f) => f.outcome.toLowerCase() === "fusion").length === 1, "mergeDuplicateGroups: an identical finding (case/whitespace) is not duplicated");
+    check(c.files.get(c.keeper.path)!.text.includes("> [!quote]- 2 findings"), "mergeDuplicateGroups: the callout's finding count is updated");
+
+    // keeper without a section gets one
+    const d = build(KEEP, lEv);
+    await mergeDuplicateGroups(d.plugin as never, [d.plan]);
+    const df = parseFindings(d.files.get(d.keeper.path)!.text);
+    check(df.length === 2 && df[0].outcome === "Fusion", "mergeDuplicateGroups: a keeper with no Evidence section gets one from the loser");
+    check(mergeBodies("## Notes\n", [{ citekey: "l", body: "x" }]) === "## Notes\n", "mergeBodies: no loser evidence leaves the body untouched");
   }
 
   // ---------- commands/evidenceExport.ts: CSV + row collection ----------
@@ -2190,6 +2286,24 @@ check(
     check(mix.citedBy.length === 1 && mix.cites.length === 1 && mix.title === "Nine", "snowball: a work both cited and citing merges into one row");
     const md = snowballMarkdown({ scope: "all included records", processed: 2, failures: 1, date: "2026-11-03 14:30" }, out);
     check(md.includes("not for citing directly") && md.includes("newest 100") && md.includes("[W1](https://openalex.org/W1)") && md.includes("cited by: a, b"), "snowballMarkdown: provenance, caveat and rows");
+    // refill: backward ids carry no title, so title-known library notes must not eat the quota
+    const mk = (n: number, titled = false): SnowballWork[] => Array.from({ length: n }, (_, k) => ({ id: `K${k}`, ...(titled ? { title: `t${k}` } : {}) }));
+    const cands = (ws: SnowballWork[]) => ws.map((w) => ({ ...w, citedBy: ["a"], cites: [] as string[] }));
+    const inLib = (w: SnowballWork): boolean => !!w.title && w.title.startsWith("lib ");
+    const titlesFor = async (ids: string[]) => new Map(ids.map((id) => [id, { title: id.startsWith("K") ? `lib ${id}` : `new ${id}` }]));
+    const refill = await pickSnowballCandidates(cands([...mk(200), { id: "N1" }]), inLib, titlesFor);
+    check(refill.rows.length === 1 && refill.rows[0].id === "N1" && refill.rows[0].title === "new N1" && !refill.limitHit, `snowball: 200 known untitled + 1 new -> 1 candidate (${refill.rows.length})`);
+    const many = await pickSnowballCandidates(cands(Array.from({ length: 300 }, (_, k) => ({ id: `N${k}` }))), inLib, titlesFor);
+    check(many.rows.length === 200 && many.rows[199].id === "N199", "snowball: cap of 200 respected");
+    const odd = await pickSnowballCandidates(cands(Array.from({ length: 300 }, (_, k) => ({ id: `N${k}` }))), inLib, titlesFor, 120);
+    check(odd.rows.length === 120, `snowball: cap mid-batch respected (${odd.rows.length})`);
+    let looked = 0;
+    const counting = async (ids: string[]) => ((looked += ids.length), titlesFor(ids));
+    const capped = await pickSnowballCandidates(cands(mk(1200)), inLib, counting);
+    check(capped.limitHit && capped.rows.length === 0 && looked === 1000, `snowball: lookups bounded at 1000 and flagged (${looked})`);
+    const failing = await pickSnowballCandidates(cands([{ id: "N1" }]), inLib, async () => { throw new Error("429"); });
+    check(failing.rows.length === 1 && failing.rows[0].title === undefined, "snowball: a failed title lookup keeps the candidate");
+    check(snowballMarkdown({ scope: "s", processed: 1, failures: 0, date: "d", limitHit: true }, []).includes("title lookups were used"), "snowballMarkdown: states the lookup limit when hit");
   }
 
 console.log(`unit: all ${passed} assertions passed`);

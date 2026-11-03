@@ -58,11 +58,45 @@ export function aggregateSnowball(
     .sort((a, b) => links(b) - links(a) || (b.year ?? 0) - (a.year ?? 0) || a.id.localeCompare(b.id));
 }
 
+export const SNOWBALL_TOP = 200;
+/** Most untitled ids looked up while refilling the list. */
+export const SNOWBALL_LOOKUP_MAX = 1000;
+const BATCH = 50; // OpenAlex title lookups go 50 ids at a time
+
+/** Walk the ranked candidates in batches until `top` are left that are not in the library.
+ *  Backward-only works arrive without a title, so a library note with no OpenAlex id is only
+ *  recognised after the title lookup; cutting the list first would let those fill the quota.
+ *  `limitHit` says the lookup budget ran out before `top` candidates were found. */
+export async function pickSnowballCandidates(
+  ranked: SnowballCandidate[],
+  known: (w: SnowballWork) => boolean,
+  fetchTitles: (ids: string[]) => Promise<Map<string, { title: string }>>,
+  top = SNOWBALL_TOP,
+  maxLookups = SNOWBALL_LOOKUP_MAX
+): Promise<{ rows: SnowballCandidate[]; limitHit: boolean }> {
+  const rows: SnowballCandidate[] = [];
+  let lookups = 0;
+  for (let i = 0; i < ranked.length && rows.length < top; i += BATCH) {
+    const batch = ranked.slice(i, i + BATCH);
+    const untitled = batch.filter((c) => !c.title).map((c) => c.id);
+    if (lookups + untitled.length > maxLookups) return { rows, limitHit: true };
+    lookups += untitled.length;
+    if (untitled.length) {
+      const titles = await fetchTitles(untitled).catch(() => new Map<string, { title: string }>());
+      for (const c of batch) c.title ||= titles.get(c.id)?.title || undefined;
+    }
+    for (const c of batch) if (rows.length < top && !known(c)) rows.push(c);
+  }
+  return { rows, limitHit: false };
+}
+
 export interface SnowballMeta {
   scope: string;
   processed: number;
   failures: number;
   date: string; // "YYYY-MM-DD HH:mm"
+  /** The title-lookup budget ran out before the list was full. */
+  limitHit?: boolean;
 }
 
 const cell = (s: string): string => s.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
@@ -77,6 +111,9 @@ export function snowballMarkdown(meta: SnowballMeta, rows: SnowballCandidate[]):
     `- Failed or unresolved lookups: ${meta.failures}`,
     `- Source: OpenAlex. Only citations OpenAlex has indexed are listed; forward results are the newest 100 citing works per record.`,
     `- Date: ${meta.date}`,
+    ...(meta.limitHit
+      ? [`- Limit: ${SNOWBALL_LOOKUP_MAX} title lookups were used before the list filled; lower-ranked candidates were not checked against the library.`]
+      : []),
     ``,
     `These are candidates for screening, not for citing directly.`,
     ``,

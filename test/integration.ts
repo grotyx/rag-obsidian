@@ -1982,6 +1982,22 @@ async function main() {
     const files3 = indexFiles();
     ok(files3.length === 3 && !files3.some((f) => f.includes("orphan") || f.endsWith(".tmp")), `next persist sweeps orphans and tmp files: ${files3.join(", ")}`);
 
+    // a recovered meta.json.tmp becomes the real meta.json at once; a later torn tmp write can't lose it
+    {
+      const mp = `${dir}/meta.json`;
+      disk.set(`${mp}.tmp`, disk.get(mp) as string);
+      disk.delete(mp);
+      const mgrP = fresh();
+      ok((await restoredCount(mgrP)) > 0 && !mgrP.restoreError, "restore from a lone meta.json.tmp succeeds");
+      ok(disk.has(mp) && !disk.has(`${mp}.tmp`), "...and promotes it to meta.json (tmp gone)");
+      crashOn = "meta.json.tmp";
+      try { await (mgrP as unknown as { persist(): Promise<void> }).persist(); } catch { /* simulated crash */ }
+      crashOn = "";
+      disk.set(`${mp}.tmp`, "{ half"); // the torn stage a real crash leaves
+      const mgrQ = fresh();
+      ok((await restoredCount(mgrQ)) > 0 && !mgrQ.restoreError, "...so an interrupted next write still leaves a restorable index");
+    }
+
     // legacy layout (no gen): plain docs.json / vectors.f32 still restore, then migrate on persist
     const legacy = await priv.store.serialize();
     for (const f of indexFiles()) disk.delete(`${dir}/${f}`);
@@ -2011,6 +2027,61 @@ async function main() {
     priv.vectorSliceBytes = 64 * 1024 * 1024;
     const mgrF = fresh();
     ok((await restoredCount(mgrF)) === mgr.count && (await sameStore(mgrF, mgr)), "without appendBinary the single-buffer fallback still writes a valid generation");
+
+    // MCP's eligibility guard runs before the hosted reranker: a denied reference's text is never sent
+    {
+      const savedUrl = mset.openaiBaseUrl;
+      const savedFetch = globalThis.fetch;
+      const rerankBodies: string[] = [];
+      globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+        if (!String(url).endsWith("/rerank")) return savedFetch(url, init);
+        const body = String(init?.body);
+        rerankBodies.push(body);
+        const docs = (JSON.parse(body) as { documents: string[] }).documents;
+        return new Response(JSON.stringify({ results: docs.map((_, index) => ({ index, relevance_score: 1 - index / 10 })) }), { status: 200 });
+      }) as typeof fetch;
+      mset.openaiBaseUrl = `${savedUrl}/openrouter.ai`; // the rerank host check is a substring test
+      try {
+        const asked: string[] = [];
+        const hits = await mgr.search("crash beta", {}, 5, {
+          rerank: true,
+          translate: false,
+          eligible: async (k) => { asked.push(k); return k !== "smith2024"; },
+        });
+        ok(rerankBodies.length === 1 && /beta/.test(rerankBodies[0]), "eligible: the allowed reference is still reranked");
+        ok(!/crash|alpha/i.test(JSON.stringify((JSON.parse(rerankBodies[0]) as { documents: string[] }).documents)), "eligible: the denied reference's text never appears in the rerank request");
+        ok(hits.length > 0 && hits.every((h) => h.citekey !== "smith2024"), "eligible: the denied reference is not returned");
+        ok(new Set(asked).size === asked.length, `eligible: asked once per citekey (${asked.join(",")})`);
+        rerankBodies.length = 0;
+        await mgr.search("crash beta", {}, 5, { rerank: true, translate: false });
+        ok(rerankBodies.length === 1 && /crash/.test(JSON.stringify((JSON.parse(rerankBodies[0]) as { documents: string[] }).documents)), "no eligible callback: nothing is filtered (other callers unchanged)");
+      } finally {
+        globalThis.fetch = savedFetch;
+        mset.openaiBaseUrl = savedUrl;
+      }
+    }
+
+    // two rebuild requests while the queue is busy run one rebuild job
+    {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => { release = r; });
+      const held = priv.serialized(() => gate);
+      const realNow = priv.rebuildNow.bind(priv);
+      let jobs = 0;
+      priv.rebuildNow = (...a: unknown[]) => { jobs++; return realNow(...a); };
+      const p1 = mgr.rebuild();
+      const p2 = mgr.rebuild();
+      ok(p1 === p2, "a second rebuild() while one is pending returns the same promise");
+      ok(mgr.rebuildPending && !mgr.rebuilding, "rebuildPending is true while queued, before rebuilding starts");
+      release();
+      await held;
+      await Promise.all([p1, p2]);
+      ok(jobs === 1, `one rebuild job ran for two requests (${jobs})`);
+      ok(!mgr.rebuildPending, "rebuildPending clears once it settles");
+      await mgr.rebuild();
+      ok(jobs === 2, "a later request starts a fresh rebuild");
+      priv.rebuildNow = realNow;
+    }
 
     // a burst of deletes persists once
     for (const k of ["c", "d", "e", "f"]) {

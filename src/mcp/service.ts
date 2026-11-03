@@ -381,7 +381,7 @@ export class McpService {
 
   /** A full rebuild outlives the bridge's 30 s inactivity timeout, so start it and let the agent poll library_status. */
   private startRebuild(): Record<string, unknown> {
-    if (this.plugin.indexManager.rebuilding) return { status: "already-running" };
+    if (this.plugin.indexManager.rebuilding || this.plugin.indexManager.rebuildPending) return { status: "already-running" };
     this.plugin.indexManager.rebuild().catch((e: unknown) => console.error("[Refwright] MCP index rebuild failed", e));
     return { status: "started" };
   }
@@ -393,7 +393,7 @@ export class McpService {
       vaultPath: this.deps.vaultPath ?? null,
       referenceFolder: this.plugin.library.folder(),
       indexReady: this.plugin.indexManager.ready,
-      rebuilding: !!this.plugin.indexManager.rebuilding,
+      rebuilding: !!(this.plugin.indexManager.rebuilding || this.plugin.indexManager.rebuildPending),
       chunkCount: this.plugin.indexManager.count,
       embeddingModel: this.plugin.indexManager.indexedModelId || null,
     };
@@ -411,13 +411,22 @@ export class McpService {
     return filters;
   }
 
+  /** Whether a reference's real path is inside the vault — asked before any text leaves for the hosted reranker. */
+  private eligibleFor(): (citekey: string) => Promise<boolean> {
+    return async (citekey) => {
+      const file = this.plugin.library.getFile(citekey);
+      if (!file) return false;
+      try { await this.vault.assertPath(file.path, false); return true; } catch { return false; }
+    };
+  }
+
   private async searchLibrary(args: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (!this.plugin.indexManager.ready) throw new Error(this.plugin.indexManager.rebuilding ? "INDEX_REBUILDING: a rebuild is running; retry when it finishes" : "INDEX_NOT_READY: call rebuild_search_index first");
     const filters = this.filtersOf(args);
     const rr: RerankOutcome = { asked: false, ok: false };
     const hits = await this.plugin.indexManager.search(
       stringArg(args, "query"), filters, numberArg(args, "limit", this.plugin.settings.topK, 1, 30),
-      { rerank: args.rerank !== false, translate: false, outcome: rr }
+      { rerank: args.rerank !== false, translate: false, outcome: rr, eligible: this.eligibleFor() }
     );
     const results = [];
     for (const hit of hits) {
@@ -442,7 +451,7 @@ export class McpService {
     let keys = stringArrayArg(args, "papers");
     if (!keys) {
       if (!this.plugin.indexManager.ready) throw new Error(this.plugin.indexManager.rebuilding ? "INDEX_REBUILDING: a rebuild is running; retry when it finishes" : "INDEX_NOT_READY: call rebuild_search_index first");
-      const hits = await this.plugin.indexManager.search(query, this.filtersOf(args), 30, { rerank, translate: false });
+      const hits = await this.plugin.indexManager.search(query, this.filtersOf(args), 30, { rerank, translate: false, eligible: this.eligibleFor() });
       keys = hits.map((h) => h.citekey);
     }
     keys = [...new Set(keys)];
