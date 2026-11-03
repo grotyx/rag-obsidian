@@ -6,6 +6,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.8.8] — 2026-11-03
+
 ### Added
 - **Later papers citing a reference.** The Related papers pane has a new section, "Later papers citing this (OpenAlex)": click **Find newest citing papers** to list the newest 30 papers anywhere that cite the open note, with year and journal. Retracted papers and erratum / retraction notices are flagged, papers already in the library are marked (click opens them), and any other paper opens Add reference prefilled. Only citations OpenAlex has indexed are shown, so very recent papers can be missing.
 - MCP tool `find_citing_papers` (by `citekey`, or `identifier` for a paper not in the library; optional `limit`, `year_from`) returns the same list for Claude Code / Codex, newest first, with `existingCitekey`, `retracted` and `type` per paper. Discovery only: results are added with `add_reference` before they are cited.

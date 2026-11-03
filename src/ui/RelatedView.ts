@@ -189,7 +189,7 @@ export class RelatedView extends ItemView {
             w.type === "erratum" ? "erratum" : w.type === "retraction" ? "retraction notice" : "",
             have ? "in library" : "",
           ].filter(Boolean);
-          if (w.journal) row.createSpan({ cls: "srag-rel-badge", text: `  ${w.journal}` });
+          if (w.journal) row.createSpan({ cls: "srag-rel-badge", text: `  · ${w.journal}` });
           if (flags.length) row.createSpan({ cls: "srag-rel-badge", text: `  · ${flags.join(" · ")}` });
           row.onclick = () =>
             have ? void this.openCitekey(have) : new AddReferenceModal(this.app, this.plugin, w.openalexId).open();
