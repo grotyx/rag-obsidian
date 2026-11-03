@@ -1,5 +1,6 @@
 import { EXCLUDE_REASONS } from "./screening";
-import { SearchLogSummary, searchLogTotals } from "./searchLog";
+import { text } from "../util/json";
+import { SearchLogSummary, countedSearchLogs, searchLogTotals } from "./searchLog";
 
 /** The one slice of a reference an in-scope PRISMA count needs — the caller (the command layer,
  *  which has vault access) projects `library.entries()` down to this before calling `prismaCounts`. */
@@ -9,6 +10,16 @@ export interface PrismaRecord {
   screening_note?: string | null;
   /** Groups the reports of one study; a record without one is its own study. */
   study_id?: string | null;
+}
+
+/** Project a reference's frontmatter onto `PrismaRecord`; unquoted YAML numbers (`study_id: 2019001`) count as text. */
+export function toPrismaRecord(citekey: string, item: Record<string, unknown>): PrismaRecord {
+  return {
+    citekey,
+    include: text(item.include).trim() || null,
+    screening_note: text(item.screening_note) || null,
+    study_id: text(item.study_id).trim() || null,
+  };
 }
 
 export interface PrismaCounts {
@@ -136,6 +147,7 @@ export function prismaMarkdown(counts: PrismaCounts, scopeLabel: string, date: s
   // From the notes under Searches/, whatever the scope: they record what the databases returned,
   // not what is in the library, so they sit beside the counts above rather than replacing them.
   const cell = (s: string): string => s.replace(/\s+/g, " ").replace(/\|/g, "\\|");
+  const counted = countedSearchLogs(searchLogs);
   const logSection = searchLogs.length
     ? [
         "## Records identified through database searching (from search logs)",
@@ -146,7 +158,7 @@ export function prismaMarkdown(counts: PrismaCounts, scopeLabel: string, date: s
         "",
         "| Source | Date | Query | Matches |",
         "|---|---|---|---|",
-        ...searchLogs.map((l) => `| ${cell(l.source)} | ${l.date.slice(0, 10)} | ${cell(l.query)} | ${l.total} |`),
+        ...searchLogs.map((l) => `| ${cell(l.source)} | ${l.date.slice(0, 10)} | ${cell(l.query)}${counted.has(l) ? "" : " (repeat of an earlier search, not counted)"} | ${l.total} |`),
         "",
       ]
     : [];

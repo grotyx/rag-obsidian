@@ -439,8 +439,9 @@ export default class ScholarRagPlugin extends Plugin {
         // Load the search vocabulary + MeSH synonyms now, not on the first search (~seconds).
         if (this.settings.queryExpansion) void this.indexManager.ensureExpander().catch(() => undefined);
         if (this.settings.mcpEnabled) await this.startMcp();
-        await this.initReviewTools();
       });
+      // Independent of the restore chain above, which can take long or throw.
+      void this.initReviewTools();
     });
 
     // Incremental index maintenance.
@@ -792,6 +793,19 @@ export default class ScholarRagPlugin extends Plugin {
   /** First run of 0.10.1+: keep the tools on for a library that already screens, off otherwise. */
   private async initReviewTools(): Promise<void> {
     if (this.settings.reviewTools !== undefined) return;
+    // entries() reads the metadata cache: before it has resolved, a screening library looks empty.
+    // `resolved` is not in the typings; only an explicit false means "still parsing".
+    const mc = this.app.metadataCache;
+    if ((mc as unknown as { resolved?: boolean }).resolved === false) {
+      await new Promise<void>((done) => {
+        const ref = mc.on("resolved", () => {
+          mc.offref(ref);
+          done();
+        });
+        this.registerEvent(ref);
+      });
+      if (this.settings.reviewTools !== undefined) return;
+    }
     this.settings.reviewTools = this.library
       .entries()
       .some((e) => e.item.include !== undefined || (Array.isArray(e.item.kq) && e.item.kq.length > 0));

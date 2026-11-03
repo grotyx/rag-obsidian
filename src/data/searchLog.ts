@@ -93,6 +93,8 @@ export interface SearchLogSummary {
   source: string;
   date: string;
   query: string;
+  year_from?: number;
+  year_to?: number;
   total: number;
 }
 
@@ -100,12 +102,33 @@ export interface SearchLogSummary {
 export function parseSearchLog(fm: unknown): SearchLogSummary | null {
   const r = rec(fm);
   if (r.type !== "search-log") return null;
-  return { source: str(r.source) || "Unknown", date: str(r.date), query: str(r.query), total: numLike(r.total) ?? 0 };
+  return {
+    source: str(r.source) || "Unknown",
+    date: str(r.date),
+    query: str(r.query),
+    year_from: numLike(r.year_from),
+    year_to: numLike(r.year_to),
+    total: numLike(r.total) ?? 0,
+  };
 }
 
-/** Sum of `total` per source, in first-seen order. */
+/** The logs that count toward totals: within a source, a search repeated with the same normalized
+ *  query (trimmed, lowercase, whitespace collapsed) and year filters counts once — the most recent
+ *  run (ties: the later one in the list). */
+export function countedSearchLogs(logs: SearchLogSummary[]): Set<SearchLogSummary> {
+  const latest = new Map<string, SearchLogSummary>();
+  for (const l of logs) {
+    const key = JSON.stringify([l.source, l.query.trim().toLowerCase().replace(/\s+/g, " "), l.year_from ?? null, l.year_to ?? null]);
+    const prev = latest.get(key);
+    if (!prev || l.date >= prev.date) latest.set(key, l);
+  }
+  return new Set(latest.values());
+}
+
+/** Sum of `total` per source, in first-seen order; a repeated search counts once. */
 export function searchLogTotals(logs: SearchLogSummary[]): { source: string; total: number }[] {
+  const counted = countedSearchLogs(logs);
   const by = new Map<string, number>();
-  for (const l of logs) by.set(l.source, (by.get(l.source) ?? 0) + l.total);
+  for (const l of logs) by.set(l.source, (by.get(l.source) ?? 0) + (counted.has(l) ? l.total : 0));
   return [...by].map(([source, total]) => ({ source, total }));
 }

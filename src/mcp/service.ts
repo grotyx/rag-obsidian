@@ -6,7 +6,7 @@ import { STASH_MARKER, stashedText } from "../ingest/pdfStash";
 import { SearchFilters } from "../index/store";
 import type { RerankOutcome } from "../index/manager";
 import { summaryBlock, keywordsToTags } from "../data/reference";
-import { applyScreening, INCLUDE_VALUES, LEVELS, ROB_OVERALL, ROB_TOOLS, ScreeningFields } from "../data/screening";
+import { applyScreening, hasKq, INCLUDE_VALUES, LEVELS, ROB_OVERALL, ROB_TOOLS, ScreeningFields } from "../data/screening";
 import { searchLogNote, suffixedPath } from "../data/searchLog";
 import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
@@ -527,7 +527,6 @@ export class McpService {
     const guideline = optionalString(args, "guideline")?.trim();
     const studyId = optionalString(args, "study_id")?.trim();
     const robOverall = enumArg(args, "rob_overall", ROB_OVERALL);
-    const kqKey = (v: unknown): string => { const s = String(v).trim(); return /^\d+$/.test(s) ? String(Number(s)) : s; };
     const cursor = optionalString(args, "cursor") ?? "";
     const limit = numberArg(args, "limit", 50, 1, 100);
     const candidates = this.plugin.library.entries()
@@ -536,10 +535,10 @@ export class McpService {
       .filter((entry) => !author || entry.authors.toLowerCase().includes(author))
       .filter((entry) => !status || (typeof entry.item.status === "string" && entry.item.status.toLowerCase() === status))
       .filter((entry) => tags.every((tag) => tagsOf(entry.item).includes(tag)))
-      .filter((entry) => !kq || (Array.isArray(entry.item.kq) && entry.item.kq.some((v) => kqKey(v) === kqKey(kq))))
+      .filter((entry) => !kq || hasKq(entry.item.kq, kq))
       .filter((entry) => !include || entry.item.include === include)
       .filter((entry) => !guideline || entry.item.guideline === guideline)
-      .filter((entry) => !studyId || entry.item.study_id === studyId)
+      .filter((entry) => !studyId || text(entry.item.study_id).trim() === studyId)
       .filter((entry) => !robOverall || entry.item.rob_overall === robOverall)
       .sort((a, b) => (a.file.path < b.file.path ? -1 : a.file.path > b.file.path ? 1 : 0)); // code-unit order, same as the cursor `>`
     // Containment last, like McpVault.listNotes: check candidates in order until a page plus one
@@ -564,7 +563,7 @@ export class McpService {
         kq: Array.isArray(entry.item.kq) ? entry.item.kq : null,
         include: entry.item.include ?? null, level: entry.item.level ?? null, design: entry.item.design ?? null,
         guideline: entry.item.guideline ?? null,
-        study_id: entry.item.study_id ?? null,
+        study_id: text(entry.item.study_id).trim() || null,
         rob_tool: entry.item.rob_tool ?? null, rob_overall: entry.item.rob_overall ?? null,
       })),
       ...(all.length > limit ? { nextCursor: page[page.length - 1].file.path } : {}),

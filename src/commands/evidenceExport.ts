@@ -24,13 +24,16 @@ export interface EvidenceRow {
 
 const REF_COLUMNS = ["citekey", "first_author", "year", "title", "doi", "pmid", "study_id", "kq", "include", "design", "level"];
 
-/** RFC 4180 field: quoted when it holds a comma, quote or line break; quotes doubled. */
-function cell(v: string): string {
+/** Spreadsheet formula guard, then RFC 4180: a cell Excel/Sheets would read as a formula gets a
+ *  leading apostrophe (a plain number like -0.45 stays a number); then quoted when it holds a
+ *  comma, quote or line break, with quotes doubled. */
+function cell(raw: string): string {
+  const v = /^[=+@\t\r]/.test(raw) || (raw.startsWith("-") && !/^-\d+(\.\d+)?$/.test(raw)) ? `'${raw}` : raw;
   return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 
 /** Evidence table as CSV (BOM + CRLF rows). Columns: the reference columns, then the union of
- *  finding field keys in first-seen order, then `quote`. Values are copied verbatim. */
+ *  finding field keys in first-seen order, then `quote`. Values are copied verbatim apart from the formula guard in `cell`. */
 export function evidenceCsv(rows: EvidenceRow[]): string {
   const keys: string[] = [];
   for (const r of rows) for (const k of Object.keys(r.finding)) if (k !== "quote" && !keys.includes(k)) keys.push(k);
@@ -88,7 +91,9 @@ export async function exportEvidenceTable(plugin: ScholarRagPlugin, scope: Backf
   if (!vault.getAbstractFileByPath("Exports")) await vault.createFolder("Exports").catch(() => {});
   const d = new Date();
   const hm = String(d.getHours()).padStart(2, "0") + String(d.getMinutes()).padStart(2, "0");
-  const path = normalizePath(`Exports/Evidence table ${localDate(d)} ${hm}.csv`);
+  const base = `Exports/Evidence table ${localDate(d)} ${hm}`;
+  let path = normalizePath(`${base}.csv`);
+  for (let n = 2; vault.getAbstractFileByPath(path); n++) path = normalizePath(`${base} (${n}).csv`);
   await vault.create(path, evidenceCsv(rows));
   new Notice(`Exported ${rows.length} findings from ${papers} papers to ${path}`);
 }
@@ -124,6 +129,8 @@ export class EvidenceScopeModal extends FuzzySuggestModal<Item> {
   onChooseItem(item: Item): void {
     const scope: BackfillScope =
       item.kind === "all" ? { kind: "all" } : item.kind === "folder" ? { kind: "folder", folder: item.path } : { kind: "tag", tag: item.tag };
-    void exportEvidenceTable(this.plugin, scope);
+    exportEvidenceTable(this.plugin, scope).catch((e: unknown) => {
+      new Notice(`Evidence export failed: ${e instanceof Error ? e.message : String(e)}`);
+    });
   }
 }

@@ -5,14 +5,12 @@ import { aggregateSnowball, snowballMarkdown, SnowballRecord, SnowballWork } fro
 import { startBatch } from "../ui/progress";
 import { mapPool } from "../util/pool";
 import { localDate } from "../data/reference";
-import type { CSLItem } from "../types";
+import { hasKq, kqChoices } from "../data/screening";
 
 const TOP = 200;
 const WIDTH = 3;
 
 type Scope = { kind: "all" } | { kind: "kq"; kq: string };
-
-const kqsOf = (item: CSLItem): string[] => (Array.isArray(item.kq) ? (item.kq as unknown[]).map(String) : []);
 
 /** Pick "All included" or one key question among the included records. */
 export class SnowballScopeModal extends FuzzySuggestModal<Scope> {
@@ -22,9 +20,8 @@ export class SnowballScopeModal extends FuzzySuggestModal<Scope> {
   }
 
   getItems(): Scope[] {
-    const kqs = new Set<string>();
-    for (const e of this.plugin.library.entries()) if (e.item.include === "include") kqsOf(e.item).forEach((k) => kqs.add(k));
-    return [{ kind: "all" }, ...[...kqs].sort().map((kq): Scope => ({ kind: "kq", kq }))];
+    const kqs = kqChoices(this.plugin.library.entries().filter((e) => e.item.include === "include").map((e) => e.item.kq));
+    return [{ kind: "all" }, ...kqs.map((kq): Scope => ({ kind: "kq", kq }))];
   }
 
   getItemText(s: Scope): string {
@@ -40,7 +37,7 @@ export class SnowballScopeModal extends FuzzySuggestModal<Scope> {
 export async function snowball(plugin: ScholarRagPlugin, scope: Scope): Promise<void> {
   const included = plugin.library
     .entries()
-    .filter((e) => e.item.include === "include" && (scope.kind === "all" || kqsOf(e.item).includes(scope.kq)));
+    .filter((e) => e.item.include === "include" && (scope.kind === "all" || hasKq(e.item.kq, scope.kq)));
   if (!included.length) {
     new Notice("No included records in that scope.");
     return;

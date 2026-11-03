@@ -858,6 +858,14 @@ async function screeningFieldChecks(): Promise<void> {
   assert.equal(await count({ study_id: "S1" }), 1);
   assert.equal(await count({ study_id: "S" }), 0, "study_id filter is an exact match");
   assert.equal(await count({ study_id: "S1", include: "include" }), 1, "study_id combines with the other filters");
+  const numericService = new McpService(
+    { ...plugin, library: { ...plugin.library, entries: () => [{ citekey: "kq2024", item: { ...withScreening, study_id: 2019001 }, file, year: "2024", authors: "", title: "Trial" }] } },
+    vault
+  );
+  const countNum = async (args: Record<string, unknown>) => ((await numericService.callTool("list_references", args)) as any).references.length;
+  assert.equal(await countNum({ study_id: "2019001" }), 1, "study_id filter matches an unquoted numeric study_id");
+  assert.equal(((await numericService.callTool("list_references", {})) as any).references[0].study_id, "2019001", "list_references reports a numeric study_id as text");
+  assert.equal(await countNum({ kq: "01" }), 1, "kq filter still matches 01 against 1");
   assert.equal(await count({ kq: "1", include: "include", guideline: "BE" }), 1, "filters combine with AND");
   assert.equal(listed.rob_tool, "RoB 2", "list_references surfaces rob_tool");
   assert.equal(listed.rob_overall, "high", "list_references surfaces rob_overall");

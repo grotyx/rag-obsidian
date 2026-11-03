@@ -92,11 +92,11 @@ import {
   localDate,
 } from "../src/data/reference";
 import { DEFAULT_SETTINGS, effective } from "../src/types";
-import { applyScreening } from "../src/data/screening";
-import { robMarkdown, RobRecord } from "../src/data/rob";
-import { prismaCounts, prismaMarkdown, PrismaRecord } from "../src/data/prisma";
+import { applyScreening, hasKq, kqChoices, kqKey } from "../src/data/screening";
+import { robMarkdown, RobRecord, toRobRecord } from "../src/data/rob";
+import { prismaCounts, prismaMarkdown, PrismaRecord, toPrismaRecord } from "../src/data/prisma";
 import { aggregateSnowball, snowballMarkdown, SnowballRecord, SnowballWork } from "../src/data/snowball";
-import { searchLogNote, suffixedPath, parseSearchLog, searchLogTotals } from "../src/data/searchLog";
+import { searchLogNote, suffixedPath, parseSearchLog, searchLogTotals, countedSearchLogs } from "../src/data/searchLog";
 
 let passed = 0;
 function check(cond: boolean, label: string): void {
@@ -132,7 +132,13 @@ async function main(): Promise<void> {
   check(PROBLEM_UNCHECKED.includes("Check retraction status for all references"), "refcheck: unchecked message names the command");
   for (const ct of ["medRxiv", "bioRxiv", "arXiv", "Research Square", "SSRN Electronic Journal", "Preprints.org"]) check(none({ ...good, "container-title": ct }).includes(PROBLEM_PREPRINT), `refcheck: preprint by container ${ct}`);
   check(none({ ...good, publisher: "Cold Spring Harbor: bioRxiv" }).includes(PROBLEM_PREPRINT), "refcheck: preprint by publisher");
-  check(none({ ...good, type: "article" }).includes(PROBLEM_PREPRINT) && none({ ...good, type: "post" }).includes(PROBLEM_PREPRINT), "refcheck: preprint by CSL type");
+  check(!none({ ...good, type: "article" }).includes(PROBLEM_PREPRINT) && !none({ ...good, type: "post" }).includes(PROBLEM_PREPRINT), "refcheck: CSL type alone (a BibTeX @misc) is not a preprint");
+  check(none({ ...good, type: "article", "container-title": "medRxiv" }).includes(PROBLEM_PREPRINT), "refcheck: medRxiv article is a preprint");
+  check(none({ ...good, type: "article", "container-title": "arXiv", URL: "https://arxiv.org/abs/2401.00001", keyword: ["preprint", "arxiv"] }).includes(PROBLEM_PREPRINT), "refcheck: arXiv item is a preprint");
+  check(none({ ...good, type: "article", "container-title": undefined, publisher: "Cold Spring Harbor Laboratory", DOI: "10.1101/2024.01.02.123456" }).includes(PROBLEM_PREPRINT), "refcheck: Crossref bioRxiv/medRxiv posted-content by DOI");
+  check(!none({ ...good, DOI: "10.1101/gr.123456.120" }).includes(PROBLEM_PREPRINT), "refcheck: a 10.1101 journal DOI is not a preprint");
+  check(none({ ...good, type: "article", genre: "Preprint" }).includes(PROBLEM_PREPRINT), "refcheck: genre preprint");
+  check(none({ ...good, URL: "https://www.medrxiv.org/content/10.1101/x" }).includes(PROBLEM_PREPRINT), "refcheck: preprint-server URL");
   check(!none(good).includes(PROBLEM_PREPRINT), "refcheck: journal article is not a preprint");
   check(!none(good, OK, BODY).includes(PROBLEM_THIN) && !none(good, OK, "## 요약 (KR)\nx").includes(PROBLEM_THIN), "refcheck: summary block is enough");
   check(!none(good, OK, "abstract\n\n## Full text (extracted)\n\nlong").includes(PROBLEM_THIN), "refcheck: stashed text is enough");
@@ -1332,6 +1338,25 @@ check(
   check(empty.includes("No risk-of-bias assessments yet.") && empty.includes("None."), "robMarkdown: empty scope reads cleanly");
 }
 
+// ---------- numeric study_id (unquoted YAML) and kq normalisation ----------
+{
+  // `study_id: 2019001` parses as a number; both reports must still land in one study.
+  const a = toPrismaRecord("a", { include: "include", study_id: 2019001 });
+  const b = toPrismaRecord("b", { include: "include", study_id: " 2019001 " });
+  check(a.study_id === "2019001" && b.study_id === "2019001", "toPrismaRecord: numeric / padded study_id read as trimmed text");
+  const pc = prismaCounts([a, b, toPrismaRecord("c", { include: "include" })], [], () => true);
+  check(pc.reportsIncluded === 3 && pc.studiesIncluded === 2 && pc.hasStudyIds, "prismaCounts: numeric study_id groups two reports into one study");
+  const rr = toRobRecord("a", "Kim", "2021", { include: "include", rob_tool: "RoB 2", rob_overall: "low", study_id: 2019001 });
+  check(rr.study_id === "2019001", "toRobRecord: numeric study_id kept");
+  check(robMarkdown([rr], "x", "2026-11-04").includes("| Reference | Study | Study ID | Overall | Note |"), "robMarkdown: Study ID column for a numeric study_id");
+  const num = applyScreening({ study_id: 2019001 }, {});
+  check(num.fields.study_id === "2019001", "applyScreening: numeric study_id reported as text");
+  // kq: "03" and 3 are one key question everywhere
+  check(kqKey("03") === "3" && kqKey(3) === "3" && kqKey(" 3 ") === "3" && kqKey("kq-a") === "kq-a", "kqKey: leading zeros and padding collapse");
+  check(hasKq(["03"], 3) && hasKq([3], "03") && hasKq(["3"], "03") && !hasKq(["13"], "3") && !hasKq(undefined, "3"), "hasKq: 3 and 03 match each other");
+  check(JSON.stringify(kqChoices([["3"], ["03", "kq-a"], [3], "x"])) === '["3","kq-a"]', "kqChoices: 3 and 03 collapse into one choice");
+}
+
 // ---------- data/prisma.ts: prismaCounts / prismaMarkdown ----------
 {
   const records: PrismaRecord[] = [
@@ -1430,9 +1455,22 @@ check(
   const summary = parseSearchLog(fm);
   check(summary?.total === 412 && summary.source === "PubMed", "parseSearchLog: reads a log's frontmatter");
   check(parseSearchLog({ type: "reference", total: 5 }) === null, "parseSearchLog: ignores other notes");
-  const logs = [summary!, { ...summary!, total: 8 }, { source: "Embase", date, query: "q", total: 5 }];
+  check(summary?.year_from === 2020 && summary.year_to === 2025, "parseSearchLog: reads the year filters");
+  const logs = [summary!, { ...summary!, query: "other query", total: 8 }, { source: "Embase", date, query: "q", total: 5 }];
   const totals = searchLogTotals(logs);
   check(totals.length === 2 && totals[0].total === 420 && totals[1].source === "Embase", "searchLogTotals: sums per source");
+  {
+    const a = { source: "PubMed", date: "2026-11-01T10:00:00Z", query: "Disc  Herniation ", year_from: 2020, total: 100 };
+    const b = { ...a, date: "2026-11-03T10:00:00Z", query: "disc herniation", total: 120 };
+    const c = { ...a, date: "2026-11-02T10:00:00Z", year_from: 2021, total: 7 }; // different filter: separate search
+    const d = { ...a, source: "Embase", total: 9 }; // other source: separate
+    const t = searchLogTotals([a, b, c, d]);
+    check(t[0].total === 127 && t[1].total === 9, `searchLogTotals: repeated search counts once, latest total (${JSON.stringify(t)})`);
+    const kept = countedSearchLogs([b, a]);
+    check(kept.has(b) && !kept.has(a), "countedSearchLogs: order-independent, most recent run kept");
+    const md = prismaMarkdown(prismaCounts([], [], () => true), "all references", "2026-11-03", [a, b]);
+    check(md.includes("- PubMed: 120") && md.split("repeat of an earlier search, not counted").length === 2, "prismaMarkdown: repeats listed but marked, not counted");
+  }
 
   const counts = prismaCounts([{ citekey: "a2020", include: "include" }], [], () => true);
   const withLogs = prismaMarkdown(counts, "all references", "2026-11-03", logs);
@@ -2107,6 +2145,12 @@ check(
     check(csv.includes(",척추 유합,") && csv.includes(",96%,,,"), "evidenceCsv: Korean unquoted, absent keys left empty");
     check(csv.includes(",10.1/x,1,S1,KQ1; KQ2,include,"), "evidenceCsv: study_id column sits right after pmid");
     check(csv.endsWith("Older had more.\r\n") && csv.slice(1).split("\r\n").length === 4, "evidenceCsv: CRLF rows, one row per finding");
+    const g = (effect: string) => evidenceCsv([{ ...base, finding: { ...fb, effect } }]).slice(1).split("\r\n")[1];
+    check(g("-0.45").includes(",-0.45,") && !g("-0.45").includes("'-0.45"), "evidenceCsv: a plain negative number stays a number");
+    check(g("-0.45 (-0.8 to -0.1)").includes(",'-0.45 (-0.8 to -0.1),"), "evidenceCsv: a cell starting with - that is not a number is guarded");
+    check(g("=1+1").includes(",'=1+1,") && g("@x").includes(",'@x,") && g("+1 up").includes(",'+1 up,") && g("\tx").includes(",'\tx,"), "evidenceCsv: = + @ tab starts are guarded");
+    check(g('=HYPERLINK("u", "a")').includes(`,"'=HYPERLINK(""u"", ""a"")",`), "evidenceCsv: a guarded cell that needs quoting is guarded, then quoted");
+    check(g("a-b =c").includes(",a-b =c,"), "evidenceCsv: ordinary text is unchanged");
 
     const NOTE = (n: string) => `---\ncitekey: x\n---\n\n## Evidence (extracted)\n\n> - [kind:: comparative] [outcome:: o${n}]\n>   "q${n}"\n`;
     const mk = (path: string, item: Record<string, unknown>, body: string) => ({ citekey: String(item.citekey), file: Object.assign(new TFile(path), { stat: { mtime: 1 } }), item, body });

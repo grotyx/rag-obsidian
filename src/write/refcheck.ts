@@ -8,6 +8,23 @@ export const PROBLEM_PREPRINT = "preprint: check whether a peer-reviewed version
 export const PROBLEM_THIN = "thin evidence: no summary or full text in the note, so the claim rests on the abstract at most";
 
 const PREPRINT_VENUE = /medrxiv|biorxiv|arxiv|research\s*square|ssrn|preprints\.org/i;
+// Crossref posted-content from medRxiv/bioRxiv has publisher "Cold Spring Harbor Laboratory" and no
+// container-title, so the DOI is the signal (10.1101/YYYY.MM.DD.…; journals under 10.1101/gr.… are not preprints).
+const PREPRINT_DOI = /^10\.(48550\/arxiv|1101\/\d{4}\.\d{2}\.\d{2}\.|21203\/rs|2139\/ssrn|20944\/preprints)/i;
+const PREPRINT_URL = /^https?:\/\/(www\.)?(arxiv\.org|medrxiv\.org|biorxiv\.org)\//i;
+
+/** Preprint on real signals only. CSL `type` is not one: the BibTeX importer maps `@misc` (guidelines,
+ *  software, websites) to `article`. */
+function isPreprint(item: CSLItem): boolean {
+  const kw = Array.isArray(item.keyword) ? item.keyword.map(String) : [];
+  return (
+    PREPRINT_VENUE.test(`${str(item["container-title"])} ${str(item.publisher)}`) ||
+    PREPRINT_DOI.test(str(item.DOI)) ||
+    PREPRINT_URL.test(str(item.URL)) ||
+    /preprint/i.test(`${str(item.genre)} ${str(item.subtype)}`) ||
+    kw.some((k) => /^preprint$/i.test(k))
+  );
+}
 
 /** 0 = most severe. Table sections of the report follow this order. */
 export function problemSeverity(p: string): 0 | 1 | 2 {
@@ -35,8 +52,7 @@ export function referenceProblems(item: CSLItem | null, fm: Record<string, unkno
   if (fm.retracted === true || fm.retracted === "true") out.push(PROBLEM_RETRACTED);
   else if (fm.retracted === undefined || fm.retracted === null) out.push(PROBLEM_UNCHECKED);
   if (!item.DOI && !item.PMID) out.push("no DOI or PMID");
-  const venue = `${str(item["container-title"])} ${str(item.publisher)}`;
-  if (item.type === "article" || item.type === "post" || PREPRINT_VENUE.test(venue)) out.push(PROBLEM_PREPRINT);
+  if (isPreprint(item)) out.push(PROBLEM_PREPRINT);
   if (!item.title) out.push("missing title");
   if (!item.author?.length) out.push("missing authors");
   if (!item.issued?.["date-parts"]?.[0]?.[0] && !item.issued?.raw) out.push("missing year");

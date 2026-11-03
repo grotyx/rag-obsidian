@@ -1,4 +1,5 @@
 import { keywordsToTags } from "./reference";
+import { text } from "../util/json";
 
 /** Screening decision values (stored in the `include` frontmatter field). */
 export const INCLUDE_VALUES = ["include", "exclude", "pending"] as const;
@@ -42,6 +43,22 @@ export const EXCLUDE_REASONS = [
   "Not English",
   "Other",
 ] as const;
+
+/** Canonical key-question id: `"03"` and `3` both become `"3"`; free text is only trimmed. */
+export const kqKey = (v: unknown): string => {
+  const s = String(v).trim();
+  return /^\d+$/.test(s) ? String(Number(s)) : s;
+};
+
+/** True when the raw frontmatter `kq` list holds `kq` (compared by `kqKey`). */
+export const hasKq = (raw: unknown, kq: unknown): boolean => Array.isArray(raw) && raw.some((k) => kqKey(k) === kqKey(kq));
+
+/** One choice per distinct key question across several raw `kq` lists: the first spelling seen, sorted. */
+export function kqChoices(lists: unknown[]): string[] {
+  const byKey = new Map<string, string>();
+  for (const raw of lists) if (Array.isArray(raw)) for (const k of raw) if (!byKey.has(kqKey(k))) byKey.set(kqKey(k), String(k).trim());
+  return [...byKey.values()].sort();
+}
 
 /** Risk-of-bias tools (stored in `rob_tool`). */
 export const ROB_TOOLS = ["RoB 2", "ROBINS-I", "QUADAS-2", "NOS", "AMSTAR 2", "other"] as const;
@@ -170,15 +187,15 @@ export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFie
     tags,
     fields: {
       kq: Array.isArray(fm.kq) ? (fm.kq as unknown[]).map(String) : [],
-      include: typeof fm.include === "string" ? fm.include : null,
+      include: text(fm.include) || null,
       level: typeof fm.level === "string" ? fm.level : null,
       design: typeof fm.design === "string" ? fm.design : null,
-      screening_note: typeof fm.screening_note === "string" ? fm.screening_note : null,
-      guideline: typeof fm.guideline === "string" ? fm.guideline : null,
-      study_id: typeof fm.study_id === "string" ? fm.study_id : null,
-      rob_tool: typeof fm.rob_tool === "string" ? fm.rob_tool : null,
-      rob_overall: typeof fm.rob_overall === "string" ? fm.rob_overall : null,
-      rob_note: typeof fm.rob_note === "string" ? fm.rob_note : null,
+      screening_note: text(fm.screening_note) || null,
+      guideline: text(fm.guideline) || null,
+      study_id: text(fm.study_id).trim() || null,
+      rob_tool: text(fm.rob_tool) || null,
+      rob_overall: text(fm.rob_overall) || null,
+      rob_note: text(fm.rob_note) || null,
     },
   };
 }

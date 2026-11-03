@@ -16,6 +16,7 @@ import {
 } from "../data/screening";
 import { extractSummaryBlock } from "../cite/bibliography";
 import { activatable } from "./RelatedView";
+import { text } from "../util/json";
 
 export const VIEW_TYPE_SCREENING = "rag-obsidian-screening";
 
@@ -169,7 +170,7 @@ export class ScreeningView extends ItemView {
       kq: new Set(kq),
       level: LEVELS.includes(String(item.level) as Level) ? (String(item.level) as Level) : undefined,
       design: typeof item.design === "string" ? item.design : undefined,
-      note: typeof item.screening_note === "string" ? item.screening_note : "",
+      note: text(item.screening_note),
     };
 
     this.bodyEl.createEl("h2", { text: item.title || entry.citekey });
@@ -259,23 +260,35 @@ export class ScreeningView extends ItemView {
     const toolSelect = robRow.createEl("select");
     toolSelect.createEl("option", { value: "", text: "(No tool)" });
     for (const t of ROB_TOOLS) toolSelect.createEl("option", { value: t, text: t });
-    toolSelect.value = typeof entry.item.rob_tool === "string" ? entry.item.rob_tool : "";
+    toolSelect.value = text(entry.item.rob_tool).trim();
     robField(toolSelect, "rob_tool");
     const overallSelect = robRow.createEl("select");
     overallSelect.createEl("option", { value: "", text: "(No judgement)" });
     for (const o of ROB_OVERALL) overallSelect.createEl("option", { value: o, text: o });
-    overallSelect.value = typeof entry.item.rob_overall === "string" ? entry.item.rob_overall : "";
+    overallSelect.value = text(entry.item.rob_overall).trim();
     robField(overallSelect, "rob_overall");
     const robNote = robRow.createEl("input", { type: "text", placeholder: "Risk-of-bias note" });
-    robNote.value = typeof entry.item.rob_note === "string" ? entry.item.rob_note : "";
+    robNote.value = text(entry.item.rob_note);
     robField(robNote, "rob_note");
 
     controls.createDiv({ text: "Study", cls: "srag-count" });
     const studyInput = controls.createEl("input", { type: "text", placeholder: "Study id shared by all reports of one study" });
-    studyInput.value = typeof entry.item.study_id === "string" ? entry.item.study_id : "";
+    let savedStudy = text(entry.item.study_id).trim();
+    studyInput.value = savedStudy;
     const otherReports = controls.createDiv();
-    const renderOthers = () => this.renderOtherReports(otherReports, entry.citekey, studyInput.value.trim());
-    studyInput.onchange = () => void this.saveRob({ study_id: studyInput.value.trim() }, entry.citekey).then(renderOthers);
+    const renderOthers = () => this.renderOtherReports(otherReports, entry.citekey, savedStudy);
+    studyInput.onchange = () => {
+      const wanted = studyInput.value.trim();
+      void this.saveRob({ study_id: wanted }, entry.citekey).then((saved) => {
+        if (saved) {
+          savedStudy = wanted;
+          renderOthers();
+        } else {
+          new Notice("Study ID was not saved.");
+          studyInput.value = savedStudy;
+        }
+      });
+    };
     renderOthers();
 
     controls.createDiv({ text: "Screening note", cls: "srag-count" });
@@ -298,7 +311,7 @@ export class ScreeningView extends ItemView {
   private renderOtherReports(host: HTMLElement, citekey: string, studyId: string): void {
     host.empty();
     if (!studyId) return;
-    const others = this.plugin.library.entries().filter((e) => e.citekey !== citekey && e.item.study_id === studyId);
+    const others = this.plugin.library.entries().filter((e) => e.citekey !== citekey && text(e.item.study_id).trim() === studyId);
     if (!others.length) return;
     host.createDiv({ text: "Other reports of this study", cls: "srag-count" });
     for (const o of others) {
@@ -336,22 +349,25 @@ export class ScreeningView extends ItemView {
     return true;
   }
 
-  /** Save the risk-of-bias row; stays on the same record. */
-  private saveRob(fields: ScreeningFields, citekey: string): Promise<void> {
-    this.robSave = this.robSave.then(() => this.doSaveRob(fields, citekey));
-    return this.robSave;
+  /** Save the risk-of-bias row; stays on the same record. Resolves true only when it wrote. */
+  private saveRob(fields: ScreeningFields, citekey: string): Promise<boolean> {
+    const run = this.robSave.then(() => this.doSaveRob(fields, citekey));
+    this.robSave = run.then(() => undefined);
+    return run;
   }
 
-  private async doSaveRob(fields: ScreeningFields, citekey: string): Promise<void> {
+  private async doSaveRob(fields: ScreeningFields, citekey: string): Promise<boolean> {
     const item = this.queue[this.index];
-    if (this.writing || !item || item.citekey !== citekey) return;
+    if (this.writing || !item || item.citekey !== citekey) return false;
     this.errorEl.setText("");
     this.writing = true;
     try {
-      if (!(await this.writeFields(item, fields))) return;
+      if (!(await this.writeFields(item, fields))) return false;
       this.plugin.library.invalidateKeyCache();
+      // our own write moved the mtime: take the new one so a later Include is not refused as "changed on disk"
       const written = this.plugin.app.vault.getAbstractFileByPath(item.file.path);
       if (written instanceof TFile) this.loadedMtime = written.stat.mtime;
+      return true;
     } finally {
       this.writing = false;
     }

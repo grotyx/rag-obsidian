@@ -207,6 +207,7 @@ export class PubmedSearchModal extends Modal {
     const fresh = chosen.filter((hit) => !this.plugin.library.findDuplicate(hit.item));
     const skipped = chosen.length - fresh.length;
     if (!fresh.length) {
+      await this.writeSearchLog([]); // the search was acted on even though nothing is new
       new Notice(`All ${skipped} selected paper(s) are already in the library.`);
       return;
     }
@@ -221,82 +222,92 @@ export class PubmedSearchModal extends Modal {
     let lastFile = null as import("obsidian").TFile | null;
     const importedPmids: string[] = [];
 
-    // The slow half — one PubMed record, maybe a PMC full text, and the summary — runs several
-    // papers at a time. The vault writes afterwards stay sequential.
-    const prepared = await mapPool(fresh, poolWidth(this.plugin.settings), async (hit) => {
-      const item: CSLItem = { ...hit.item };
-      const opts: BuildNoteOpts = {};
-      try {
-        const { abstract, descriptors, keywords } = await fetchPubmedRecord(hit.pmid, apiKey, email);
-        if (abstract) item.abstract = abstract.replace(/\s+/g, " ").trim().slice(0, 6000);
-        if (hit.pmc) item.PMCID = hit.pmc; // PMCID is a CSL variable — it belongs on the note
+    let summary = "Adding failed (see console)";
+    try {
+      // The slow half — one PubMed record, maybe a PMC full text, and the summary — runs several
+      // papers at a time. The vault writes afterwards stay sequential.
+      const prepared = await mapPool(fresh, poolWidth(this.plugin.settings), async (hit) => {
+        const item: CSLItem = { ...hit.item };
+        const opts: BuildNoteOpts = {};
+        try {
+          const { abstract, descriptors, keywords } = await fetchPubmedRecord(hit.pmid, apiKey, email);
+          if (abstract) item.abstract = abstract.replace(/\s+/g, " ").trim().slice(0, 6000);
+          if (hit.pmc) item.PMCID = hit.pmc; // PMCID is a CSL variable — it belongs on the note
 
-        if (this.summarize) {
-          let src = abstract;
-          let label = "PubMed abstract (not open access — full text not retrieved)";
-          let tag = "pubmed-abstract";
-          if (hit.pmc) {
-            const full = await fetchPmcFullText(hit.pmc, apiKey, email);
-            if (full) {
-              src = full;
-              label = `PMC full text (${hit.pmc}) — summarized from the complete article body`;
-              tag = "pmc-fulltext";
+          if (this.summarize) {
+            let src = abstract;
+            let label = "PubMed abstract (not open access — full text not retrieved)";
+            let tag = "pubmed-abstract";
+            if (hit.pmc) {
+              const full = await fetchPmcFullText(hit.pmc, apiKey, email);
+              if (full) {
+                src = full;
+                label = `PMC full text (${hit.pmc}) — summarized from the complete article body`;
+                tag = "pmc-fulltext";
+              }
+            }
+            if (src) {
+              try {
+                opts.summary = await summarizeSource(llm, item, src, label, this.plugin.settings.summaryLanguage);
+                opts.summarySource = tag;
+                opts.summaryModel = this.plugin.settings.llmModel;
+                opts.summarySourceLabel = label;
+              } catch (e) {
+                new Notice(`Summary failed for PMID ${hit.pmid}; adding without summary.`);
+                console.error("[Refwright] summarize failed", e);
+              }
             }
           }
-          if (src) {
-            try {
-              opts.summary = await summarizeSource(llm, item, src, label, this.plugin.settings.summaryLanguage);
-              opts.summarySource = tag;
-              opts.summaryModel = this.plugin.settings.llmModel;
-              opts.summarySourceLabel = label;
-            } catch (e) {
-              new Notice(`Summary failed for PMID ${hit.pmid}; adding without summary.`);
-              console.error("[Refwright] summarize failed", e);
-            }
-          }
+
+          const { tags, mesh } = await buildTagsWithMesh({
+            descriptors,
+            keywords,
+            meshFromSummary: opts.summary?.mesh,
+            apiKey,
+            email,
+          });
+          if (tags.length) opts.tags = tags;
+          if (mesh.length) opts.meshTerms = mesh;
+          return { hit, item, opts, error: null as unknown };
+        } catch (e: unknown) {
+          failed++;
+          return { hit, item, opts, error: e };
+        } finally {
+          batch.tick(++done, failed);
         }
+      }, batch.signal);
 
-        const { tags, mesh } = await buildTagsWithMesh({
-          descriptors,
-          keywords,
-          meshFromSummary: opts.summary?.mesh,
-          apiKey,
-          email,
-        });
-        if (tags.length) opts.tags = tags;
-        if (mesh.length) opts.meshTerms = mesh;
-        return { hit, item, opts, error: null as unknown };
-      } catch (e: unknown) {
-        failed++;
-        return { hit, item, opts, error: e };
-      } finally {
-        batch.tick(++done, failed);
+      for (const p of prepared) {
+        // Empty slot: the batch was cancelled before this paper started.
+        if (!p) continue;
+        if (p.error) {
+          console.error("[Refwright] add failed", p.hit.pmid, p.error);
+          new Notice(`Failed PMID ${p.hit.pmid}: ${errMsg(p.error)}`);
+          continue;
+        }
+        // Re-check: two selected hits can be the same work under different PMIDs.
+        if (this.plugin.library.findDuplicate(p.item)) continue;
+        try {
+          lastFile = await this.plugin.library.createReference(p.item, p.opts);
+          added++;
+          importedPmids.push(p.hit.pmid);
+        } catch (e) {
+          console.error("[Refwright] create failed", p.hit.pmid, e);
+          new Notice(`Failed PMID ${p.hit.pmid}: ${errMsg(e)}`);
+        }
       }
-    }, batch.signal);
 
-    for (const p of prepared) {
-      // Empty slot: the batch was cancelled before this paper started.
-      if (!p) continue;
-      if (p.error) {
-        console.error("[Refwright] add failed", p.hit.pmid, p.error);
-        new Notice(`Failed PMID ${p.hit.pmid}: ${errMsg(p.error)}`);
-        continue;
-      }
-      // Re-check: two selected hits can be the same work under different PMIDs.
-      if (this.plugin.library.findDuplicate(p.item)) continue;
-      lastFile = await this.plugin.library.createReference(p.item, p.opts);
-      added++;
-      importedPmids.push(p.hit.pmid);
+      const notStarted = fresh.length - done;
+      summary =
+        `Added ${added} reference${added === 1 ? "" : "s"}` +
+        (chosen.length - added - notStarted ? `, skipped ${chosen.length - added - notStarted}` : "") +
+        (notStarted ? ` · cancelled, ${notStarted} not started` : "") +
+        ".";
+    } finally {
+      // Always runs: a stranded batch leaves the status bar stuck and refuses every later batch.
+      await this.writeSearchLog(importedPmids);
+      this.endBatch(summary);
     }
-    await this.writeSearchLog(importedPmids);
-
-    const notStarted = fresh.length - done;
-    const summary =
-      `Added ${added} reference${added === 1 ? "" : "s"}` +
-      (chosen.length - added - notStarted ? `, skipped ${chosen.length - added - notStarted}` : "") +
-      (notStarted ? ` · cancelled, ${notStarted} not started` : "") +
-      ".";
-    this.endBatch(summary);
     new Notice(summary);
     this.close();
     if (lastFile) await this.app.workspace.getLeaf(true).openFile(lastFile);

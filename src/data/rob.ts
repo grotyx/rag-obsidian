@@ -1,3 +1,4 @@
+import { text } from "../util/json";
 import { ROB_OVERALL } from "./screening";
 
 /** The slice of a reference the risk-of-bias table needs (pure; `commands/rob.ts` gathers it). */
@@ -12,6 +13,19 @@ export interface RobRecord {
   rob_note: string | null;
   /** Groups the reports of one study; the tables get a Study column when any record has one. */
   study_id?: string | null;
+}
+
+/** Project a reference's frontmatter onto `RobRecord`; unquoted YAML numbers (`study_id: 2019001`) count as text. */
+export function toRobRecord(citekey: string, authors: string, year: string, item: Record<string, unknown>): RobRecord {
+  const t = (v: unknown): string | null => text(v).trim() || null;
+  return {
+    citekey, authors, year,
+    include: t(item.include),
+    rob_tool: t(item.rob_tool),
+    rob_overall: t(item.rob_overall),
+    rob_note: t(item.rob_note),
+    study_id: t(item.study_id),
+  };
 }
 
 const cell = (s: string): string => s.replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ").trim() || "—";

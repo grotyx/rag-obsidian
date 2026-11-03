@@ -6,6 +6,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-11-04
+
+Fixes from a code review of 0.10.0–0.11.0.
+
+### Fixed
+- PubMed search: one paper that fails to save no longer leaves the progress bar stuck (which blocked every later batch command until reload); the rest are still added and the search is still logged. A search whose results were all already in the library is now logged too.
+- PRISMA: running the same PubMed search again no longer counts its matches twice; repeats stay listed but are marked as not counted.
+- After the update, "Systematic review tools" is decided only once Obsidian has read every note, so a library that screens can no longer start with the tools off.
+- A study id written as a plain number (`study_id: 2019001`) now works everywhere: PRISMA study counts, the risk-of-bias table, the Screening pane and MCP `list_references`. Key questions `3` and `03` are the same everywhere, including snowballing.
+- The risk-of-bias note is named after its scope (`Risk of bias <date> - <scope>.md`), so tables for different scopes on the same day no longer overwrite each other.
+- The Screening pane no longer shows other reports for a study id that was not saved.
+- Evidence table export: a second export within the same minute gets its own file instead of failing silently, and cells that Excel would read as formulas (e.g. `-0.45 (-0.8 to -0.1)`, `=…`) are kept as text; plain numbers stay numbers.
+- "Check references in this manuscript" flags preprints only on real signals (preprint server, DOI or URL), so guidelines, software and websites imported from BibTeX `@misc` are no longer called preprints.
+
 ## [0.11.0] — 2026-11-04
 
 ### Added

@@ -1,7 +1,7 @@
 import { normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { duplicateGroups, inScope, BackfillScope } from "../data/library";
-import { prismaCounts, prismaMarkdown, PrismaRecord } from "../data/prisma";
+import { prismaCounts, prismaMarkdown, PrismaRecord, toPrismaRecord } from "../data/prisma";
 import { parseSearchLog, SEARCH_LOG_FOLDER, SearchLogSummary } from "../data/searchLog";
 import { localDate } from "../data/reference";
 import { findPdfFile } from "./pdfs";
@@ -23,12 +23,7 @@ function scopeLabel(scope: BackfillScope): string {
 export async function buildPrismaDiagram(plugin: ScholarRagPlugin, scope: BackfillScope): Promise<void> {
   const scoped = plugin.library.entries().filter((e) => inScope(e, scope));
   const groups = duplicateGroups(scoped).map((g) => g.map((e) => e.citekey));
-  const records: PrismaRecord[] = scoped.map((e) => ({
-    citekey: e.citekey,
-    include: typeof e.item.include === "string" ? e.item.include : null,
-    screening_note: typeof e.item.screening_note === "string" ? e.item.screening_note : null,
-    study_id: typeof e.item.study_id === "string" ? e.item.study_id : null,
-  }));
+  const records: PrismaRecord[] = scoped.map((e) => toPrismaRecord(e.citekey, e.item));
   const fullTextSet = new Set(scoped.filter((e) => hasFullText(plugin, e)).map((e) => e.citekey));
   const counts = prismaCounts(records, groups, (r) => fullTextSet.has(r.citekey));
   const label = scopeLabel(scope);
