@@ -20,6 +20,7 @@
 8. [라이브러리와 대화](#8-라이브러리와-대화)
 9. [관련 논문](#9-관련-논문)
 10. [원고 마무리와 Word 내보내기](#10-원고-마무리와-word-내보내기)
+11. [체계적 문헌고찰 (선택)](#11-체계적-문헌고찰-선택)
 
 ---
 
@@ -172,6 +173,12 @@ OpenAlex에서 인용 정보를 가져옵니다(56편에 약 40초).
    점선 원은 아직 없는 논문입니다. 점선 원을 누르면 바로 추가합니다.
 2. **목록**: 이 논문이 인용한 논문, 이 논문을 인용한 논문, 참고문헌을 많이 공유하는 논문,
    내 라이브러리가 자주 인용하지만 빠진 논문 순서로 나옵니다.
+3. **이 논문을 인용한 최신 논문(OpenAlex)**: **Find newest citing papers**를 누르면 지금 연
+   논문을 인용한 최신 논문을 전 세계에서 찾아 연도·저널과 함께 나열합니다. 철회 논문과
+   정정 공지는 표시되고, 이미 내 라이브러리에 있는 논문에는 표식이 붙습니다. 논문을 누르면
+   열리고, 없는 논문이면 추가합니다. 투고 전에 써 보세요. 핵심 참고문헌을 갱신하거나
+   반박하는 새 연구를 놓치지 않게 해 줍니다. OpenAlex가 색인한 인용만 보이므로 아주 최근
+   논문은 빠질 수 있습니다. 각 행은 <kbd>Tab</kbd>으로 이동해 <kbd>Enter</kbd>로 열 수도 있습니다.
 
 ## 10. 원고 마무리와 Word 내보내기
 
@@ -188,6 +195,7 @@ OpenAlex에서 인용 정보를 가져옵니다(56편에 약 40초).
 | Export manuscript to Word (.docx) | 컴파일한 뒤 Word 파일로 저장([Pandoc](https://pandoc.org) 필요) |
 | Find unsupported claims | 인용 없이 주장하는 문단 찾기 |
 | Suggest citations for selection | 선택한 문장에 맞는 논문 추천 |
+| Check references in this manuscript | 투고 전 인용한 참고문헌의 문제 점검: 철회 논문이 먼저, 그다음 DOI/PMID 없음 · preprint · 서지 정보 누락, 마지막으로 철회 확인을 안 했거나 요약이 없는 논문 |
 
 ![Compile로 만든 원고 사본](img/ko/15-compiled.png)
 
@@ -195,7 +203,24 @@ OpenAlex에서 인용 정보를 가져옵니다(56편에 약 40초).
    인용이 저널 형식으로 바뀌고 참고문헌이 붙어 있어 그대로 투고 원고로 씁니다. Word
    파일이 필요하면 **Export manuscript to Word (.docx)**를 실행합니다.
 
+## 11. 체계적 문헌고찰 (선택)
+
+체계적 문헌고찰과 meta-analysis를 위한 도구입니다. **Settings → Systematic review → Systematic review tools**에서
+켭니다. 스크리닝 결정이 이미 있는 라이브러리는 켜진 채로 유지되고, 새 라이브러리는 꺼진 채로
+시작합니다. 끄면 명령만 숨겨지고, 노트에 이미 저장된 내용은 그대로 남습니다.
+
+| 명령 또는 위치 | 하는 일 |
+|---|---|
+| Open screening pane | 기록을 한 건씩 스크리닝: 포함 / 제외 / 보류, 핵심질문, 근거수준, 연구설계, 제외 사유, 그리고 **Risk of bias** 행(도구, 전체 판정, 메모). 단축키를 끝까지 쓸 수 있습니다 |
+| Search PubMed (import) | 가져올 때마다 `Searches/` 아래에 정확한 검색식, 날짜, 필터, 검색된 건수, 반환·가져온 PMID를 담은 노트도 함께 만들어, 검색을 보고할 수 있습니다(PRISMA-S) |
+| Create PRISMA flow diagram | PRISMA 2020 수치와 흐름도를 쓰고, 기록된 검색과 그 검색이 찾은 기록을 나열합니다 |
+| Snowball from included records | 포함한 모든 기록(또는 핵심질문 하나)에 대해, 그 기록이 인용한 논문과 그 기록을 인용한 최신 논문을 OpenAlex에서 모으고, 이미 라이브러리에 있는 논문은 빼고, 스크리닝할 후보를 순위 매겨 최대 200건까지 씁니다 |
+| Risk-of-bias summary table | 평가 도구(RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2)별 표 하나, 판정별 건수, 그리고 아직 평가하지 않은 포함 기록 |
+| Export evidence table (CSV) | 범위 안의 추출된 finding 전부(노트의 *Evidence (extracted)* 섹션)를 참고문헌·스크리닝 열과 함께 `Exports/`에 CSV 하나로 저장해 R 또는 RevMan에서 쓰게 합니다. 값은 쓰인 그대로 복사하며, 한글도 Excel에서 깨지지 않고 열립니다 |
+
+Snowball 후보는 스크리닝용이지 바로 인용할 논문이 아닙니다. 추가한 뒤 먼저 읽어 보세요.
+
 ---
 
-<sub>화면: 플러그인 v0.8.7, 논문 56편 테스트 볼트. 채팅 답변은 모델 출력 그대로입니다.
+<sub>화면: 플러그인 v0.10.1, 논문 56편 테스트 볼트. 채팅 답변은 모델 출력 그대로입니다.
 관리자는 `python scripts/manual/capture.py ko`로 화면을 다시 찍습니다.</sub>

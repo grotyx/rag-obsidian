@@ -19,6 +19,7 @@
 8. [与文献库对话](#8-与文献库对话)
 9. [相关论文](#9-相关论文)
 10. [完成原稿并导出为 Word](#10-完成原稿并导出为-word)
+11. [系统综述（可选）](#11-系统综述可选)
 
 ---
 
@@ -143,6 +144,7 @@
 
 1. **引用地图**：紫色圆点是当前打开的论文。实线圆圈是你库中已有的论文，虚线圆圈是尚未收录的论文。点击虚线圆圈即可添加。
 2. **列表**：依次是该论文引用的论文、引用该论文的论文、与该论文共享大量参考文献的论文，以及你的库中经常被引用但尚未收录的论文。
+3. **引用本文的新论文（OpenAlex）**：点击 **Find newest citing papers**，列出全球范围内引用当前论文的最新论文，并显示年份和期刊。已撤稿的论文和更正声明会被标出，已在你库中的论文也会标记。点击论文可打开它；若尚未收录，则可添加。投稿前用一下，以免漏掉更新或反驳关键参考文献的新研究。只显示 OpenAlex 已收录的引用，非常新的论文可能缺失。各行也可用 <kbd>Tab</kbd> 选中，按 <kbd>Enter</kbd> 打开。
 
 ## 10. 完成原稿并导出为 Word
 
@@ -159,11 +161,27 @@
 | Export manuscript to Word (.docx) | 先编译，再保存为 Word 文件（需要 [Pandoc](https://pandoc.org)） |
 | Find unsupported claims | 列出未附引用的论断段落 |
 | Suggest citations for selection | 为选中的句子推荐论文 |
+| Check references in this manuscript | 投稿前列出所引参考文献的问题：先列已撤稿的，其次是无 DOI/PMID、预印本和元数据缺失的，最后是从未检查过撤稿状态或没有摘要的论文 |
 
 ![编译生成的原稿副本](img/zh/15-compiled.png)
 
 1. **Compile manuscript** 会保留原文不变，另外打开一个新的 **Draft (compiled)** 笔记。引用已格式化，参考文献列表已附上，可直接用于投稿。如需 Word 文件，运行 **Export manuscript to Word (.docx)**。
 
+## 11. 系统综述（可选）
+
+这些工具用于系统综述和荟萃分析。在 **Settings → Systematic review → Systematic review tools** 中开启。已有筛选记录的文献库会保持开启；新文献库默认关闭。关闭只会隐藏命令，笔记中已保存的内容不会丢失。
+
+| 命令或位置 | 作用 |
+|---|---|
+| Open screening pane | 一次筛选一条记录：include / exclude / maybe、关键问题、证据等级、研究设计、排除原因，以及 **Risk of bias** 一行（工具、总体判断、备注）。全程可用键盘快捷键 |
+| Search PubMed (import) | 每次导入还会在 `Searches/` 下写一条笔记，记录精确检索式、日期、筛选条件、匹配数量，以及返回和已导入的 PMID，便于报告检索过程（PRISMA-S） |
+| Create PRISMA flow diagram | 写入 PRISMA 2020 的数量和流程图，并列出已记录的检索及其检出的记录 |
+| Snowball from included records | 针对每条纳入记录（或某个关键问题），从 OpenAlex 收集它所引用的论文和引用它的最新论文，剔除你库中已有的，写出最多 200 篇待筛选候选的排序列表 |
+| Risk-of-bias summary table | 每种评估工具（RoB 2、ROBINS-I、QUADAS-2、NOS、AMSTAR 2）一张表，按判断统计数量，并列出尚未评估的纳入记录 |
+| Export evidence table (CSV) | 把范围内所有已提取的发现（笔记的 *Evidence (extracted)* 部分）保存为 `Exports/` 下的一个 CSV，含参考文献和筛选列，可用于 R 或 RevMan。数值按原文复制；韩文在 Excel 中可正常打开 |
+
+Snowball 候选用于筛选，不能直接引用：先添加该论文并阅读后再引用。
+
 ---
 
-<sub>截图：插件 v0.8.7，测试库共 56 篇论文。聊天回答为模型原始输出，未经编辑。维护者用 `python scripts/manual/capture.py zh` 重新生成截图。</sub>
+<sub>截图：插件 v0.10.1，测试库共 56 篇论文。聊天回答为模型原始输出，未经编辑。维护者用 `python scripts/manual/capture.py zh` 重新生成截图。</sub>

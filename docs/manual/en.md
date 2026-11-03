@@ -21,6 +21,7 @@ the numbered steps below it.
 8. [Chat with your library](#8-chat-with-your-library)
 9. [Related papers](#9-related-papers)
 10. [Finish the manuscript and export to Word](#10-finish-the-manuscript-and-export-to-word)
+11. [Systematic reviews (optional)](#11-systematic-reviews-optional)
 
 ---
 
@@ -177,6 +178,13 @@ citation data from OpenAlex (about 40 seconds for 56 papers).
    library; dashed circles are papers you do not have yet. Click a dashed circle to add it.
 2. **Lists**: papers this one cites, papers that cite it, papers that share many
    references with it, and papers your library cites often but does not contain.
+3. **Later papers citing this (OpenAlex)**: click **Find newest citing papers** to list the
+   newest papers anywhere that cite the open paper, with year and journal. Retracted papers and
+   correction notices are flagged, and papers already in your library are marked. Click a paper
+   to open it, or to add it if you don't have it. Use this before submitting, so newer work that
+   updates or contradicts a key reference isn't missed. Only citations OpenAlex has indexed are
+   shown; very recent papers can be missing. Rows can also be reached with <kbd>Tab</kbd> and
+   opened with <kbd>Enter</kbd>.
 
 ## 10. Finish the manuscript and export to Word
 
@@ -194,6 +202,7 @@ Every command is in the command palette (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>). Type
 | Export manuscript to Word (.docx) | Compiles, then saves a Word file (needs [Pandoc](https://pandoc.org)) |
 | Find unsupported claims | Lists paragraphs that make a claim without a citation |
 | Suggest citations for selection | Suggests papers for the selected sentence |
+| Check references in this manuscript | Lists problems with the cited references before submission: retracted first, then no DOI/PMID, preprints and missing metadata, then papers never checked for retraction or with no summary |
 
 ![The compiled copy of the draft](img/en/15-compiled.png)
 
@@ -201,7 +210,25 @@ Every command is in the command palette (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>). Type
    **Draft (compiled)** note. Citations are formatted and the reference list is attached,
    ready for submission. For a Word file, run **Export manuscript to Word (.docx)**.
 
+## 11. Systematic reviews (optional)
+
+These tools are for systematic reviews and meta-analyses. Turn them on in
+**Settings → Systematic review → Systematic review tools**. A library that already has screening
+decisions keeps them on; a new library starts with them off. Turning them off only hides the
+commands; anything already saved in your notes stays.
+
+| Command or place | What it does |
+|---|---|
+| Open screening pane | Screen one record at a time: include / exclude / maybe, key questions, evidence level, design, exclusion reason, and a **Risk of bias** row (tool, overall judgement, note). Keyboard shortcuts work throughout |
+| Search PubMed (import) | Each import also writes a note under `Searches/` with the exact query, date, filters, number of matches and the PMIDs returned and imported, so the search can be reported (PRISMA-S) |
+| Create PRISMA flow diagram | Writes the PRISMA 2020 counts and diagram, and lists the logged searches with the records they identified |
+| Snowball from included records | For every included record (or one key question), collects the papers it cites and the newest papers citing it from OpenAlex, leaves out papers already in your library, and writes a ranked list of up to 200 candidates to screen |
+| Risk-of-bias summary table | One table per assessment tool (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), counts per judgement, and the included records not yet assessed |
+| Export evidence table (CSV) | Saves every extracted finding (the note's *Evidence (extracted)* section) in a scope as one CSV in `Exports/`, with reference and screening columns, for R or RevMan. Values are copied as written; Korean text opens correctly in Excel |
+
+Snowball candidates are for screening, not for citing directly: add a paper and read it first.
+
 ---
 
-<sub>Screenshots: plugin v0.8.7 on a test vault of 56 papers. Chat answers are unedited model
+<sub>Screenshots: plugin v0.10.1 on a test vault of 56 papers. Chat answers are unedited model
 output. Maintainers regenerate the screenshots with `python scripts/manual/capture.py en`.</sub>

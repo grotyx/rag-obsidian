@@ -66,14 +66,23 @@ frontmatter，因此你的文献库可移植、经得起时间考验，并且完
   在 Related 面板中绘制为**图谱**（实心节点是你已有的
   笔记，虚线节点是你没有的论文；点击虚线节点即可添加）。从面板按钮构建一次
   即可，之后新增的文献会自动加入。
+- **引用本文的新论文**：在 Related 面板中，**Find newest citing papers** 会列出全球范围内
+  引用当前笔记的最新论文（OpenAlex），并标出已撤稿的论文和更正声明——
+  避免漏掉更新或反驳关键参考文献的新研究。
 - 阅读状态、**仪表盘**、被引次数。**Library 面板**可按年份、标题、
   作者、被引次数或添加日期排序，并带有快速筛选（有 PDF / 无 PDF / 未读 / 已撤稿）。
 - **重复项**：查找后可**合并**——保留一个笔记，缺失内容从其他笔记补全，
   全库中的 `[@old]` 引用同步改写。
 - **撤稿检查**，针对单个笔记或整个文献库（OpenAlex），并生成报告笔记。
-- **系统综述**：**筛选面板**（include / exclude / maybe、关键问题、证据
-  等级、研究设计、排除原因、键盘快捷键），以及针对全部
-  文献或某个标签的 **PRISMA 2020 流程图**。
+- **系统综述**（可选——Settings → *Systematic review tools*；新文献库默认关闭）：
+  - **筛选面板**（include / exclude / maybe、关键问题、证据等级、研究设计、
+    排除原因、**偏倚风险**、键盘快捷键）；
+  - 每次从 PubMed 检索导入都会生成一条**检索日志**笔记（精确检索式、日期、筛选条件、
+    结果数量——PRISMA-S），**PRISMA 2020 流程图**会列出这些日志；
+  - **滚雪球**：你的纳入研究所引用的论文和引用它们的最新论文，
+    去掉你已有的，按筛选候选排序；
+  - **偏倚风险汇总表**（RoB 2、ROBINS-I、QUADAS-2、NOS、AMSTAR 2）和
+    **证据表导出**（CSV，可用于 R 或 RevMan）。
 - **PDF**：为每篇没有 PDF 的文献下载开放获取版本（Unpaywall），或
   **关联已有 PDF 的文件夹**——按文件名、DOI、PMID 或标题匹配。
 
@@ -84,8 +93,10 @@ frontmatter，因此你的文献库可移植、经得起时间考验，并且完
 - 通过笔记 frontmatter 中的 `csl:` 设置**每篇原稿的格式**——或使用 **Choose citation style…**，
   按期刊名称在约 10,000 种期刊格式中搜索。
 - 引用在 **Live Preview** 中随输入实时渲染；**悬停**即可查看对应论文。
-- 投稿前**检查原稿中的参考文献**（Check references in this manuscript）：库中缺失、
-  已撤稿、无 DOI 或元数据不完整。
+- 投稿前**检查原稿中的参考文献**（Check references in this manuscript），按严重程度分组：
+  先列已撤稿的论文；其次是库中缺失、无 DOI 或 PMID、预印本（请核对是否已正式发表）
+  和元数据不完整的参考文献；最后是从未检查过撤稿状态、
+  或笔记中没有摘要和全文的论文。
 - **Compile manuscript** → 得到已解析引用的干净副本 → 导出为 **`.docx`**。
 
 **🔎 检索与对话**
@@ -350,7 +361,7 @@ csl: springer-basic-brackets
 |---|---|
 | **Add** | Search PubMed · Add by DOI / PMID / arXiv / title · Import (BibTeX / RIS / nbib / CSL-JSON / Zotero) · Import PDF |
 | **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Download open-access PDF files for references without one · Link PDF files in a folder to references · Extract PDF highlights · Index linked PDF files · Index this note's PDF · Open reference online |
-| **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
+| **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Snowball from included records · Risk-of-bias summary table · Export evidence table (CSV) · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
 | **Write** | `@` autocomplete · Suggest citations for selection · Find unsupported claims · Update bibliography · Choose citation style… · Check references in this manuscript · Compile manuscript · Export manuscript to Word (.docx) · Copy citation · Export annotated bibliography · Save latest chat answer as note |
 | **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Rebuild search index |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |

@@ -21,6 +21,7 @@ aux étapes numérotées qui la suivent.
 8. [Dialoguer avec votre bibliothèque](#8-dialoguer-avec-votre-bibliothèque)
 9. [Articles associés](#9-articles-associés)
 10. [Terminer le manuscrit et exporter vers Word](#10-terminer-le-manuscrit-et-exporter-vers-word)
+11. [Revues systématiques (facultatif)](#11-revues-systématiques-facultatif)
 
 ---
 
@@ -177,6 +178,13 @@ données de citation depuis OpenAlex (environ 40 secondes pour 56 articles).
    bibliothèque ; les cercles en pointillés sont des articles que vous ne possédez pas encore. Cliquez sur un cercle en pointillés pour l'ajouter.
 2. **Listes** : articles cités par celui-ci, articles qui le citent, articles qui partagent de nombreuses
    références avec lui, et articles que votre bibliothèque cite souvent mais ne contient pas.
+3. **Articles plus récents qui citent celui-ci (OpenAlex)** : cliquez sur **Find newest citing papers** pour lister
+   les articles les plus récents, où qu'ils soient, qui citent l'article ouvert, avec l'année et la revue. Les
+   articles rétractés et les avis de correction sont signalés, et ceux déjà présents dans votre bibliothèque sont
+   marqués. Cliquez sur un article pour l'ouvrir, ou pour l'ajouter si vous ne l'avez pas. Utilisez-le avant la
+   soumission, pour ne pas manquer un travail plus récent qui met à jour ou contredit une référence clé. Seules
+   les citations indexées par OpenAlex sont affichées ; les articles très récents peuvent manquer. On peut aussi
+   atteindre les lignes avec <kbd>Tab</kbd> et les ouvrir avec <kbd>Entrée</kbd>.
 
 ## 10. Terminer le manuscrit et exporter vers Word
 
@@ -194,6 +202,7 @@ Toutes les commandes se trouvent dans la palette de commandes (<kbd>Cmd/Ctrl</kb
 | Export manuscript to Word (.docx) | Compile, puis enregistre un fichier Word (nécessite [Pandoc](https://pandoc.org)) |
 | Find unsupported claims | Liste les paragraphes qui avancent une affirmation sans citation |
 | Suggest citations for selection | Suggère des articles pour la phrase sélectionnée |
+| Check references in this manuscript | Liste les problèmes des références citées avant la soumission : d'abord les articles rétractés, puis l'absence de DOI/PMID, les preprints et les métadonnées manquantes, puis les articles jamais vérifiés pour rétractation ou sans résumé |
 
 ![La copie compilée du brouillon](img/en/15-compiled.png)
 
@@ -201,7 +210,25 @@ Toutes les commandes se trouvent dans la palette de commandes (<kbd>Cmd/Ctrl</kb
    **Draft (compiled)**. Les citations sont mises en forme et la liste de références est jointe,
    prête pour la soumission. Pour obtenir un fichier Word, lancez **Export manuscript to Word (.docx)**.
 
+## 11. Revues systématiques (facultatif)
+
+Ces outils servent aux revues systématiques et aux méta-analyses. Activez-les dans
+**Settings → Systematic review → Systematic review tools**. Une bibliothèque qui contient déjà des décisions de
+screening les garde activés ; une nouvelle bibliothèque les démarre désactivés. Les désactiver ne fait que masquer
+les commandes ; tout ce qui est déjà enregistré dans vos notes est conservé.
+
+| Commande ou emplacement | Fonction |
+|---|---|
+| Open screening pane | Examine un enregistrement à la fois : include / exclude / maybe, questions clés, niveau de preuve, design, motif d'exclusion, et une ligne **Risk of bias** (outil, jugement global, note). Les raccourcis clavier fonctionnent partout |
+| Search PubMed (import) | Chaque import écrit aussi une note sous `Searches/` avec la requête exacte, la date, les filtres, le nombre de résultats et les PMID renvoyés et importés, afin de pouvoir rapporter la recherche (PRISMA-S) |
+| Create PRISMA flow diagram | Écrit les effectifs et le diagramme PRISMA 2020, et liste les recherches journalisées avec les enregistrements qu'elles ont identifiés |
+| Snowball from included records | Pour chaque enregistrement inclus (ou une question clé), collecte les articles qu'il cite et les articles les plus récents qui le citent depuis OpenAlex, écarte ceux déjà dans votre bibliothèque, et écrit une liste classée d'au plus 200 candidats à examiner |
+| Risk-of-bias summary table | Un tableau par outil d'évaluation (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), les effectifs par jugement, et les enregistrements inclus pas encore évalués |
+| Export evidence table (CSV) | Enregistre chaque résultat extrait (la section *Evidence (extracted)* de la note) d'un périmètre dans un seul CSV sous `Exports/`, avec des colonnes de référence et de screening, pour R ou RevMan. Les valeurs sont copiées telles qu'écrites ; le texte coréen s'ouvre correctement dans Excel |
+
+Les candidats du snowballing sont à examiner, non à citer directement : ajoutez un article et lisez-le d'abord.
+
 ---
 
-<sub>Captures d'écran : plugin v0.8.7 sur un vault de test de 56 articles. Les réponses du chat sont la sortie brute
+<sub>Captures d'écran : plugin v0.10.1 sur un vault de test de 56 articles. Les réponses du chat sont la sortie brute
 du modèle, sans retouche. Les mainteneurs régénèrent les captures avec `python scripts/manual/capture.py en`.</sub>

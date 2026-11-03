@@ -21,6 +21,7 @@ Screenshot entsprechen den nummerierten Schritten darunter.
 8. [Mit der Bibliothek chatten](#8-mit-der-bibliothek-chatten)
 9. [Verwandte Artikel](#9-verwandte-artikel)
 10. [Manuskript fertigstellen und nach Word exportieren](#10-manuskript-fertigstellen-und-nach-word-exportieren)
+11. [Systematische Reviews (optional)](#11-systematische-reviews-optional)
 
 ---
 
@@ -193,6 +194,14 @@ graph**, um die Zitationsdaten von OpenAlex abzurufen (bei 56 Artikeln etwa 40 S
 2. **Listen**: Artikel, die dieser Artikel zitiert, Artikel, die ihn zitieren, Artikel mit
    vielen gemeinsamen Referenzen und Artikel, die Ihre Bibliothek häufig zitiert, aber nicht
    enthält.
+3. **Later papers citing this (OpenAlex)**: Klicken Sie auf **Find newest citing papers**, um die
+   neuesten Artikel überhaupt aufzulisten, die den geöffneten Artikel zitieren, mit Jahr und
+   Zeitschrift. Zurückgezogene Artikel und Korrekturhinweise sind markiert, Artikel, die schon in Ihrer
+   Bibliothek sind, ebenfalls. Ein Klick öffnet den Artikel oder fügt ihn hinzu, falls Sie ihn noch nicht
+   haben. Nutzen Sie das vor der Einreichung, damit neuere Arbeit, die eine Schlüsselreferenz
+   aktualisiert oder ihr widerspricht, nicht übersehen wird. Angezeigt werden nur Zitationen, die
+   OpenAlex indexiert hat; sehr neue Artikel können fehlen. Die Zeilen sind auch mit <kbd>Tab</kbd>
+   erreichbar und lassen sich mit <kbd>Enter</kbd> öffnen.
 
 ## 10. Manuskript fertigstellen und nach Word exportieren
 
@@ -210,6 +219,7 @@ Alle Befehle finden Sie in der Befehlspalette (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>)
 | Export manuscript to Word (.docx) | Kompiliert und speichert dann eine Word-Datei (benötigt [Pandoc](https://pandoc.org)) |
 | Find unsupported claims | Listet Absätze auf, die eine Aussage ohne Zitat enthalten |
 | Suggest citations for selection | Schlägt Artikel für den markierten Satz vor |
+| Check references in this manuscript | Listet vor der Einreichung Probleme der zitierten Referenzen auf: zuerst zurückgezogene, dann ohne DOI/PMID, Preprints und fehlende Metadaten, dann Artikel, die nie auf Retraction geprüft wurden oder keine Zusammenfassung haben |
 
 ![Die kompilierte Kopie des Entwurfs](img/en/15-compiled.png)
 
@@ -217,7 +227,26 @@ Alle Befehle finden Sie in der Befehlspalette (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>)
    **Draft (compiled)**. Die Zitate sind formatiert und das Literaturverzeichnis ist angehängt,
    bereit zur Einreichung. Für eine Word-Datei führen Sie **Export manuscript to Word (.docx)** aus.
 
+## 11. Systematische Reviews (optional)
+
+Diese Werkzeuge sind für systematische Reviews und Meta-Analysen gedacht. Schalten Sie sie unter
+**Settings → Systematic review → Systematic review tools** ein. Eine Bibliothek, die bereits
+Screening-Entscheidungen enthält, behält sie eingeschaltet; eine neue Bibliothek startet mit ausgeschalteten
+Werkzeugen. Das Ausschalten blendet nur die Befehle aus; alles, was bereits in Ihren Notizen gespeichert
+ist, bleibt erhalten.
+
+| Befehl oder Ort | Funktion |
+|---|---|
+| Open screening pane | Datensätze einzeln screenen: include / exclude / maybe, Schlüsselfragen, Evidenzgrad, Studiendesign, Ausschlussgrund und eine Zeile **Risk of bias** (Tool, Gesamturteil, Notiz). Tastaturkürzel funktionieren durchgehend |
+| Search PubMed (import) | Jeder Import schreibt zusätzlich eine Notiz unter `Searches/` mit der genauen Abfrage, dem Datum, den Filtern, der Trefferzahl und den zurückgegebenen und importierten PMIDs, damit die Suche berichtet werden kann (PRISMA-S) |
+| Create PRISMA flow diagram | Schreibt die PRISMA-2020-Zahlen und das Diagramm und listet die protokollierten Suchen mit den dadurch identifizierten Datensätzen auf |
+| Snowball from included records | Sammelt für jeden eingeschlossenen Datensatz (oder eine Schlüsselfrage) die Artikel, die er zitiert, und die neuesten Artikel, die ihn zitieren, aus OpenAlex, lässt Artikel aus, die schon in Ihrer Bibliothek sind, und schreibt eine gereihte Liste von bis zu 200 Kandidaten zum Screenen |
+| Risk-of-bias summary table | Eine Tabelle pro Bewertungstool (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), Anzahl je Urteil und die eingeschlossenen Datensätze, die noch nicht bewertet sind |
+| Export evidence table (CSV) | Speichert jeden extrahierten Befund (den Abschnitt *Evidence (extracted)* der Notiz) eines Umfangs als eine CSV-Datei in `Exports/`, mit Referenz- und Screening-Spalten, für R oder RevMan. Werte werden unverändert übernommen; koreanischer Text öffnet sich in Excel korrekt |
+
+Snowball-Kandidaten sind zum Screenen gedacht, nicht zum direkten Zitieren: Fügen Sie einen Artikel hinzu und lesen Sie ihn zuerst.
+
 ---
 
-<sub>Screenshots: Plugin v0.8.7 in einem Test-Vault mit 56 Artikeln. Die Chat-Antworten sind unbearbeitete
+<sub>Screenshots: Plugin v0.10.1 in einem Test-Vault mit 56 Artikeln. Die Chat-Antworten sind unbearbeitete
 Modellausgaben. Maintainer erzeugen die Screenshots mit `python scripts/manual/capture.py en` neu.</sub>

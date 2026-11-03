@@ -66,14 +66,23 @@ A step-by-step guide with screenshots, from adding papers to exporting a Word ma
   cited but missing"* recommendations — drawn as a **map** in the Related pane (solid nodes are
   notes you have, dashed ones are papers you don't; click a dashed node to add it). Build it once
   from the pane's button; references added later join it on their own.
+- **Later papers citing this one**: in the Related pane, **Find newest citing papers** lists the
+  newest papers anywhere that cite the open note (OpenAlex), with retracted papers and correction
+  notices flagged — so newer work that updates or contradicts a key reference is not missed.
 - Reading status, **dashboard**, citation counts. The **Library pane** sorts by year, title,
   author, citations or date added, with quick filters (has PDF / no PDF / unread / retracted).
 - **Duplicates**: find them, then **merge** them — one note kept, gaps filled from the others,
   `[@old]` citations rewritten across the vault.
 - **Retraction check** for one note or the whole library (OpenAlex), with a report note.
-- **Systematic review**: a **screening pane** (include / exclude / maybe, key questions, evidence
-  level, design, exclusion reasons, keyboard shortcuts) and a **PRISMA 2020 flow diagram** for all
-  references or a tag.
+- **Systematic review** (optional — Settings → *Systematic review tools*; off for a new library):
+  - a **screening pane** (include / exclude / maybe, key questions, evidence level, design,
+    exclusion reasons, **risk of bias**, keyboard shortcuts);
+  - a **search log** note for every PubMed search you import from (exact query, date, filters,
+    counts — PRISMA-S), and a **PRISMA 2020 flow diagram** that lists them;
+  - **snowballing**: papers your included studies cite and the newest papers citing them,
+    minus what you already have, ranked as screening candidates;
+  - a **risk-of-bias summary table** (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2) and an
+    **evidence table export** (CSV for R or RevMan).
 - **PDFs**: download open-access copies for every reference without one (Unpaywall), or
   **link a folder of PDFs** you already have — matched by file name, DOI, PMID or title.
 
@@ -84,8 +93,10 @@ A step-by-step guide with screenshots, from adding papers to exporting a Word ma
 - **Per-manuscript style** via a note's `csl:` frontmatter — or **Choose citation style…** and
   search about 10,000 journal styles by journal name.
 - Citations render as you type in **Live Preview**; **hover** one to see the paper.
-- **Check references in this manuscript** before submission: missing from the library,
-  retracted, no DOI, or incomplete metadata.
+- **Check references in this manuscript** before submission, grouped by severity: retracted
+  papers first; then references missing from the library, without a DOI or PMID, preprints (check
+  for a published version) and incomplete metadata; then papers never checked for retraction or
+  with no summary or full text in the note.
 - **Compile manuscript** → a clean copy with citations resolved → export to **`.docx`**.
 
 **🔎 Search & chat**
@@ -351,7 +362,7 @@ csl: springer-basic-brackets
 |---|---|
 | **Add** | Search PubMed · Add by DOI / PMID / arXiv / title · Import (BibTeX / RIS / nbib / CSL-JSON / Zotero) · Import PDF |
 | **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Download open-access PDF files for references without one · Link PDF files in a folder to references · Extract PDF highlights · Index linked PDF files · Index this note's PDF · Open reference online |
-| **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
+| **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Snowball from included records · Risk-of-bias summary table · Export evidence table (CSV) · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
 | **Write** | `@` autocomplete · Suggest citations for selection · Find unsupported claims · Update bibliography · Choose citation style… · Check references in this manuscript · Compile manuscript · Export manuscript to Word (.docx) · Copy citation · Export annotated bibliography · Save latest chat answer as note |
 | **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Rebuild search index |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |

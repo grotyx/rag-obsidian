@@ -21,6 +21,7 @@ correspondem aos passos numerados logo abaixo dela.
 8. [Conversar com a sua biblioteca](#8-conversar-com-a-sua-biblioteca)
 9. [Artigos relacionados](#9-artigos-relacionados)
 10. [Finalizar o manuscrito e exportar para o Word](#10-finalizar-o-manuscrito-e-exportar-para-o-word)
+11. [Revisões sistemáticas (opcional)](#11-revisões-sistemáticas-opcional)
 
 ---
 
@@ -177,6 +178,13 @@ dados de citação do OpenAlex (cerca de 40 segundos para 56 artigos).
    biblioteca; os círculos tracejados são artigos que você ainda não tem. Clique em um círculo tracejado para adicioná-lo.
 2. **Listas**: artigos que este cita, artigos que o citam, artigos que compartilham muitas
    referências com ele e artigos que a sua biblioteca cita com frequência, mas não contém.
+3. **Artigos mais recentes que citam este (OpenAlex)**: clique em **Find newest citing papers** para listar os
+   artigos mais novos, de qualquer lugar, que citam o artigo aberto, com ano e periódico. Artigos retratados e
+   avisos de correção são sinalizados, e os artigos que já estão na sua biblioteca são marcados. Clique em um artigo
+   para abri-lo ou, se você não o tiver, para adicioná-lo. Use isso antes de submeter, para que um trabalho recente
+   que atualiza ou contradiz uma referência-chave não passe despercebido. Só aparecem as citações que o OpenAlex
+   já indexou; artigos muito recentes podem estar ausentes. As linhas também podem ser alcançadas com <kbd>Tab</kbd> e
+   abertas com <kbd>Enter</kbd>.
 
 ## 10. Finalizar o manuscrito e exportar para o Word
 
@@ -194,6 +202,7 @@ Todos os comandos estão na paleta de comandos (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>
 | Export manuscript to Word (.docx) | Compila e depois salva um arquivo Word (requer o [Pandoc](https://pandoc.org)) |
 | Find unsupported claims | Lista os parágrafos que fazem uma afirmação sem citação |
 | Suggest citations for selection | Sugere artigos para a frase selecionada |
+| Check references in this manuscript | Lista problemas nas referências citadas antes da submissão: primeiro as retratadas, depois as sem DOI/PMID, preprints e metadados ausentes, e por fim os artigos nunca verificados quanto a retratação ou sem resumo |
 
 ![A cópia compilada do rascunho](img/en/15-compiled.png)
 
@@ -201,7 +210,25 @@ Todos os comandos estão na paleta de comandos (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>
    **Draft (compiled)**. As citações ficam formatadas e a lista de referências é anexada,
    pronta para a submissão. Para obter um arquivo Word, execute **Export manuscript to Word (.docx)**.
 
+## 11. Revisões sistemáticas (opcional)
+
+Estas ferramentas são para revisões sistemáticas e metanálises. Ative-as em
+**Settings → Systematic review → Systematic review tools**. Uma biblioteca que já tem decisões de triagem
+as mantém ativadas; uma biblioteca nova começa com elas desativadas. Desativá-las apenas oculta os
+comandos; tudo o que já foi salvo nas suas notas permanece.
+
+| Comando ou local | O que faz |
+|---|---|
+| Open screening pane | Tria um registro por vez: include / exclude / maybe, key questions, nível de evidência, desenho do estudo, motivo de exclusão e uma linha **Risk of bias** (ferramenta, julgamento geral, nota). Os atalhos de teclado funcionam em todo o painel |
+| Search PubMed (import) | Cada importação também grava uma nota em `Searches/` com a consulta exata, a data, os filtros, o número de resultados e os PMIDs retornados e importados, para que a busca possa ser relatada (PRISMA-S) |
+| Create PRISMA flow diagram | Grava as contagens e o diagrama PRISMA 2020 e lista as buscas registradas com os registros que identificaram |
+| Snowball from included records | Para cada registro incluído (ou uma key question), coleta os artigos que ele cita e os artigos mais recentes que o citam no OpenAlex, deixa de fora os que já estão na sua biblioteca e grava uma lista ordenada de até 200 candidatos para triagem |
+| Risk-of-bias summary table | Uma tabela por ferramenta de avaliação (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), contagens por julgamento e os registros incluídos ainda não avaliados |
+| Export evidence table (CSV) | Salva todos os achados extraídos (a seção *Evidence (extracted)* da nota) de um escopo em um único CSV em `Exports/`, com colunas de referência e de triagem, para R ou RevMan. Os valores são copiados como foram escritos; o texto em coreano abre corretamente no Excel |
+
+Os candidatos do snowballing são para triagem, não para citar diretamente: adicione o artigo e leia-o primeiro.
+
 ---
 
-<sub>Capturas de tela: plugin v0.8.7 em um vault de teste com 56 artigos. As respostas do chat são saídas do modelo, sem edição.
+<sub>Capturas de tela: plugin v0.10.1 em um vault de teste com 56 artigos. As respostas do chat são saídas do modelo, sem edição.
 Os mantenedores regeneram as capturas com `python scripts/manual/capture.py en`.</sub>

@@ -65,14 +65,23 @@
   手元にない」*論文を推薦します。Relatedペインに**マップ**として描画され（実線のノードは
   手元にあるノート、破線は手元にない論文で、破線のノードをクリックすると追加できます）、
   ペインのボタンから一度構築すれば、後から追加した文献は自動でグラフに加わります。
+- **この論文を引用する新しい論文**：Relatedペインの**Find newest citing papers**で、開いている
+  ノートを引用する最新の論文を（ライブラリの内外を問わず）OpenAlexから一覧表示します。撤回された
+  論文と訂正通知にはフラグが付くので、重要な文献を更新・反証する新しい研究を見逃しません。
 - 閲覧状況、**ダッシュボード**、被引用数。**Libraryペイン**では年、タイトル、
   著者、被引用数、追加日で並べ替えられ、クイックフィルター（PDFあり／なし／未読／撤回）も使えます。
 - **重複**：検出してから**統合**できます。1つのノートを残し、不足項目を他のノートで補い、
   `[@old]` 引用はVault全体で書き換えられます。
 - ノート単体またはライブラリ全体の**撤回チェック**（OpenAlex）と、レポートノートの作成。
-- **システマティックレビュー**：**スクリーニングペイン**（include / exclude / maybe、キークエスチョン、
-  エビデンスレベル、研究デザイン、除外理由、キーボードショートカット）と、全文献またはタグ単位の
-  **PRISMA 2020フローダイアグラム**。
+- **システマティックレビュー**（任意。Settings → *Systematic review tools*で有効化。新規ライブラリでは無効）：
+  - **スクリーニングペイン**（include / exclude / maybe、キークエスチョン、エビデンスレベル、
+    研究デザイン、除外理由、**バイアスリスク**、キーボードショートカット）。
+  - PubMed検索から取り込むたびに作られる**検索ログ**ノート（検索式、日付、フィルター、件数。
+    PRISMA-S）と、それらを一覧にする**PRISMA 2020フローダイアグラム**。
+  - **スノーボール法**：採用した研究が引用している論文と、それらを引用する最新の論文から、
+    すでに手元にあるものを除き、スクリーニング候補としてランク付けします。
+  - **バイアスリスクのまとめ表**（RoB 2、ROBINS-I、QUADAS-2、NOS、AMSTAR 2）と
+    **エビデンス表のエクスポート**（RまたはRevMan用のCSV）。
 - **PDF**：PDFのない文献すべてについてオープンアクセス版をダウンロード（Unpaywall）、または手元の
   **PDFフォルダをリンク**します（ファイル名、DOI、PMID、タイトルで照合）。
 
@@ -83,8 +92,9 @@
 - ノートのfrontmatterの `csl:` による**原稿ごとのスタイル指定**、または**Choose citation style…** で
   約10,000のジャーナルスタイルをジャーナル名から検索。
 - **Live Preview**では入力中に引用が描画され、**ホバー**すると論文が表示されます。
-- 投稿前に**Check references in this manuscript**：ライブラリにない、撤回済み、DOIなし、
-  メタデータ不完全といった問題を検出します。
+- 投稿前に**Check references in this manuscript**：重大度別にまとめて表示します。撤回済みの論文が
+  最初、次にライブラリにない文献、DOIまたはPMIDがない文献、プレプリント（出版版がないか確認）、
+  メタデータ不完全の文献、最後に撤回チェック未実施、またはノートに要約も全文もない論文です。
 - **Compile manuscript** → 引用を解決したクリーンなコピーを作成 → **`.docx`** に書き出し。
 
 **🔎 検索とチャット**
@@ -347,7 +357,7 @@ csl: springer-basic-brackets
 |---|---|
 | **Add** | Search PubMed · Add by DOI / PMID / arXiv / title · Import (BibTeX / RIS / nbib / CSL-JSON / Zotero) · Import PDF |
 | **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Download open-access PDF files for references without one · Link PDF files in a folder to references · Extract PDF highlights · Index linked PDF files · Index this note's PDF · Open reference online |
-| **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
+| **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Snowball from included records · Risk-of-bias summary table · Export evidence table (CSV) · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
 | **Write** | `@` autocomplete · Suggest citations for selection · Find unsupported claims · Update bibliography · Choose citation style… · Check references in this manuscript · Compile manuscript · Export manuscript to Word (.docx) · Copy citation · Export annotated bibliography · Save latest chat answer as note |
 | **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Rebuild search index |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |

@@ -67,14 +67,24 @@ Eine Schritt-für-Schritt-Anleitung mit Screenshots, vom Hinzufügen der Artikel
   *„häufig zitiert, aber nicht vorhanden“* — dargestellt als **Karte** im Related-Fenster (durchgezogene Knoten sind
   Notizen, die Sie haben, gestrichelte sind Artikel, die Sie nicht haben; ein Klick auf einen gestrichelten Knoten fügt ihn hinzu). Einmalig
   über die Schaltfläche des Fensters aufbauen; später hinzugefügte Referenzen werden von selbst ergänzt.
+- **Spätere Artikel, die diesen zitieren**: Im Related-Fenster listet **Find newest citing papers** die
+  neuesten Artikel überhaupt, die die geöffnete Notiz zitieren (OpenAlex); zurückgezogene Artikel und
+  Korrekturhinweise sind markiert — so entgeht Ihnen neuere Arbeit nicht, die eine Schlüsselreferenz
+  aktualisiert oder ihr widerspricht.
 - Lesestatus, **Dashboard**, Zitationszahlen. Das **Library-Fenster** sortiert nach Jahr, Titel,
   Autor, Zitationen oder Datum des Hinzufügens, mit Schnellfiltern (mit PDF / ohne PDF / ungelesen / zurückgezogen).
 - **Duplikate**: aufspüren und dann **zusammenführen** — eine Notiz bleibt erhalten, Lücken werden aus den anderen gefüllt,
   `[@old]`-Zitate werden im gesamten Vault umgeschrieben.
 - **Retraction-Prüfung** für eine Notiz oder die gesamte Bibliothek (OpenAlex), mit einer Berichtsnotiz.
-- **Systematic review**: ein **Screening-Fenster** (include / exclude / maybe, Schlüsselfragen, Evidenzgrad,
-  Studiendesign, Ausschlussgründe, Tastaturkürzel) und ein **PRISMA-2020-Flussdiagramm** für alle
-  Referenzen oder ein Tag.
+- **Systematic review** (optional — Settings → *Systematic review tools*; für eine neue Bibliothek aus):
+  - ein **Screening-Fenster** (include / exclude / maybe, Schlüsselfragen, Evidenzgrad, Studiendesign,
+    Ausschlussgründe, **Risk of Bias**, Tastaturkürzel);
+  - eine **Suchprotokoll**-Notiz für jede PubMed-Suche, aus der Sie importieren (genaue Abfrage, Datum,
+    Filter, Trefferzahlen — PRISMA-S), und ein **PRISMA-2020-Flussdiagramm**, das sie auflistet;
+  - **Snowballing**: Artikel, die Ihre eingeschlossenen Studien zitieren, und die neuesten Artikel, die sie
+    zitieren, abzüglich dessen, was Sie schon haben, als Screening-Kandidaten gereiht;
+  - eine **Risk-of-bias-Übersichtstabelle** (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2) und ein
+    **Export der Evidenztabelle** (CSV für R oder RevMan).
 - **PDFs**: Open-Access-Kopien für jede Referenz ohne PDF herunterladen (Unpaywall) oder
   einen **Ordner mit vorhandenen PDFs verknüpfen** — zugeordnet über Dateiname, DOI, PMID oder Titel.
 
@@ -85,8 +95,10 @@ Eine Schritt-für-Schritt-Anleitung mit Screenshots, vom Hinzufügen der Artikel
 - **Stil pro Manuskript** über das `csl:`-Frontmatter einer Notiz — oder **Choose citation style…** und
   Suche in rund 10.000 Zeitschriftenstilen nach Zeitschriftenname.
 - Zitate werden beim Tippen in **Live Preview** dargestellt; mit dem Mauszeiger darüber (**Hover**) sehen Sie den Artikel.
-- **Check references in this manuscript** vor der Einreichung: in der Bibliothek fehlend,
-  zurückgezogen, ohne DOI oder mit unvollständigen Metadaten.
+- **Check references in this manuscript** vor der Einreichung, nach Schweregrad gruppiert: zuerst
+  zurückgezogene Artikel; dann in der Bibliothek fehlende Referenzen, solche ohne DOI oder PMID,
+  Preprints (auf eine veröffentlichte Version prüfen) und unvollständige Metadaten; dann Artikel, die nie
+  auf Retraction geprüft wurden oder in deren Notiz Zusammenfassung bzw. Volltext fehlt.
 - **Compile manuscript** → eine saubere Kopie mit aufgelösten Zitaten → Export nach **`.docx`**.
 
 **🔎 Suchen & Chatten**
@@ -352,7 +364,7 @@ csl: springer-basic-brackets
 |---|---|
 | **Add** | Search PubMed · Add by DOI / PMID / arXiv / title · Import (BibTeX / RIS / nbib / CSL-JSON / Zotero) · Import PDF |
 | **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Download open-access PDF files for references without one · Link PDF files in a folder to references · Extract PDF highlights · Index linked PDF files · Index this note's PDF · Open reference online |
-| **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
+| **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Snowball from included records · Risk-of-bias summary table · Export evidence table (CSV) · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
 | **Write** | `@` autocomplete · Suggest citations for selection · Find unsupported claims · Update bibliography · Choose citation style… · Check references in this manuscript · Compile manuscript · Export manuscript to Word (.docx) · Copy citation · Export annotated bibliography · Save latest chat answer as note |
 | **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Rebuild search index |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |
