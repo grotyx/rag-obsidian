@@ -27,6 +27,7 @@ export async function buildPrismaDiagram(plugin: ScholarRagPlugin, scope: Backfi
     citekey: e.citekey,
     include: typeof e.item.include === "string" ? e.item.include : null,
     screening_note: typeof e.item.screening_note === "string" ? e.item.screening_note : null,
+    study_id: typeof e.item.study_id === "string" ? e.item.study_id : null,
   }));
   const fullTextSet = new Set(scoped.filter((e) => hasFullText(plugin, e)).map((e) => e.citekey));
   const counts = prismaCounts(records, groups, (r) => fullTextSet.has(r.citekey));

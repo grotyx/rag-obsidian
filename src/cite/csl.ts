@@ -142,6 +142,7 @@ export class CiteEngine {
     "design",
     "screening_note",
     "guideline",
+    "study_id",
     "rob_tool",
     "rob_overall",
     "rob_note",

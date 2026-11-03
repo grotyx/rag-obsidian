@@ -7,6 +7,8 @@ export interface PrismaRecord {
   citekey: string;
   include?: string | null;
   screening_note?: string | null;
+  /** Groups the reports of one study; a record without one is its own study. */
+  study_id?: string | null;
 }
 
 export interface PrismaCounts {
@@ -18,7 +20,12 @@ export interface PrismaCounts {
   reportsSoughtForRetrieval: number;
   reportsNotRetrieved: number;
   reportsAssessed: number;
+  /** Distinct `study_id`s among the included records (a record without one counts as its own). */
   studiesIncluded: number;
+  /** Included records (reports). Equals `studiesIncluded` unless some share a `study_id`. */
+  reportsIncluded: number;
+  /** True when any included record carries a `study_id`; only then do the outputs split reports from studies. */
+  hasStudyIds: boolean;
   exclusionReasons: { reason: string; count: number }[];
 }
 
@@ -46,6 +53,9 @@ export function prismaCounts(
   const awaiting = primary.filter((r) => r.include !== "exclude" && r.include !== "include");
   const includedWithFullText = included.filter((r) => hasFullText(r));
 
+  const studyOf = (r: PrismaRecord): string => r.study_id?.trim() || `\0${r.citekey}`;
+  const studies = new Set(included.map(studyOf));
+
   const reasonCounts = new Map<string, number>();
   for (const r of excluded) {
     const note = (r.screening_note || "").trim();
@@ -65,7 +75,9 @@ export function prismaCounts(
     reportsSoughtForRetrieval: included.length,
     reportsNotRetrieved: included.length - includedWithFullText.length,
     reportsAssessed: includedWithFullText.length,
-    studiesIncluded: included.length,
+    studiesIncluded: studies.size,
+    reportsIncluded: included.length,
+    hasStudyIds: included.some((r) => !!r.study_id?.trim()),
     exclusionReasons,
   };
 }
@@ -95,7 +107,7 @@ export function prismaMarkdown(counts: PrismaCounts, scopeLabel: string, date: s
     `    G["Reports assessed for eligibility<br/>n = ${c.reportsAssessed}"]`,
     "    end",
     "    subgraph INC[Included]",
-    `    H["Studies included in review<br/>n = ${c.studiesIncluded}<br/>full text ${c.reportsAssessed} · abstract only ${c.reportsNotRetrieved}"]`,
+    `    H["Studies included in review<br/>n = ${c.studiesIncluded}${c.hasStudyIds ? ` · reports of included studies n = ${c.reportsIncluded}` : ""}<br/>full text ${c.reportsAssessed} · abstract only ${c.reportsNotRetrieved}"]`,
     "    end",
     "    A --> B --> C",
     "    C --> D",
@@ -117,6 +129,7 @@ export function prismaMarkdown(counts: PrismaCounts, scopeLabel: string, date: s
     `| Reports sought for retrieval | ${c.reportsSoughtForRetrieval} |`,
     `| Reports not retrieved | ${c.reportsNotRetrieved} |`,
     `| Reports assessed for eligibility | ${c.reportsAssessed} |`,
+    ...(c.hasStudyIds ? [`| Reports included | ${c.reportsIncluded} |`] : []),
     `| Studies included in review | ${c.studiesIncluded} |`,
   ].join("\n");
 

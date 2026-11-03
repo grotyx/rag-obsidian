@@ -1,6 +1,6 @@
 {
   "name": "rag-obsidian",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "Refwright — AI-native citation manager for Obsidian",
   "main": "main.js",
   "type": "module",

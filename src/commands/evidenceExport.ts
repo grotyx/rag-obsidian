@@ -14,6 +14,7 @@ export interface EvidenceRow {
   title: string;
   doi: string;
   pmid: string;
+  study_id: string;
   kq: string;
   include: string;
   design: string;
@@ -21,7 +22,7 @@ export interface EvidenceRow {
   finding: Finding;
 }
 
-const REF_COLUMNS = ["citekey", "first_author", "year", "title", "doi", "pmid", "kq", "include", "design", "level"];
+const REF_COLUMNS = ["citekey", "first_author", "year", "title", "doi", "pmid", "study_id", "kq", "include", "design", "level"];
 
 /** RFC 4180 field: quoted when it holds a comma, quote or line break; quotes doubled. */
 function cell(v: string): string {
@@ -37,7 +38,7 @@ export function evidenceCsv(rows: EvidenceRow[]): string {
   for (const r of rows) {
     const f = r.finding as unknown as Record<string, string | undefined>;
     lines.push([
-      r.citekey, r.author, r.year, r.title, r.doi, r.pmid, r.kq, r.include, r.design, r.level,
+      r.citekey, r.author, r.year, r.title, r.doi, r.pmid, r.study_id, r.kq, r.include, r.design, r.level,
       ...keys.map((k) => f[k] ?? ""),
       r.finding.quote,
     ]);
@@ -65,6 +66,7 @@ export async function collectEvidenceRows(plugin: ScholarRagPlugin, scope: Backf
         title: text(it.title),
         doi: text(it.DOI),
         pmid: text(it.PMID),
+        study_id: text(it.study_id),
         kq,
         include: text(it.include),
         design: text(it.design),

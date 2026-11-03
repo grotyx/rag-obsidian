@@ -792,6 +792,17 @@ async function screeningFieldChecks(): Promise<void> {
   assert.equal(cleared.fields.guideline, null, "an empty guideline removes the field");
   included.hash = cleared.hash;
 
+  const studied = await service.callTool("set_reference_fields", {
+    citekey: "kq2024", expected_hash: included.hash, fields: { study_id: " NCT0123 " },
+  }) as any;
+  assert.equal(studied.fields.study_id, "NCT0123", "study_id is trimmed and stored");
+  assert.ok(!studied.tags.includes("NCT0123"), "study_id is never mirrored into tags");
+  const studyCleared = await service.callTool("set_reference_fields", {
+    citekey: "kq2024", expected_hash: studied.hash, fields: { study_id: "" },
+  }) as any;
+  assert.equal(studyCleared.fields.study_id, null, "an empty study_id removes the field");
+  included.hash = studyCleared.hash;
+
   const rob = await service.callTool("set_reference_fields", {
     citekey: "kq2024", expected_hash: included.hash,
     fields: { rob_tool: "RoB 2", rob_overall: "some concerns", rob_note: " randomisation unclear " },
@@ -823,7 +834,7 @@ async function screeningFieldChecks(): Promise<void> {
   assert.ok(retagged.tags.includes("extra-tag"));
   assert.ok(!retagged.tags.includes("existing-tag"), "remove_tags takes effect");
 
-  const withScreening = { ...item, kq: ["1"], include: "include", level: "2", design: "rct", guideline: "BE", rob_tool: "RoB 2", rob_overall: "high" };
+  const withScreening = { ...item, kq: ["1"], include: "include", level: "2", design: "rct", guideline: "BE", study_id: "S1", rob_tool: "RoB 2", rob_overall: "high" };
   const screenedService = new McpService(
     { ...plugin, library: { ...plugin.library, entries: () => [{ citekey: "kq2024", item: withScreening, file, year: "2024", authors: "", title: "Trial" }] } },
     vault
@@ -843,6 +854,10 @@ async function screeningFieldChecks(): Promise<void> {
   assert.equal(await count({ include: "exclude" }), 0);
   assert.equal(await count({ guideline: "BE" }), 1);
   assert.equal(await count({ guideline: "XX" }), 0);
+  assert.equal(listed.study_id, "S1", "list_references surfaces study_id");
+  assert.equal(await count({ study_id: "S1" }), 1);
+  assert.equal(await count({ study_id: "S" }), 0, "study_id filter is an exact match");
+  assert.equal(await count({ study_id: "S1", include: "include" }), 1, "study_id combines with the other filters");
   assert.equal(await count({ kq: "1", include: "include", guideline: "BE" }), 1, "filters combine with AND");
   assert.equal(listed.rob_tool, "RoB 2", "list_references surfaces rob_tool");
   assert.equal(listed.rob_overall, "high", "list_references surfaces rob_overall");
@@ -853,7 +868,7 @@ async function screeningFieldChecks(): Promise<void> {
   await assert.rejects(() => screenedService.callTool("list_references", { include: "maybe" }), /INVALID_ARGUMENT/);
 
   const engineFields = (CiteEngine as unknown as { PLUGIN_FIELDS: Set<string> }).PLUGIN_FIELDS;
-  for (const key of ["kq", "include", "level", "design", "screening_note", "guideline", "rob_tool", "rob_overall", "rob_note", "search_chunk", "sweep_category", "imported_from"]) {
+  for (const key of ["kq", "include", "level", "design", "screening_note", "guideline", "study_id", "rob_tool", "rob_overall", "rob_note", "search_chunk", "sweep_category", "imported_from"]) {
     assert.ok(engineFields.has(key), `PLUGIN_FIELDS must strip ${key} from citeproc rendering`);
   }
 }

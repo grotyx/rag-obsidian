@@ -1249,6 +1249,19 @@ check(
   applyScreening(fm4, { guideline: "  " });
   check(!("guideline" in fm4), "applyScreening: blank guideline removes the field");
 
+  // study_id: free text, trimmed, blank clears, never a tag; non-strings rejected.
+  const fmS: Record<string, unknown> = { tags: ["mine"] };
+  const rS = applyScreening(fmS, { study_id: "  NCT0123 " });
+  check(fmS.study_id === "NCT0123" && rS.fields.study_id === "NCT0123", "applyScreening: study_id stored trimmed and reported");
+  check(JSON.stringify(rS.tags) === '["mine"]', "applyScreening: study_id adds no tags");
+  applyScreening(fmS, { guideline: "BE" });
+  check(fmS.study_id === "NCT0123", "applyScreening: study_id untouched when not named");
+  const rS2 = applyScreening(fmS, { study_id: "  " });
+  check(!("study_id" in fmS) && rS2.fields.study_id === null, "applyScreening: blank study_id removes the field");
+  let studyErr = "";
+  try { applyScreening(fmS, { study_id: 5 as unknown as string }); } catch (e) { studyErr = String(e); }
+  check(/INVALID_ARGUMENT: study_id must be a string/.test(studyErr) && !("study_id" in fmS), "applyScreening: non-string study_id rejected, nothing written");
+
   // risk of bias: enums validated before anything is written, "" clears, no tags touched.
   const fmR: Record<string, unknown> = { tags: ["mine"] };
   const rR = applyScreening(fmR, { rob_tool: "RoB 2", rob_overall: "some concerns", rob_note: "  deviations from protocol  " });
@@ -1308,6 +1321,13 @@ check(
   const missing = md.slice(md.indexOf("## Included records without an assessment"));
   check(missing.includes("(2)") && missing.includes("- [@d2021]") && missing.includes("- [@e2021] (tool: NOS)"), "robMarkdown: unassessed included records listed");
   check(!missing.includes("f2021") && !missing.includes("g2021") && !missing.includes("a2021"), "robMarkdown: excluded, pending and assessed records not listed as missing");
+  check(!md.includes("Study ID") && md.includes("| Reference | Study | Overall | Note |") && md.includes("|---|---|---|---|"), "robMarkdown: no study column without any study_id");
+  const withStudy = robMarkdown([
+    { ...r("a2021", "include", "RoB 2", "high"), study_id: "S1" },
+    r("b2021", "include", "RoB 2", "low"),
+  ], "included records", "2026-11-03");
+  check(withStudy.includes("| Reference | Study | Study ID | Overall | Note |") && withStudy.includes("|---|---|---|---|---|"), "robMarkdown: Study ID column header when a record has a study_id");
+  check(withStudy.includes("| [@a2021] | Kim et al. 2021 | S1 | high | — |") && withStudy.includes("| [@b2021] | Kim et al. 2021 | — | low | — |"), "robMarkdown: Study ID cell per row, em dash when blank");
   const empty = robMarkdown([], "all references", "2026-11-03");
   check(empty.includes("No risk-of-bias assessments yet.") && empty.includes("None."), "robMarkdown: empty scope reads cleanly");
 }
@@ -1352,6 +1372,31 @@ check(
   check(md.includes("| Records identified | 7 |"), "prismaMarkdown: records identified appears in the table");
   check(md.includes("| Studies included in review | 2 |"), "prismaMarkdown: included count appears in the table");
   check(md.includes("Wrong population"), "prismaMarkdown: exclusion reason listed");
+
+  // no study_id on any included record: output is exactly what it was before the field existed.
+  check(!counts.hasStudyIds && counts.reportsIncluded === 2, "prismaCounts: no study_id -> hasStudyIds false");
+  check(
+    md.includes('    H["Studies included in review<br/>n = 2<br/>full text 1 · abstract only 1"]') &&
+      md.includes("| Reports assessed for eligibility | 1 |\n| Studies included in review | 2 |\n") &&
+      !/Reports included|reports of included studies/.test(md),
+    "prismaMarkdown: byte-identical included lines when no record has a study_id"
+  );
+
+  // study_id: distinct ids among included records; no id = its own study; duplicates/excluded ignored.
+  const sRecords: PrismaRecord[] = [
+    { citekey: "p1", include: "include", study_id: "S1" }, // protocol
+    { citekey: "p2", include: "include", study_id: " S1 " }, // primary report (trim)
+    { citekey: "p3", include: "include", study_id: "S2" },
+    { citekey: "p4", include: "include" }, // own study
+    { citekey: "p5", include: "include", study_id: "" }, // own study
+    { citekey: "p6", include: "exclude", study_id: "S3" }, // excluded: not a study here
+  ];
+  const sCounts = prismaCounts(sRecords, [], () => true);
+  check(sCounts.reportsIncluded === 5 && sCounts.studiesIncluded === 4 && sCounts.hasStudyIds, "prismaCounts: 5 reports of 4 studies (shared id grouped, blank id its own)");
+  const sMd = prismaMarkdown(sCounts, "all references", "2026-11-04");
+  check(sMd.includes("| Reports included | 5 |\n| Studies included in review | 4 |"), "prismaMarkdown: table reports reports and studies");
+  check(sMd.includes('H["Studies included in review<br/>n = 4 · reports of included studies n = 5<br/>full text 5 · abstract only 0"]'), "prismaMarkdown: diagram box reports studies and reports");
+  check(prismaCounts([{ citekey: "x", include: "include", study_id: "S" }], [], () => true).studiesIncluded === 1, "prismaCounts: single study id");
 
   // mutation check: a broken prismaCounts (off-by-one on duplicates) must fail the assertions above.
   const brokenDupGroups: string[][] = [];
@@ -2050,16 +2095,17 @@ check(
 
   // ---------- commands/evidenceExport.ts: CSV + row collection ----------
   {
-    const base = { citekey: "k1", author: "Kim", year: "2020", title: "T, with comma", doi: "10.1/x", pmid: "1", kq: "KQ1; KQ2", include: "include", design: "RCT", level: "1" };
+    const base = { citekey: "k1", author: "Kim", year: "2020", title: "T, with comma", doi: "10.1/x", pmid: "1", study_id: "S1", kq: "KQ1; KQ2", include: "include", design: "RCT", level: "1" };
     const fa: Finding = { kind: "comparative", outcome: "fusion rate", quote: 'He said "96%", then\nleft; 한글 근거 문장', effect: "96%" };
     const fb: Finding = { kind: "prognostic", outcome: "reop", quote: "Older had more.", predictor: "age > 65", p: "0.01" };
     const csv = evidenceCsv([{ ...base, finding: fa }, { ...base, citekey: "k2", title: "척추 유합", finding: fb }]);
     check(csv.charCodeAt(0) === 0xfeff, "evidenceCsv: starts with a UTF-8 BOM");
     const head = csv.slice(1).split("\r\n")[0];
-    check(head === "citekey,first_author,year,title,doi,pmid,kq,include,design,level,kind,outcome,effect,predictor,p,quote", "evidenceCsv: reference columns, union of finding keys in first-seen order, quote last");
+    check(head === "citekey,first_author,year,title,doi,pmid,study_id,kq,include,design,level,kind,outcome,effect,predictor,p,quote", "evidenceCsv: reference columns, union of finding keys in first-seen order, quote last");
     check(csv.includes('"T, with comma"'), "evidenceCsv: a comma-bearing field is quoted");
     check(csv.includes('"He said ""96%"", then\nleft; 한글 근거 문장"'), "evidenceCsv: quote with quotes, comma, newline and Korean is copied verbatim, quotes doubled");
     check(csv.includes(",척추 유합,") && csv.includes(",96%,,,"), "evidenceCsv: Korean unquoted, absent keys left empty");
+    check(csv.includes(",10.1/x,1,S1,KQ1; KQ2,include,"), "evidenceCsv: study_id column sits right after pmid");
     check(csv.endsWith("Older had more.\r\n") && csv.slice(1).split("\r\n").length === 4, "evidenceCsv: CRLF rows, one row per finding");
 
     const NOTE = (n: string) => `---\ncitekey: x\n---\n\n## Evidence (extracted)\n\n> - [kind:: comparative] [outcome:: o${n}]\n>   "q${n}"\n`;

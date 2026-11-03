@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.10.1-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.0-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -82,6 +82,8 @@
     뺀 나머지를 스크리닝 후보로 순위 매김;
   - **risk-of-bias 요약 표**(RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2)와
     **근거 표 내보내기**(R 또는 RevMan용 CSV).
+  - **연구 묶기**: 한 연구의 보고서들(프로토콜, 주 보고서, 추적 관찰)에 같은 study id를 주면
+    PRISMA가 보고서와 연구를 따로 셉니다.
 - **PDF**: PDF가 없는 참고문헌 전체의 OA 사본 다운로드(Unpaywall), 또는 이미 가진
   **PDF 폴더를 연결** — 파일 이름·DOI·PMID·제목으로 짝지음.
 

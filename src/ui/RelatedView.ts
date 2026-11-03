@@ -13,7 +13,7 @@ const MAP_H = 260;
 const MAP_MAX = 40;
 
 /** A clickable row the keyboard reaches too: focusable, Enter/Space do what a click does. */
-function activatable(el: HTMLElement, action: () => void): void {
+export function activatable(el: HTMLElement, action: () => void): void {
   el.tabIndex = 0;
   el.setAttribute("role", "button");
   el.onclick = action;

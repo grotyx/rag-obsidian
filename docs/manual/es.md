@@ -185,6 +185,7 @@ comandos; todo lo que ya esté guardado en tus notas permanece.
 | Search PubMed (import) | Cada importación escribe también una nota en `Searches/` con la consulta exacta, la fecha, los filtros, el número de resultados y los PMID devueltos e importados, para poder informar de la búsqueda (PRISMA-S) |
 | Create PRISMA flow diagram | Escribe los recuentos y el diagrama PRISMA 2020, y lista las búsquedas registradas con los registros que identificaron |
 | Snowball from included records | Para cada registro incluido (o una pregunta clave), reúne los artículos que cita y los artículos más recientes que lo citan desde OpenAlex, omite los que ya están en tu biblioteca y escribe una lista ordenada de hasta 200 candidatos para cribar |
+| Study (Screening pane) | Da el mismo study id a todos los informes de un mismo estudio (protocolo, informe principal, seguimiento, corrección). El panel lista los demás informes de ese estudio y el diagrama PRISMA pasa a contar por separado informes y estudios. Las notas no se fusionan |
 | Risk-of-bias summary table | Una tabla por herramienta de evaluación (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), recuentos por juicio y los registros incluidos que aún no se han evaluado |
 | Export evidence table (CSV) | Guarda todos los hallazgos extraídos (la sección *Evidence (extracted)* de la nota) de un ámbito en un único CSV en `Exports/`, con columnas de referencia y de cribado, para R o RevMan. Los valores se copian tal como están escritos; el texto coreano se abre correctamente en Excel |
 

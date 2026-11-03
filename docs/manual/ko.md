@@ -215,6 +215,7 @@ OpenAlex에서 인용 정보를 가져옵니다(56편에 약 40초).
 | Search PubMed (import) | 가져올 때마다 `Searches/` 아래에 정확한 검색식, 날짜, 필터, 검색된 건수, 반환·가져온 PMID를 담은 노트도 함께 만들어, 검색을 보고할 수 있습니다(PRISMA-S) |
 | Create PRISMA flow diagram | PRISMA 2020 수치와 흐름도를 쓰고, 기록된 검색과 그 검색이 찾은 기록을 나열합니다 |
 | Snowball from included records | 포함한 모든 기록(또는 핵심질문 하나)에 대해, 그 기록이 인용한 논문과 그 기록을 인용한 최신 논문을 OpenAlex에서 모으고, 이미 라이브러리에 있는 논문은 빼고, 스크리닝할 후보를 순위 매겨 최대 200건까지 씁니다 |
+| Study (Screening pane) | 한 연구의 모든 보고서(프로토콜, 주 보고서, 추적 관찰, 정정)에 같은 study id를 줍니다. 스크리닝 창이 그 연구의 다른 보고서를 나열하고, PRISMA 흐름도는 보고서와 연구를 따로 셉니다. 노트는 병합되지 않습니다 |
 | Risk-of-bias summary table | 평가 도구(RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2)별 표 하나, 판정별 건수, 그리고 아직 평가하지 않은 포함 기록 |
 | Export evidence table (CSV) | 범위 안의 추출된 finding 전부(노트의 *Evidence (extracted)* 섹션)를 참고문헌·스크리닝 열과 함께 `Exports/`에 CSV 하나로 저장해 R 또는 RevMan에서 쓰게 합니다. 값은 쓰인 그대로 복사하며, 한글도 Excel에서 깨지지 않고 열립니다 |
 

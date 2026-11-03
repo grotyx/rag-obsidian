@@ -29,6 +29,7 @@ export async function buildRobTable(plugin: ScholarRagPlugin, scope: RobScope): 
     rob_tool: optStr(e.item.rob_tool),
     rob_overall: optStr(e.item.rob_overall),
     rob_note: optStr(e.item.rob_note),
+    study_id: optStr(e.item.study_id),
   }));
   const label = scope.kind === "included" ? "included records" : scope.kind === "all" ? "all references" : `key question ${scope.kq}`;
   const date = localDate();

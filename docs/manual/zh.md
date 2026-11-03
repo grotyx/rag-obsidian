@@ -177,6 +177,7 @@
 | Search PubMed (import) | 每次导入还会在 `Searches/` 下写一条笔记，记录精确检索式、日期、筛选条件、匹配数量，以及返回和已导入的 PMID，便于报告检索过程（PRISMA-S） |
 | Create PRISMA flow diagram | 写入 PRISMA 2020 的数量和流程图，并列出已记录的检索及其检出的记录 |
 | Snowball from included records | 针对每条纳入记录（或某个关键问题），从 OpenAlex 收集它所引用的论文和引用它的最新论文，剔除你库中已有的，写出最多 200 篇待筛选候选的排序列表 |
+| Study (Screening pane) | 给同一项研究的每份报告（方案、主要报告、随访报告、更正）填写相同的 study id。面板会列出该研究的其他报告，PRISMA 图随后分别统计报告数和研究数。笔记不会被合并 |
 | Risk-of-bias summary table | 每种评估工具（RoB 2、ROBINS-I、QUADAS-2、NOS、AMSTAR 2）一张表，按判断统计数量，并列出尚未评估的纳入记录 |
 | Export evidence table (CSV) | 把范围内所有已提取的发现（笔记的 *Evidence (extracted)* 部分）保存为 `Exports/` 下的一个 CSV，含参考文献和筛选列，可用于 R 或 RevMan。数值按原文复制；韩文在 Excel 中可正常打开 |
 

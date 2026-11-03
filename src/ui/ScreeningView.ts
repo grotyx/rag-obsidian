@@ -15,6 +15,7 @@ import {
   ScreeningFields,
 } from "../data/screening";
 import { extractSummaryBlock } from "../cite/bibliography";
+import { activatable } from "./RelatedView";
 
 export const VIEW_TYPE_SCREENING = "rag-obsidian-screening";
 
@@ -269,6 +270,14 @@ export class ScreeningView extends ItemView {
     robNote.value = typeof entry.item.rob_note === "string" ? entry.item.rob_note : "";
     robField(robNote, "rob_note");
 
+    controls.createDiv({ text: "Study", cls: "srag-count" });
+    const studyInput = controls.createEl("input", { type: "text", placeholder: "Study id shared by all reports of one study" });
+    studyInput.value = typeof entry.item.study_id === "string" ? entry.item.study_id : "";
+    const otherReports = controls.createDiv();
+    const renderOthers = () => this.renderOtherReports(otherReports, entry.citekey, studyInput.value.trim());
+    studyInput.onchange = () => void this.saveRob({ study_id: studyInput.value.trim() }, entry.citekey).then(renderOthers);
+    renderOthers();
+
     controls.createDiv({ text: "Screening note", cls: "srag-count" });
     this.noteInput = controls.createEl("textarea", { cls: "srag-chat-input" });
     this.noteInput.value = this.working.note;
@@ -282,6 +291,19 @@ export class ScreeningView extends ItemView {
         this.working.note = reason;
         this.noteInput.value = reason;
       };
+    }
+  }
+
+  /** "Other reports of this study": the other references sharing `studyId`, each opens its note. */
+  private renderOtherReports(host: HTMLElement, citekey: string, studyId: string): void {
+    host.empty();
+    if (!studyId) return;
+    const others = this.plugin.library.entries().filter((e) => e.citekey !== citekey && e.item.study_id === studyId);
+    if (!others.length) return;
+    host.createDiv({ text: "Other reports of this study", cls: "srag-count" });
+    for (const o of others) {
+      const row = host.createDiv({ text: `${o.citekey} · ${o.item.title || o.citekey}`, cls: "srag-snippet" });
+      activatable(row, () => void this.plugin.app.workspace.getLeaf(false).openFile(o.file));
     }
   }
 

@@ -223,6 +223,7 @@ commands; anything already saved in your notes stays.
 | Search PubMed (import) | Each import also writes a note under `Searches/` with the exact query, date, filters, number of matches and the PMIDs returned and imported, so the search can be reported (PRISMA-S) |
 | Create PRISMA flow diagram | Writes the PRISMA 2020 counts and diagram, and lists the logged searches with the records they identified |
 | Snowball from included records | For every included record (or one key question), collects the papers it cites and the newest papers citing it from OpenAlex, leaves out papers already in your library, and writes a ranked list of up to 200 candidates to screen |
+| Study (Screening pane) | Give every report of one study (protocol, main report, follow-up, correction) the same study id. The pane lists the other reports of that study, and the PRISMA diagram then counts reports and studies separately. The notes are not merged |
 | Risk-of-bias summary table | One table per assessment tool (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), counts per judgement, and the included records not yet assessed |
 | Export evidence table (CSV) | Saves every extracted finding (the note's *Evidence (extracted)* section) in a scope as one CSV in `Exports/`, with reference and screening columns, for R or RevMan. Values are copied as written; Korean text opens correctly in Excel |
 

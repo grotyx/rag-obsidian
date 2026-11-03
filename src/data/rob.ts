@@ -10,6 +10,8 @@ export interface RobRecord {
   rob_tool: string | null;
   rob_overall: string | null;
   rob_note: string | null;
+  /** Groups the reports of one study; the tables get a Study column when any record has one. */
+  study_id?: string | null;
 }
 
 const cell = (s: string): string => s.replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ").trim() || "—";
@@ -24,12 +26,13 @@ export function robMarkdown(records: RobRecord[], label: string, date: string): 
 
   const out = [`# Risk of bias (${label})`, "", `Generated ${date}. ${assessed.length} assessed of ${records.length} records in scope.`, ""];
 
+  const withStudy = assessed.some((r) => r.study_id);
   const tools = [...new Set(assessed.map((r) => r.rob_tool ?? ""))].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)));
   for (const tool of tools) {
-    out.push(`## ${tool || "Tool not set"}`, "", "| Reference | Study | Overall | Note |", "|---|---|---|---|");
+    out.push(`## ${tool || "Tool not set"}`, "", `| Reference | Study |${withStudy ? " Study ID |" : ""} Overall | Note |`, `|---|---|${withStudy ? "---|" : ""}---|---|`);
     for (const r of assessed.filter((x) => (x.rob_tool ?? "") === tool)) {
       const study = [r.authors, r.year].filter(Boolean).join(" ");
-      out.push(`| [@${r.citekey}] | ${cell(study)} | ${cell(r.rob_overall ?? "")} | ${cell(r.rob_note ?? "")} |`);
+      out.push(`| [@${r.citekey}] | ${cell(study)} |${withStudy ? ` ${cell(r.study_id ?? "")} |` : ""} ${cell(r.rob_overall ?? "")} | ${cell(r.rob_note ?? "")} |`);
     }
     out.push("");
   }

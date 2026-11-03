@@ -241,6 +241,7 @@ ist, bleibt erhalten.
 | Search PubMed (import) | Jeder Import schreibt zusätzlich eine Notiz unter `Searches/` mit der genauen Abfrage, dem Datum, den Filtern, der Trefferzahl und den zurückgegebenen und importierten PMIDs, damit die Suche berichtet werden kann (PRISMA-S) |
 | Create PRISMA flow diagram | Schreibt die PRISMA-2020-Zahlen und das Diagramm und listet die protokollierten Suchen mit den dadurch identifizierten Datensätzen auf |
 | Snowball from included records | Sammelt für jeden eingeschlossenen Datensatz (oder eine Schlüsselfrage) die Artikel, die er zitiert, und die neuesten Artikel, die ihn zitieren, aus OpenAlex, lässt Artikel aus, die schon in Ihrer Bibliothek sind, und schreibt eine gereihte Liste von bis zu 200 Kandidaten zum Screenen |
+| Study (Screening pane) | Geben Sie allen Berichten einer Studie (Protokoll, Hauptbericht, Follow-up, Korrektur) dieselbe study id. Das Fenster listet die übrigen Berichte dieser Studie auf, und das PRISMA-Diagramm zählt dann Berichte und Studien getrennt. Die Notizen werden nicht zusammengeführt |
 | Risk-of-bias summary table | Eine Tabelle pro Bewertungstool (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), Anzahl je Urteil und die eingeschlossenen Datensätze, die noch nicht bewertet sind |
 | Export evidence table (CSV) | Speichert jeden extrahierten Befund (den Abschnitt *Evidence (extracted)* der Notiz) eines Umfangs als eine CSV-Datei in `Exports/`, mit Referenz- und Screening-Spalten, für R oder RevMan. Werte werden unverändert übernommen; koreanischer Text öffnet sich in Excel korrekt |
 

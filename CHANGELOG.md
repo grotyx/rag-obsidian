@@ -6,6 +6,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-11-04
+
+### Added
+- **Group the reports of one study.** A new `study_id` property (Screening pane "Study" field, or MCP `set_reference_fields`; filter with `list_references`) marks references that report the same study — protocol, main report, follow-up, correction. The Screening pane lists the other reports of the study. The PRISMA diagram then reports "studies included" and "reports of included studies" separately (a record without a study id counts as its own study; without any study ids the diagram is unchanged). The evidence CSV gains a `study_id` column and the risk-of-bias tables a "Study ID" column when any record has one. Notes are never merged.
+
 ## [0.10.1] — 2026-11-03
 
 ### Changed

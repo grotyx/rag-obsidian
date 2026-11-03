@@ -177,6 +177,7 @@
 | Search PubMed (import) | 取り込みのたびに `Searches/` 配下にノートも作成し、検索式、日付、フィルター、ヒット件数、返されたPMIDと取り込んだPMIDを記録します。検索を報告できます（PRISMA-S） |
 | Create PRISMA flow diagram | PRISMA 2020の件数と図を書き出し、記録された検索と、それぞれが特定した文献を一覧にします |
 | Snowball from included records | 採用した各文献（または1つのキークエスチョン）について、その文献が引用する論文と、引用する最新の論文をOpenAlexから集め、すでにライブラリにある論文を除いて、スクリーニング候補を最大200件までランク付けしたリストを書き出します |
+| Study (Screening pane) | 1つの研究のすべての報告（プロトコル、主論文、追跡報告、訂正）に同じ study id を付けます。ペインにはその研究の他の報告が一覧表示され、PRISMA 図は報告と研究を別々に数えるようになります。ノートは統合されません |
 | Risk-of-bias summary table | 評価ツール（RoB 2、ROBINS-I、QUADAS-2、NOS、AMSTAR 2）ごとに1つの表、判定ごとの件数、まだ評価していない採用文献 |
 | Export evidence table (CSV) | 対象範囲で抽出済みのすべての所見（ノートの *Evidence (extracted)* セクション）を、文献列とスクリーニング列付きの1つのCSVとして `Exports/` に保存します。RまたはRevMan用です。値は書かれたとおりにコピーされ、韓国語のテキストもExcelで正しく開けます |
 

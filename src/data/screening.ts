@@ -57,6 +57,9 @@ export interface ScreeningFields {
   screening_note?: string;
   /** Guideline the record was screened for (e.g. "BE"); empty string clears it. */
   guideline?: string;
+  /** Free-text id grouping several reports of one study (protocol, primary report, follow-up,
+   *  correction); empty string clears it. Notes are never merged. */
+  study_id?: string;
   /** Risk-of-bias assessment: tool and overall judgement (enums above), free-text note. For all
    *  three an empty string clears the field, like `guideline`. */
   rob_tool?: string;
@@ -75,6 +78,7 @@ export interface ScreeningResult {
     design: string | null;
     screening_note: string | null;
     guideline: string | null;
+    study_id: string | null;
     rob_tool: string | null;
     rob_overall: string | null;
     rob_note: string | null;
@@ -118,6 +122,9 @@ export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFie
   if (fields.rob_note !== undefined && typeof fields.rob_note !== "string") {
     throw new Error("INVALID_ARGUMENT: rob_note must be a string");
   }
+  if (fields.study_id !== undefined && typeof fields.study_id !== "string") {
+    throw new Error("INVALID_ARGUMENT: study_id must be a string");
+  }
 
   if (fields.kq !== undefined) {
     fm.kq = fields.kq;
@@ -141,6 +148,11 @@ export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFie
     if (g) fm.guideline = g;
     else delete fm.guideline;
   }
+  if (fields.study_id !== undefined) {
+    const s = fields.study_id.trim();
+    if (s) fm.study_id = s;
+    else delete fm.study_id;
+  }
   for (const name of ["rob_tool", "rob_overall", "rob_note"] as const) {
     const v = fields[name]?.trim();
     if (v === undefined) continue;
@@ -163,6 +175,7 @@ export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFie
       design: typeof fm.design === "string" ? fm.design : null,
       screening_note: typeof fm.screening_note === "string" ? fm.screening_note : null,
       guideline: typeof fm.guideline === "string" ? fm.guideline : null,
+      study_id: typeof fm.study_id === "string" ? fm.study_id : null,
       rob_tool: typeof fm.rob_tool === "string" ? fm.rob_tool : null,
       rob_overall: typeof fm.rob_overall === "string" ? fm.rob_overall : null,
       rob_note: typeof fm.rob_note === "string" ? fm.rob_note : null,

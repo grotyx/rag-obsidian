@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.10.1-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.0-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -83,6 +83,8 @@ frontmatter，因此你的文献库可移植、经得起时间考验，并且完
     去掉你已有的，按筛选候选排序；
   - **偏倚风险汇总表**（RoB 2、ROBINS-I、QUADAS-2、NOS、AMSTAR 2）和
     **证据表导出**（CSV，可用于 R 或 RevMan）。
+  - **研究分组**：给同一项研究的各份报告（方案、主要报告、随访报告）填写相同的 study id，
+    PRISMA 会分别统计报告数和研究数。
 - **PDF**：为每篇没有 PDF 的文献下载开放获取版本（Unpaywall），或
   **关联已有 PDF 的文件夹**——按文件名、DOI、PMID 或标题匹配。
 

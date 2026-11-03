@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Descargas en Obsidian" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="versión" src="https://img.shields.io/badge/version-0.10.1-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="versión" src="https://img.shields.io/badge/version-0.11.0-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="licencia" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -83,6 +83,8 @@ Una guía paso a paso con capturas de pantalla, desde añadir artículos hasta e
     sin los que ya tienes, ordenados como candidatos para el cribado;
   - una **tabla resumen de riesgo de sesgo** (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2) y una
     **exportación de la tabla de evidencia** (CSV para R o RevMan).
+  - **agrupación por estudio**: da el mismo study id a los informes de un mismo estudio (protocolo, informe
+    principal, seguimiento) y PRISMA cuenta por separado informes y estudios.
 - **PDFs**: descarga copias de acceso abierto de todas las referencias que no tengan una (Unpaywall), o
   **vincula una carpeta de PDFs** que ya tengas, emparejados por nombre de archivo, DOI, PMID o título.
 

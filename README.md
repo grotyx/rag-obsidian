@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.10.1-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.0-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -83,6 +83,8 @@ A step-by-step guide with screenshots, from adding papers to exporting a Word ma
     minus what you already have, ranked as screening candidates;
   - a **risk-of-bias summary table** (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2) and an
     **evidence table export** (CSV for R or RevMan).
+  - **study grouping**: give the reports of one study (protocol, main report, follow-up) the
+    same study id, and PRISMA counts reports and studies separately.
 - **PDFs**: download open-access copies for every reference without one (Unpaywall), or
   **link a folder of PDFs** you already have — matched by file name, DOI, PMID or title.
 

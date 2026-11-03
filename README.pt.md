@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.10.1-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.0-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -83,6 +83,8 @@ Um guia passo a passo com capturas de tela, desde a inclusão de artigos até a 
     menos os que você já tem, ordenados como candidatos à triagem;
   - uma **tabela-resumo de risco de viés** (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2) e uma
     **exportação da tabela de evidências** (CSV para R ou RevMan).
+  - **agrupamento por estudo**: dê o mesmo study id aos relatos de um mesmo estudo (protocolo, relato
+    principal, acompanhamento), e o PRISMA conta relatos e estudos separadamente.
 - **PDFs**: baixe cópias de acesso aberto de cada referência que não tenha PDF (Unpaywall) ou
   **vincule uma pasta de PDFs** que você já tem — a correspondência é feita por nome de arquivo, DOI, PMID ou título.
 
