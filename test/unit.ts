@@ -1465,6 +1465,8 @@ check(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allRows = defs.flatMap((g: any) => g.items);
   const apiKeyRow = allRows.find((r: { name: string }) => r.name === "API key (OpenRouter or OpenAI)");
+  const reviewRow = allRows.find((r: { name: string }) => r.name === "Systematic review tools");
+  check(reviewRow?.control?.type === "toggle" && reviewRow.control.key === "reviewTools", 'settings: "Systematic review tools" is a toggle on reviewTools');
   check(!!apiKeyRow, 'settings: "API key (OpenRouter or OpenAI)" row exists in the definitions even while the provider is Ollama');
   settings.llmProvider = "ollama"; // neither embeddings nor chat use the OpenAI endpoint
   check(apiKeyRow.visible() === false, 'settings: "API key (OpenRouter or OpenAI)" row is not visible while both providers are Ollama');

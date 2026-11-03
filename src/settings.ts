@@ -607,6 +607,18 @@ export class ScholarRagSettingTab extends PluginSettingTab {
 
     groups.push({
       type: "group",
+      heading: "Systematic review",
+      items: [
+        toggle(
+          "reviewTools",
+          "Systematic review tools",
+          "Screening pane, PRISMA flow diagram, snowballing, risk of bias, evidence table export, and a search log note for each PubMed import. Off hides them; fields already saved in notes are kept."
+        ),
+      ],
+    });
+
+    groups.push({
+      type: "group",
       heading: "Writing",
       items: [
         toggle("renderCitations", "Render [@citekey] in reading view", "Show Pandoc citations as (author, year) in preview."),

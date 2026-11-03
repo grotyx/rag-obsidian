@@ -390,27 +390,27 @@ export default class ScholarRagPlugin extends Plugin {
     this.addCommand({
       id: "open-screening",
       name: "Open screening pane",
-      callback: () => void this.activateView(VIEW_TYPE_SCREENING),
+      checkCallback: (checking) => this.reviewCommand(checking, () => { void this.activateView(VIEW_TYPE_SCREENING); }),
     });
     this.addCommand({
       id: "prisma-diagram",
       name: "Create PRISMA flow diagram…",
-      callback: () => new PrismaScopeModal(this.app, this).open(),
+      checkCallback: (checking) => this.reviewCommand(checking, () => { new PrismaScopeModal(this.app, this).open(); }),
     });
     this.addCommand({
       id: "export-evidence-table",
       name: "Export evidence table (CSV)",
-      callback: () => new EvidenceScopeModal(this.app, this).open(),
+      checkCallback: (checking) => this.reviewCommand(checking, () => { new EvidenceScopeModal(this.app, this).open(); }),
     });
     this.addCommand({
       id: "snowball-included",
       name: "Snowball from included records…",
-      callback: () => new SnowballScopeModal(this.app, this).open(),
+      checkCallback: (checking) => this.reviewCommand(checking, () => { new SnowballScopeModal(this.app, this).open(); }),
     });
     this.addCommand({
       id: "rob-summary-table",
       name: "Risk-of-bias summary table…",
-      callback: () => new RobScopeModal(this.app, this).open(),
+      checkCallback: (checking) => this.reviewCommand(checking, () => { new RobScopeModal(this.app, this).open(); }),
     });
 
     // Phase 5: @-autocomplete for citekeys.
@@ -439,6 +439,7 @@ export default class ScholarRagPlugin extends Plugin {
         // Load the search vocabulary + MeSH synonyms now, not on the first search (~seconds).
         if (this.settings.queryExpansion) void this.indexManager.ensureExpander().catch(() => undefined);
         if (this.settings.mcpEnabled) await this.startMcp();
+        await this.initReviewTools();
       });
     });
 
@@ -781,6 +782,22 @@ export default class ScholarRagPlugin extends Plugin {
   /** Write `content` to `path` (create or overwrite) and open it. vault.create/modify register
    *  the file synchronously — adapter.write + getAbstractFileByPath can race the vault index
    *  and return null for a just-created file, silently skipping the open. */
+  /** Systematic-review commands show in the palette only while "Systematic review tools" is on. */
+  private reviewCommand(checking: boolean, run: () => void): boolean {
+    if (this.settings.reviewTools !== true) return false;
+    if (!checking) run();
+    return true;
+  }
+
+  /** First run of 0.10.1+: keep the tools on for a library that already screens, off otherwise. */
+  private async initReviewTools(): Promise<void> {
+    if (this.settings.reviewTools !== undefined) return;
+    this.settings.reviewTools = this.library
+      .entries()
+      .some((e) => e.item.include !== undefined || (Array.isArray(e.item.kq) && e.item.kq.length > 0));
+    await this.saveSettings();
+  }
+
   async writeAndOpen(rawPath: string, content: string): Promise<void> {
     // Basenames are built from citekeys / titles: strip the characters Obsidian rejects in
     // file names (and `[]#^|` that would break the link to the new note).

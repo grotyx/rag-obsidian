@@ -171,7 +171,7 @@ export class PubmedSearchModal extends Modal {
   /** One Markdown record per search run (PRISMA-S). Never blocks or fails the import. */
   private async writeSearchLog(imported: string[]): Promise<void> {
     const s = this.searched;
-    if (!s) return;
+    if (!s || this.plugin.settings.reviewTools !== true) return;
     try {
       const { path, content } = searchLogNote({
         source: "PubMed",

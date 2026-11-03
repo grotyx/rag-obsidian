@@ -65,6 +65,10 @@ export interface ScholarRagSettings {
   /** Expose the seven Markdown note tools (list/read/create/update/replace/move/trash) over MCP.
    *  Off = library, PubMed and manuscript tools only. */
   mcpNoteTools: boolean;
+  /** Systematic-review commands (screening pane, PRISMA, snowballing, risk of bias, evidence CSV)
+   *  and PubMed search logs. Unset until the first layout-ready, which turns it on only for a
+   *  library that already has screening fields; a new library starts with it off. */
+  reviewTools?: boolean;
 }
 
 /** Settings fields holding API keys — kept in Obsidian secretStorage (1.11.4+) when available,

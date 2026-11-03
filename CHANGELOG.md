@@ -6,6 +6,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-11-03
+
+### Changed
+- **New setting "Systematic review tools"** (Settings → Systematic review). It shows or hides the screening pane, the PRISMA flow diagram, snowballing, risk of bias, the evidence table export, and the search log note written on each PubMed import. A library that already has screening fields (key questions or include decisions) keeps the tools on after the update; a new library starts with them off. Turning it off never removes fields already saved in notes, and Claude Code / Codex tools are not affected.
+
 ## [0.10.0] — 2026-11-03
 
 New systematic-review tools.
