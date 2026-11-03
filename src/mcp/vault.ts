@@ -150,7 +150,7 @@ export class McpVault {
       .filter((f) => f.path.split("/")[0].toLowerCase() !== this.configDir.toLowerCase())
       .filter((f) => !prefix || f.path.startsWith(prefix + "/"))
       .filter((f) => !cursor || f.path > cursor)
-      .sort((a, b) => a.path.localeCompare(b.path));
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)); // code-unit order, same as the cursor `>`
     const safe: FileLike[] = [];
     for (const file of candidates) {
       try {

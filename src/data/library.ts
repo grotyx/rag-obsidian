@@ -73,19 +73,28 @@ export class Library {
     const hit = { citekey, path };
     const doi = normDoi(item.DOI);
     if (doi) this.createdIds.set(`doi:${doi}`, hit);
-    if (item.PMID) this.createdIds.set(`pmid:${item.PMID}`, hit);
-    const title = normTitle(item.title);
-    if (title.length > 12) this.createdIds.set(`title:${title}`, hit);
+    for (const k of matchKeys(item)) this.createdIds.set(k, hit);
   }
 
-  /** The vault index is synchronous, so a just-created (or just-deleted) note is visible here. */
-  private exists(path: string): boolean {
-    return this.app.vault.getAbstractFileByPath(path) instanceof TFile;
+  /** The file of a session-registry entry, or null once it no longer applies: the note is gone, or
+   *  its parsed frontmatter has since been corrected so `carries` is false (a renamed citekey, a
+   *  fixed DOI). With no parsed frontmatter yet — the note was just created — the entry stands;
+   *  that early window is why the registry exists. Returns the frontmatter too (undefined then). */
+  private liveCreated(
+    path: string,
+    carries: (fm: Record<string, unknown>) => boolean
+  ): { file: TFile; fm: Record<string, unknown> | undefined } | null {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return null;
+    const fm: Record<string, unknown> | undefined = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    return !fm || carries(fm) ? { file, fm } : null;
   }
 
   private knownCitekeys(): Set<string> {
     const s = new Set<string>();
-    for (const [ck, created] of this.createdCitekeys) if (this.exists(created.path)) s.add(ck);
+    for (const [ck, created] of this.createdCitekeys) {
+      if (this.liveCreated(created.path, (fm) => String(fm.citekey) === ck)) s.add(ck);
+    }
     for (const e of this.list()) s.add(e.citekey);
     return s;
   }
@@ -188,10 +197,8 @@ export class Library {
   /** Find the note file whose frontmatter citekey matches (filename is decoupled from citekey). */
   getFile(citekey: string): TFile | null {
     const created = this.createdCitekeys.get(citekey);
-    if (created) {
-      const file = this.app.vault.getAbstractFileByPath(created.path);
-      if (file instanceof TFile) return file;
-    }
+    const live = created && this.liveCreated(created.path, (fm) => String(fm.citekey) === citekey);
+    if (live) return live.file;
     const cached = this.keyCache().get(citekey);
     if (cached) {
       const file = this.app.vault.getAbstractFileByPath(cached);
@@ -211,28 +218,24 @@ export class Library {
     return null;
   }
 
-  /** Return the citekey of an existing note that matches by DOI, PMID, or normalized title. */
+  /** Return the citekey of an existing note that matches by DOI, PMID, OpenAlex id, or normalized
+   *  title. Only notes with a frontmatter citekey count (as in `entries()`): `getFile` could not
+   *  find any other. */
   findDuplicate(item: CSLItem): string | null {
-    const doi = normDoi(item.DOI);
-    const pmid = String(item.PMID || "");
-    const title = normTitle(item.title);
+    const keys = matchKeys(item);
     // Session registry first: covers notes created moments ago that metadataCache
     // hasn't indexed yet (rapid double-add, DOI-then-PMID of the same work).
-    const session =
-      (doi && this.createdIds.get(`doi:${doi}`)) ||
-      (pmid && this.createdIds.get(`pmid:${pmid}`)) ||
-      (title.length > 12 && this.createdIds.get(`title:${title}`)) ||
-      null;
-    if (session && this.exists(session.path)) return session.citekey;
+    for (const k of keys) {
+      const hit = this.createdIds.get(k);
+      const live = hit && this.liveCreated(hit.path, (fm) => !!fm.citekey && matchKeys(fm).includes(k));
+      if (hit && live) return live.fm ? String(live.fm.citekey) : hit.citekey;
+    }
     const prefix = this.folder() + "/";
     for (const file of this.app.vault.getMarkdownFiles()) {
       if (!file.path.startsWith(prefix)) continue;
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      if (!fm) continue;
-      const key = String(fm.citekey || file.basename);
-      if (doi && normDoi(fm.DOI) === doi) return key;
-      if (pmid && String(fm.PMID || "") === pmid) return key;
-      if (title && title.length > 12 && normTitle(String(fm.title || "")) === title) return key;
+      if (!fm || !fm.citekey) continue;
+      if (matchKeys(fm).some((k) => keys.includes(k))) return String(fm.citekey);
     }
     return null;
   }
@@ -277,13 +280,15 @@ export class Library {
   }
 }
 
-/** Identifiers a note can be matched on — the same three `findDuplicate` compares, in the same
+/** Identifiers a note can be matched on — the ones `findDuplicate` compares, in the same
  *  normalized form. A short title is not an identifier ("Editorial" would group unrelated notes). */
-export function matchKeys(item: { DOI?: unknown; PMID?: unknown; title?: unknown }): string[] {
+export function matchKeys(item: { DOI?: unknown; PMID?: unknown; title?: unknown; openalex_id?: unknown }): string[] {
   const keys: string[] = [];
   const doi = normDoi(item.DOI);
   if (doi) keys.push(`doi:${doi}`);
   if (item.PMID) keys.push(`pmid:${text(item.PMID)}`);
+  const oa = normOpenAlex(item.openalex_id);
+  if (oa) keys.push(`oa:${oa}`);
   const title = normTitle(item.title);
   if (title.length > 12) keys.push(`title:${title}`);
   return keys;
@@ -294,9 +299,9 @@ export function matchKeys(item: { DOI?: unknown; PMID?: unknown; title?: unknown
  *  instead (DOI else PMID else title) missed the ordinary case: the same paper added once by
  *  DOI, whose note also carries a PMID, and once from PubMed, whose note carries only the PMID.
  *  Sharing is transitive, so A-B by DOI and B-C by PMID is one group of three. */
-export function duplicateGroups<T extends { item: { DOI?: unknown; PMID?: unknown; title?: unknown } }>(
-  entries: T[]
-): T[][] {
+export function duplicateGroups<
+  T extends { item: { DOI?: unknown; PMID?: unknown; title?: unknown; openalex_id?: unknown } }
+>(entries: T[]): T[][] {
   const parent = entries.map((_, i) => i);
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
   const union = (a: number, b: number): void => {
@@ -361,6 +366,14 @@ export function normDoi(d: unknown): string {
     .toLowerCase()
     .replace(/^https?:\/\/(dx\.)?doi\.org\//, "")
     .replace(/^doi:\s*/, "");
+}
+
+/** OpenAlex id for comparison: lowercase, without the `https://openalex.org/` prefix. */
+export function normOpenAlex(v: unknown): string {
+  return text(v || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\/openalex\.org\//, "");
 }
 
 export function normTitle(t: unknown): string {

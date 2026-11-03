@@ -14,7 +14,7 @@ import * as yaml from "yaml";
 import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
 import { duplicateGroups, inScope, BackfillScope, Library } from "../src/data/library";
 import { mapPool, POOL_WIDTH } from "../src/util/pool";
-import { buildTags, MIN_TAGS, fetchPubmedRecord } from "../src/ingest/pubmedSearch";
+import { buildTags, MIN_TAGS, fetchPubmedRecord, searchPubmedPage } from "../src/ingest/pubmedSearch";
 import { ncbiGate, ncbiGapMs, resetNcbiGate } from "../src/ingest/ncbi";
 import { parseMeshList, buildSysPrompt, summarizeSource } from "../src/ingest/summarize";
 import { exportRefs } from "../src/cite/export";
@@ -49,6 +49,7 @@ import {
   replaceSummaryBlock,
 } from "../src/cite/bibliography";
 import { ScholarRagSettings, DEFAULT_SETTINGS, CSLItem } from "../src/types";
+import { IndexManager } from "../src/index/manager";
 import ScholarRagPlugin from "../main";
 
 const MODEL = process.env.EMBED_MODEL || "qwen2.5:0.5b"; // any local Ollama model works for /api/embed
@@ -754,6 +755,25 @@ async function main() {
       ok(sellier.abstract === "", "this record has no <AbstractText> either (it's a Letter) — confirms real efetch XML was parsed, not a stub");
     }
 
+    // esearch drops a one-sided date filter; searchPubmedPage must send both bounds.
+    {
+      const q = "lumbar spinal stenosis endoscopic";
+      // esearch answers a rate-limited call with an error body (total 0), so retry a few times.
+      const total = async (o: { from?: string; to?: string }) => {
+        for (let i = 0; i < 4; i++) {
+          const t = (await searchPubmedPage(q, { n: 1, ...o })).total;
+          if (t > 0) return t;
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+        return 0;
+      };
+      const all = { total: await total({}) };
+      const fromOnly = { total: await total({ from: "2024" }) };
+      const toOnly = { total: await total({ to: "2010" }) };
+      ok(fromOnly.total > 0 && fromOnly.total < all.total, `PubMed from-only date filter narrows the result (${all.total} -> ${fromOnly.total})`);
+      ok(toOnly.total > 0 && toOnly.total < all.total, `PubMed to-only date filter narrows the result (${all.total} -> ${toOnly.total})`);
+    }
+
     // Tags: PubMed MeSH is authoritative but thin on recent papers, so the summary's MeSH line
     // tops it up to MIN_TAGS. Author keywords ride along but never substitute for MeSH.
     {
@@ -875,6 +895,66 @@ async function main() {
       freshLibrary.getItem(freshCitekey)?.title === "Updated after cache refresh",
       "metadata cache replaces the temporary just-created item"
     );
+
+    // Session registries yield to corrected metadata, findDuplicate matches OpenAlex ids, and a
+    // note without a frontmatter citekey is never offered as a duplicate (getFile could not find it).
+    {
+      const files = new Map<string, TFile>();
+      const fms = new Map<string, Record<string, unknown>>(); // parsed frontmatter per path; absent = not parsed yet
+      const app2: any = {
+        vault: {
+          getAbstractFileByPath: (p: string) => files.get(p) ?? null,
+          getMarkdownFiles: () => [...files.values()],
+          createFolder: async () => undefined,
+          create: async (p: string) => {
+            const f = new TFile(p);
+            files.set(p, f);
+            return f;
+          },
+          cachedRead: async () => "",
+        },
+        metadataCache: { getFileCache: (f: TFile) => (fms.has(f.path) ? { frontmatter: fms.get(f.path) } : null) },
+      };
+      const lib2 = new Library(app2, settings);
+      const item: CSLItem = { type: "article-journal", title: "Registry yields to corrections", DOI: "10.5/Old", PMID: "424242" };
+      const f = await lib2.createReference(item);
+      const oldKey = lib2.findDuplicate(item)!;
+      ok(lib2.getFile(oldKey) === f, "registry: unparsed just-created note still resolves");
+      ok(lib2.findDuplicate({ type: "article-journal", DOI: "10.5/old" }) === oldKey, "registry: unparsed note still a duplicate by DOI");
+
+      fms.set(f.path, { ...item, citekey: oldKey });
+      ok(lib2.getFile(oldKey) === f, "registry: parsed note with the same citekey resolves");
+      fms.set(f.path, { ...item, citekey: "newkey" });
+      ok(lib2.getFile(oldKey) === null, "registry: after the citekey is renamed the old key no longer resolves");
+      ok(lib2.getFile("newkey") === f, "registry: the new key resolves");
+      ok(!lib2.citekeyExists(oldKey), "registry: the old key is free again");
+      ok(lib2.findDuplicate(item) === "newkey", "registry: a duplicate reports the current citekey");
+
+      fms.set(f.path, { ...item, citekey: "newkey", DOI: "10.5/corrected" });
+      ok(lib2.findDuplicate({ type: "article-journal", DOI: "10.5/old" }) === null, "registry: a corrected DOI frees the old one");
+      ok(lib2.findDuplicate({ type: "article-journal", DOI: "10.5/corrected" }) === "newkey", "registry: the new DOI matches");
+      ok(lib2.findDuplicate({ type: "article-journal", PMID: "424242" }) === "newkey", "registry: unchanged PMID still matches");
+
+      // openalex_id: URL form vs bare id, case-insensitive; session registry and frontmatter scan.
+      const oaItem: CSLItem = { type: "article-journal", title: "From an OpenAlex id", openalex_id: "https://openalex.org/W123456" };
+      const fo = await lib2.createReference(oaItem);
+      ok(lib2.findDuplicate({ type: "article-journal", openalex_id: "w123456" }) !== null, "openalex: session registry matches a bare lower-case id");
+      fms.set(fo.path, { title: "From an OpenAlex id", citekey: "oa2024", openalex_id: "W123456" });
+      ok(
+        lib2.findDuplicate({ type: "article-journal", openalex_id: "https://openalex.org/w123456" }) === "oa2024",
+        "openalex: frontmatter scan matches across URL / bare / case"
+      );
+      ok(lib2.findDuplicate({ type: "article-journal", openalex_id: "W999" }) === null, "openalex: a different id is not a duplicate");
+      // a note on disk from an earlier session (never in the registry), matched by scan only
+      const lib3 = new Library(app2, settings);
+      ok(lib3.findDuplicate({ type: "article-journal", openalex_id: "W123456" }) === "oa2024", "openalex: fresh library finds it by scan");
+
+      // A note with a DOI but no citekey is not a duplicate (getFile / entries() cannot see it).
+      const nk = new TFile("References/nokey.md");
+      files.set(nk.path, nk);
+      fms.set(nk.path, { title: "A note that has no citekey at all", DOI: "10.7/nokey" });
+      ok(lib3.findDuplicate({ type: "article-journal", DOI: "10.7/nokey" }) === null, "a note without a frontmatter citekey is not a duplicate");
+    }
 
     // "Add by PMID" keeps the PMC id the esummary payload already carries, so the fill-gaps
     // command need not re-fetch the record to find it. PMID 19621072 = the PRISMA statement.
@@ -1624,6 +1704,142 @@ async function main() {
     );
     ok(providerSaved === 1, "the provider migration is persisted without SecretStorage");
   }
+  // ---- 24. IndexManager: stray deletes, provider refresh, model switch ----
+  log("\n[24] IndexManager (path-safe removal, provider cache key, model switch)");
+  {
+    const embedCalls: { auth: string; model: string }[] = [];
+    const embSrv = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (d) => (body += d));
+      req.on("end", () => {
+        const b = JSON.parse(body || "{}") as { model: string; input: string[] };
+        embedCalls.push({ auth: String(req.headers.authorization ?? ""), model: b.model });
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ data: b.input.map((t, index) => ({ index, embedding: hashEmbed(t, 16) })) }));
+      });
+    });
+    await new Promise<void>((r) => embSrv.listen(0, "127.0.0.1", () => r()));
+    const embPort = (embSrv.address() as { port: number }).port;
+
+    const disk = new Map<string, string | ArrayBuffer>();
+    const adapter = {
+      exists: async (p: string) => disk.has(p),
+      mkdir: async () => undefined,
+      read: async (p: string) => String(disk.get(p)),
+      write: async (p: string, d: string) => void disk.set(p, d),
+      append: async (p: string, d: string) => void disk.set(p, String(disk.get(p) ?? "") + d),
+      readBinary: async (p: string) => disk.get(p) as ArrayBuffer,
+      writeBinary: async (p: string, d: ArrayBuffer) => void disk.set(p, d),
+      remove: async (p: string) => void disk.delete(p),
+      rename: async (a: string, b: string) => {
+        disk.set(b, disk.get(a) as string);
+        disk.delete(a);
+      },
+    };
+    const notes = new Map<string, { fm: Record<string, unknown>; body: string }>([
+      ["References/a.md", { fm: { citekey: "smith2024", title: "Alpha", abstract: "alpha alpha study" }, body: "alpha body" }],
+      ["References/b.md", { fm: { citekey: "jones2023", title: "Beta", abstract: "beta beta study" }, body: "beta body" }],
+    ]);
+    const tfile = (p: string) => new TFile(p);
+    const app = {
+      vault: {
+        adapter,
+        getMarkdownFiles: () => [...notes.keys()].map(tfile),
+        read: async (f: TFile) => `---\n---\n${notes.get(f.path)?.body ?? ""}`,
+        getAbstractFileByPath: (p: string) => (notes.has(p) ? tfile(p) : null),
+      },
+      metadataCache: { getFileCache: (f: TFile) => ({ frontmatter: notes.get(f.path)?.fm }) },
+    };
+    const mset: ScholarRagSettings = {
+      ...DEFAULT_SETTINGS,
+      embeddingProvider: "openai",
+      embeddingModel: "model-a",
+      openaiBaseUrl: `http://127.0.0.1:${embPort}`,
+      openaiApiKey: "key-one",
+      queryExpansion: false,
+      indexLocal: false,
+    };
+    const mgr = new IndexManager(app as never, { folder: () => "References", getItem: () => undefined } as never, mset, "plugin");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const priv = mgr as any;
+    await mgr.rebuild();
+    const built = mgr.count;
+    ok(built > 0 && mgr.indexedModelId === "openai:model-a", `rebuilt over 2 notes: ${built} chunks, model ${mgr.indexedModelId}`);
+
+    // 1. untracked paths own no chunks
+    await mgr.removeFile("Drafts/smith2024.md");
+    ok(mgr.count === built, "deleting Drafts/smith2024.md leaves reference smith2024 indexed");
+    await priv.reindexNow(tfile("Drafts/smith2024.md")); // no frontmatter → no chunks
+    ok(mgr.count === built, "a chunkless untracked note does not drop smith2024 either");
+    notes.set("References/b.md", { fm: {}, body: "" });
+    await priv.reindexNow(tfile("References/b.md"));
+    ok(mgr.count < built, "a tracked note that lost its chunks is still removed from the index");
+    notes.set("References/b.md", { fm: { citekey: "jones2023", title: "Beta", abstract: "beta beta study" }, body: "beta body" });
+    await mgr.removeFile("References/a.md");
+    ok(mgr.count < built, "removing the tracked path still removes its chunks");
+    await mgr.rebuild();
+    const full = mgr.count;
+
+    // 2. provider cache key
+    const p0 = priv.getProvider();
+    mset.topK = 5;
+    mset.ollamaUrl = "http://127.0.0.1:1";
+    ok(priv.getProvider() === p0, "unrelated settings (topK, ollamaUrl while on OpenAI) keep the provider");
+    mset.openaiApiKey = "key-two";
+    const p1 = priv.getProvider();
+    ok(p1 !== p0, "changing the API key creates a new provider");
+    const p1b = priv.getProvider();
+    ok(p1b === p1, "...and it is then cached");
+    mset.openaiBaseUrl = `http://localhost:${embPort}`;
+    const p2 = priv.getProvider();
+    ok(p2 !== p1, "changing the base URL creates a new provider");
+    ok(!priv.providerKey.includes("key-two"), "the raw API key is not kept in the cache key");
+
+    // query cache follows the provider
+    embedCalls.length = 0;
+    await mgr.search("alpha", {}, 5, { translate: false });
+    await mgr.search("alpha", {}, 5, { translate: false });
+    ok(embedCalls.length === 1, `a repeated query is served from the cache (${embedCalls.length} call)`);
+    mset.openaiApiKey = "key-three";
+    await mgr.search("alpha", {}, 5, { translate: false });
+    ok(
+      embedCalls.length === 2 && embedCalls[1].auth === "Bearer key-three",
+      `a new key clears the query cache and is sent: ${embedCalls.map((c) => c.auth)}`
+    );
+
+    // 3. model switch with the store loaded
+    mset.embeddingModel = "model-b";
+    let msg = "";
+    try {
+      await mgr.search("alpha", {}, 5, { translate: false });
+    } catch (e) {
+      msg = e instanceof Error ? e.message : String(e);
+    }
+    ok(/embedding model changed/.test(msg) && /Rebuild search index/.test(msg), `search after a model change asks for a rebuild: ${msg}`);
+    notes.set("References/a.md", { fm: { citekey: "smith2024", title: "Alpha", abstract: "edited abstract" }, body: "x" });
+    const warns: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (...a: unknown[]) => void warns.push(a.join(" "));
+    embedCalls.length = 0;
+    let wrote: boolean;
+    try {
+      wrote = await priv.reindexNow(tfile("References/a.md"));
+    } finally {
+      console.warn = realWarn;
+    }
+    ok(
+      wrote === false && embedCalls.length === 0 && mgr.count === full && mgr.indexedModelId === "openai:model-a",
+      "incremental reindex under a different model writes nothing"
+    );
+    ok(warns.some((w) => /rebuild required/.test(w)), "...and says why with a console warning");
+    await mgr.rebuild();
+    ok(mgr.indexedModelId === "openai:model-b", "rebuild() relabels the index with the new model");
+    const after = await mgr.search("alpha", {}, 5, { translate: false });
+    ok(after.length > 0, `search works again after the rebuild (${after.length} hits)`);
+
+    embSrv.close();
+  }
+
 }
 
 main().catch((e) => {

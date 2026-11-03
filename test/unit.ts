@@ -22,7 +22,7 @@ import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summ
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
-import { parseCitingPage } from "../src/graph/openalex";
+import { parseCitingPage, titlesMatch, resolveWork } from "../src/graph/openalex";
 import { rerankHttpReason, mmr, parseRerankResponse } from "../src/index/rerank";
 import { requestWithRetry } from "../src/llm/client";
 import {
@@ -692,6 +692,35 @@ AID - 10.1000/xyz123 [doi]
   check(title("&#x3b2;-blocker &#8211; &amp;lt;") === "β-blocker – &lt;", "stripTags: numeric entities decode, one pass (no double decode)");
 }
 
+// ---------- graph/openalex.ts: titlesMatch + resolveWork error vs. not-found ----------
+{
+  check(!titlesMatch("Treatment X: a randomized trial", "Treatment X: a randomized trial protocol"), "titlesMatch: a protocol is not the trial");
+  check(titlesMatch("Treatment X: A Randomized Trial.", "treatment x - a randomized trial"), "titlesMatch: exact after normalizing punctuation/case");
+  check(titlesMatch("Effects of exercise on bone density in older women", "Effects of exercise on bone density in older women."), "titlesMatch: trailing punctuation only");
+  check(titlesMatch("Long term clinical and radiological outcomes of lumbar spinal fusion in adults (Review)", "Long term clinical and radiological outcomes of lumbar spinal fusion in adults"), "titlesMatch: tiny difference (>=90%) accepted");
+  check(!titlesMatch("", "x") && !titlesMatch("x", ""), "titlesMatch: empty never matches");
+
+  const realFetch = globalThis.fetch;
+  const reply = (status: number, body: unknown) => (globalThis.fetch = (async () => new Response(JSON.stringify(body), { status })) as typeof fetch);
+  try {
+    reply(404, { error: "not found" });
+    check((await resolveWork({ type: "article-journal", DOI: "10.1/x" })) === null, "resolveWork: 404 is a genuine no-match (null)");
+    reply(200, { results: [] });
+    check((await resolveWork({ type: "article-journal", title: "Nothing here" })) === null, "resolveWork: empty title search is null");
+    reply(200, { results: [{ id: "https://openalex.org/W1", title: "Treatment X: a randomized trial protocol" }] });
+    check((await resolveWork({ type: "article-journal", title: "Treatment X: a randomized trial" })) === null, "resolveWork: protocol title hit rejected");
+    reply(500, {});
+    let msg = "";
+    await resolveWork({ type: "article-journal", DOI: "10.1/x" }).catch((e: Error) => (msg = e.message));
+    check(msg === "OpenAlex returned 500", `resolveWork: 500 on a DOI lookup throws (${msg})`);
+    msg = "";
+    await resolveWork({ type: "article-journal", title: "Some title" }).catch((e: Error) => (msg = e.message));
+    check(msg === "OpenAlex returned 500", `resolveWork: 500 on a title search throws (${msg})`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 // ---------- types.ts: effective() — empty path/URL settings fall back to the shipped default ----------
 {
   const s = { ...DEFAULT_SETTINGS, referencesFolder: "  ", openaiBaseUrl: "", ollamaUrl: " http://h:1 " };
@@ -1161,6 +1190,21 @@ check(
   const fm3: Record<string, unknown> = { tags: ["kq-01"], kq: ["1"] };
   const r3 = applyScreening(fm3, { include: "include" });
   check(r3.fields.include === "include", "applyScreening: include succeeds when kq already exists on the note");
+
+  // clearing the KQs of an already-included record is rejected too, and writes nothing.
+  const fm7: Record<string, unknown> = { tags: [], include: "include", kq: ["1"] };
+  assert.throws(
+    () => applyScreening(fm7, { kq: [] }),
+    /include requires at least one kq/,
+    "applyScreening: clearing kq of an included record is rejected"
+  );
+  check(JSON.stringify(fm7.kq) === '["1"]', "applyScreening: rejected kq clear left fm.kq untouched");
+  applyScreening(fm7, { kq: ["2"] });
+  check(JSON.stringify(fm7.kq) === '["2"]', "applyScreening: replacing kq of an included record is fine");
+  applyScreening(fm7, { kq: [], include: "pending" });
+  check(fm7.include === "pending" && JSON.stringify(fm7.kq) === "[]", "applyScreening: kq can be cleared when include is also being changed away");
+  applyScreening(fm7, { kq: [] });
+  check(JSON.stringify(fm7.kq) === "[]", "applyScreening: kq can be cleared on a non-included record");
 
   // results live in fields only: nothing is mirrored into tags, user tags survive.
   const fm4: Record<string, unknown> = { tags: ["mine"] };

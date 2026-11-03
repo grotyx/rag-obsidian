@@ -181,7 +181,7 @@ export class RelatedView extends ItemView {
         }
         head?.setText(`Later papers citing this (OpenAlex) (${found.total})`);
         for (const w of found.works) {
-          const have = this.plugin.library.findDuplicate({ type: "article-journal", title: w.title, DOI: w.doi, PMID: w.pmid });
+          const have = this.plugin.library.findDuplicate({ type: "article-journal", title: w.title, DOI: w.doi, PMID: w.pmid, openalex_id: w.openalexId });
           const row = sec.createDiv({ cls: "srag-rel-row" });
           row.createSpan({ cls: "srag-rel-title", text: [w.year, w.title || w.openalexId].filter(Boolean).join(" · ") });
           const flags = [

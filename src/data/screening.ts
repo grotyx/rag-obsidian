@@ -83,9 +83,14 @@ export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFie
     if (!tags.includes(t)) tags.push(t);
   };
 
-  if (fields.include === "include") {
-    const finalKq = fields.kq !== undefined ? fields.kq : Array.isArray(fm.kq) ? fm.kq.map(String) : [];
-    if (finalKq.length === 0) throw new Error("INVALID_ARGUMENT: include requires at least one kq");
+  // The rule holds for the final state, so clearing the KQs of an included record is rejected too.
+  // Checked only when this patch touches include or kq: a legacy record already included without
+  // a KQ can still get its level or note edited.
+  const finalInclude = fields.include !== undefined ? fields.include : fm.include;
+  const finalKq = fields.kq !== undefined ? fields.kq : Array.isArray(fm.kq) ? fm.kq.map(String) : [];
+  const touched = fields.include !== undefined || fields.kq !== undefined;
+  if (touched && finalInclude === "include" && finalKq.length === 0) {
+    throw new Error("INVALID_ARGUMENT: include requires at least one kq");
   }
   if (fields.design !== undefined && (typeof fields.design !== "string" || !fields.design.trim())) {
     throw new Error("INVALID_ARGUMENT: design must be a non-empty string");

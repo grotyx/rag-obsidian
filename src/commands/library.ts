@@ -104,7 +104,11 @@ export async function backfillCitationCounts(plugin: ScholarRagPlugin): Promise<
   let updated = 0;
   try {
     for (const { item, file } of entries) {
-      const w = await resolveWork(item, plugin.settings.openalexMailto);
+      // A failed lookup skips this note instead of aborting the whole pass.
+      const w = await resolveWork(item, plugin.settings.openalexMailto).catch((err: unknown) => {
+        console.warn("[Refwright] OpenAlex lookup failed for", file.path, err);
+        return null;
+      });
       if (w) {
         await plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
           fm.cited_by_count = w.citedByCount;

@@ -184,6 +184,19 @@ async function vaultChecks(): Promise<void> {
   });
   assert.equal((await vault.listNotes("Notes", 10)).notes[0].path, "Notes/a.md");
 
+  // Mixed-case names page in one (code-unit) order: nothing skipped, nothing repeated.
+  const mixed = fakeApp({ "Notes/a.md": "1", "Notes/B.md": "2", "Notes/c.md": "3", "Notes/D.md": "4" });
+  const mixedVault = new McpVault(mixed.app, () => false);
+  const seen: string[] = [];
+  let cursor = "";
+  for (let i = 0; i < 10; i++) {
+    const p = await mixedVault.listNotes("Notes", 1, cursor);
+    seen.push(...p.notes.map((n) => n.path));
+    if (!p.nextCursor) break;
+    cursor = p.nextCursor;
+  }
+  assert.deepEqual(seen, ["Notes/B.md", "Notes/D.md", "Notes/a.md", "Notes/c.md"], "list_notes pages without omission or repeat");
+
   const created = await vault.createNote("Drafts/new.md", "draft");
   assert.equal(created.path, "Drafts/new.md");
   assert.equal(created.indexQueued, false);
@@ -311,7 +324,7 @@ async function serviceChecks(): Promise<void> {
 
   assert.deepEqual(await service.callTool("library_status", {}), {
     pluginVersion: "0.5.0", vaultName: "Research", referenceFolder: "References",
-    vaultPath: "/vault/Research", indexReady: true, chunkCount: 10, embeddingModel: "test:embed",
+    vaultPath: "/vault/Research", indexReady: true, rebuilding: false, chunkCount: 10, embeddingModel: "test:embed",
   });
   const search = await service.callTool("search_library", {
     query: "question", limit: 4, year_from: 2020, tags: ["Spine"],
@@ -334,8 +347,43 @@ async function serviceChecks(): Promise<void> {
   assert.equal(ff.papersSearched, 2);
   const fk = await service.callTool("search_findings", { query: "cage", papers: ["jones2023"], kind: "comparative" }) as any;
   assert.deepEqual(fk.results.map((r: any) => r.outcome), ["fusion rate"]);
-  assert.deepEqual(await service.callTool("rebuild_search_index", {}), { chunkCount: 11 });
+  // The rebuild is started, not awaited (the bridge times out at 30 s); a running one is not doubled.
+  assert.deepEqual(await service.callTool("rebuild_search_index", {}), { status: "started" });
   assert.equal(rebuilt, 1);
+  plugin.indexManager.rebuilding = true;
+  assert.deepEqual(await service.callTool("rebuild_search_index", {}), { status: "already-running" });
+  assert.equal(rebuilt, 1, "no second rebuild while one is running");
+  assert.equal(((await service.callTool("library_status", {})) as any).rebuilding, true);
+  plugin.indexManager.rebuilding = false;
+  const realRebuild = plugin.indexManager.rebuild;
+  const loggedErrors: unknown[][] = [];
+  const realError = console.error;
+  console.error = (...a: unknown[]) => { loggedErrors.push(a); };
+  plugin.indexManager.rebuild = async () => { throw new Error("embedding down"); };
+  assert.deepEqual(await service.callTool("rebuild_search_index", {}), { status: "started" }, "a failing rebuild does not reject the call");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  console.error = realError;
+  plugin.indexManager.rebuild = realRebuild;
+  assert.match(String(loggedErrors[0]?.[0]), /^\[Refwright\]/, "the failure is logged");
+
+  const mixedPaths = ["References/a.md", "References/B.md", "References/c.md", "References/D.md"];
+  const mixedPlugin = {
+    ...plugin,
+    library: {
+      ...plugin.library,
+      entries: () => mixedPaths.map((p, i) => ({ citekey: `k${i}`, item, file: { path: p }, year: "2024", authors: "Smith", title: "Trial" })),
+    },
+  };
+  const mixedService = new McpService(mixedPlugin, vault);
+  const refSeen: string[] = [];
+  let refCursor: string | undefined;
+  for (let i = 0; i < 10; i++) {
+    const p = await mixedService.callTool("list_references", { limit: 1, ...(refCursor ? { cursor: refCursor } : {}) }) as any;
+    refSeen.push(...p.references.map((r: any) => r.path));
+    if (!p.nextCursor) break;
+    refCursor = p.nextCursor;
+  }
+  assert.deepEqual(refSeen, ["References/B.md", "References/D.md", "References/a.md", "References/c.md"], "list_references pages without omission or repeat");
 
   const refs = await service.callTool("list_references", { tags: ["Spine"] }) as any;
   assert.equal(refs.references[0].citekey, "smith2024");
@@ -452,6 +500,32 @@ async function serviceChecks(): Promise<void> {
   await assert.rejects(() => citingService.callTool("find_citing_papers", { citekey: "smith2024", identifier: "PMID:1" }), /exactly one/);
   await assert.rejects(() => citingService.callTool("find_citing_papers", { identifier: "42" }), /explicit PMID/);
   await assert.rejects(() => citingService.callTool("find_citing_papers", { citekey: "nope" }), /NOT_FOUND/);
+  // Containment: a reference outside the allowed paths is NOT_FOUND before any OpenAlex request,
+  // and a duplicate whose note is denied is not named.
+  let guardedCalls = 0;
+  const guardedVault = new McpVault(plugin.app, () => false, ".obsidian", async (p) => {
+    if (p === "References/ref.md") throw new Error("outside vault");
+  });
+  const guardedService = new McpService(plugin, guardedVault, {
+    citingWorks: async () => {
+      guardedCalls++;
+      return {
+        work: { openalexId: "W1", title: "Trial", citedByCount: 1, referencedWorks: [] },
+        total: 1,
+        works: [{ openalexId: "W9", title: "Newer", year: 2026, retracted: false, type: "article", citedByCount: 0, pmid: "123" }],
+      };
+    },
+  });
+  await assert.rejects(() => guardedService.callTool("find_citing_papers", { citekey: "smith2024" }), /NOT_FOUND/);
+  assert.equal(guardedCalls, 0, "a denied reference makes no OpenAlex request");
+  const guardedCiting = await guardedService.callTool("find_citing_papers", { identifier: "PMID:42" }) as any;
+  assert.equal(guardedCalls, 1);
+  assert.equal(guardedCiting.results[0].existingCitekey, null, "a duplicate outside the allowed paths is not named");
+  // The duplicate lookup carries the OpenAlex id.
+  const dupArgs: Array<Record<string, unknown>> = [];
+  const dupPlugin = { ...plugin, library: { ...plugin.library, findDuplicate: (c: Record<string, unknown>) => { dupArgs.push(c); return null; } } };
+  await new McpService(dupPlugin, vault, { citingWorks: citingService["deps"].citingWorks }).callTool("find_citing_papers", { citekey: "smith2024" });
+  assert.equal(dupArgs[0].openalex_id, "W9");
   const notOnOpenAlex = new McpService(plugin, vault, { citingWorks: async () => null });
   await assert.rejects(() => notOnOpenAlex.callTool("find_citing_papers", { citekey: "smith2024" }), /not found on OpenAlex/);
 

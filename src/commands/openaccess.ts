@@ -5,7 +5,7 @@ import type { CSLItem } from "../types";
 import { findOpenAccess } from "../ingest/unpaywall";
 import { checkRetraction } from "../ingest/retraction";
 import { extractPdfHighlights, extractPdfText, isPdfMagic } from "../ingest/pdf";
-import { appendStash, hasStashedText } from "../ingest/pdfStash";
+import { appendStash, hasStashedText, resolvePdfLink } from "../ingest/pdfStash";
 import { mapPool } from "../util/pool";
 import { startBatch } from "../ui/progress";
 import { findPdfFile } from "./pdfs";
@@ -163,8 +163,17 @@ export async function downloadOaPdf(plugin: ScholarRagPlugin): Promise<void> {
   if (!plugin.app.vault.getAbstractFileByPath(dir)) await plugin.app.vault.createFolder(dir).catch(() => {});
   const path = normalizePath(`PDFs/${safe}.pdf`);
   const existing = plugin.app.vault.getAbstractFileByPath(path);
-  if (existing instanceof TFile) await plugin.app.vault.modifyBinary(existing, res.buffer);
-  else await plugin.app.vault.createBinary(path, res.buffer);
+  if (existing) {
+    // Never overwrite a PDF that is already there (the batch command refuses the same way).
+    // (`findPdfFile` would also find this very file via its citekey fallback, so check the link itself.)
+    const link = resolvePdfLink(r.fm.pdf);
+    if (!link || !plugin.app.metadataCache.getFirstLinkpathDest(link, r.file.path)) {
+      await plugin.app.fileManager.processFrontMatter(r.file, (fm: Record<string, unknown>) => (fm.pdf = `[[${safe}.pdf]]`));
+    }
+    new Notice(`A PDF already exists at ${path} — not overwritten`);
+    return;
+  }
+  await plugin.app.vault.createBinary(path, res.buffer);
   await plugin.app.fileManager.processFrontMatter(r.file, (fm: Record<string, unknown>) => (fm.pdf = `[[${safe}.pdf]]`));
   new Notice(`Saved PDFs/${safe}.pdf`);
   // Stash the text right away so the paper is searchable without a second command. Extraction

@@ -38,8 +38,8 @@ export async function searchPubmedPage(query: string, opts: PubmedSearchOpts = {
 
   let url = `${EUTILS}/esearch.fcgi?db=pubmed&retmode=json&sort=relevance&retmax=${n}` +
     `&term=${encodeURIComponent(query)}${a}`;
-  if (opts.from) url += `&mindate=${opts.from}&datetype=pdat`;
-  if (opts.to) url += `&maxdate=${opts.to}&datetype=pdat`;
+  // esearch ignores the date filter unless BOTH bounds are present, so an open end gets a sentinel.
+  if (opts.from || opts.to) url += `&mindate=${opts.from || "1000"}&maxdate=${opts.to || "3000"}&datetype=pdat`;
 
   await ncbiGate(!!opts.apiKey);
   const sr = await requestUrl({ url });

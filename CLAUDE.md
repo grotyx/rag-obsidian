@@ -3,7 +3,7 @@
 > Display name: **Refwright** (was "Academic Paper Citation Manager" through 0.8.2) · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.8.8 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.8.9 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [User guide](docs/manual/README.md) (screenshots, en/ko/zh/ja/es; `scripts/manual/capture.py` reshoots them) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -54,7 +54,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `types.ts` | `ScholarRagSettings`, `DEFAULT_SETTINGS`, CSL-JSON types, enums |
 | `settings.ts` | Settings tab UI (Library / Retrieval / Chat / Citation graph / Writing) |
 | `data/reference.ts` | citekey generation, CSL-JSON → markdown note builder |
-| `data/library.ts` | CRUD over `References/` (`createReference` runs one at a time and reads the citekey of notes the metadata cache has not parsed, so keys stay unique), `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` (add-time) + `matchKeys`/`duplicateGroups` (report, groups on any shared identifier) + `BackfillScope`/`inScope` (pure filter for fill-gaps scoping) |
+| `data/library.ts` | CRUD over `References/` (`createReference` runs one at a time and reads the citekey of notes the metadata cache has not parsed, so keys stay unique), `getItem`/`getFile` (by frontmatter citekey, **not** filename), `entries()` single-pass scan (`list()` delegates), `findDuplicate` (add-time; DOI / PMID / OpenAlex id / title via `matchKeys`, session registry honoured only while the note still carries that key) + `matchKeys`/`duplicateGroups` (report, groups on any shared identifier) + `BackfillScope`/`inScope` (pure filter for fill-gaps scoping) |
 | `data/pdfMatch.ts` | `matchPdf` — PDF ↔ reference by file name = citekey, then DOI / PMID / title+year in the first 4,000 chars only (reference lists name other papers) |
 | `data/findings.ts` | `parseFindings` / `findingText` / `evidenceSection` — the `## Evidence (extracted)` callout (Dataview `[key:: value]` fields + verbatim quote per finding); read by MCP `search_findings`, excluded from chunking by `index/chunker.ts` |
 | `data/screening.ts` | `applyScreening` — the one screening write (kq / include / level / design / note / guideline, stored in fields only — never mirrored into tags; legacy mirrored tags are dropped when their field is set), shared by the MCP `set_reference_fields` tool and the Screening pane; include needs ≥1 KQ |
@@ -135,7 +135,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (493) + MCP checks + live integration suite (222 checks)
+npm test               # unit (507) + MCP checks + live integration suite (256 checks)
 ```
 
 ## Testing approach (important)

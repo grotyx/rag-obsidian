@@ -2,7 +2,7 @@ import { App, TFile } from "obsidian";
 import { ScholarRagSettings, CSLItem } from "../types";
 import { Library } from "../data/library";
 import { extractPdfText, findIdentifier } from "./pdf";
-import { appendStash } from "./pdfStash";
+import { appendStash, resolvePdfLink } from "./pdfStash";
 import { fetchMetadata } from "./metadata";
 import { LLMClient } from "../llm/client";
 import { arr, rec, str } from "../util/json";
@@ -44,7 +44,10 @@ export class PdfImporter {
     // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
     // appended before it is silently dropped.
     await this.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
-      fm.pdf = `[[${pdf.path}]]`;
+      // Keep a PDF the note already links to (unless it is this very file).
+      const cur = resolvePdfLink(fm.pdf);
+      const linked = cur ? this.app.metadataCache.getFirstLinkpathDest(cur, note.path) : null;
+      if (!linked || linked.path === pdf.path) fm.pdf = `[[${pdf.path}]]`;
     });
     await this.app.vault.process(note, (body) => appendStash(body, text));
   }

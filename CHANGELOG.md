@@ -6,6 +6,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.8.9] — 2026-11-03
+
+Fixes from two independent code reviews.
+
+### Fixed
+- Deleting or renaming a note outside the references folder (for example `Drafts/smith2024.md`) no longer removes the reference with citekey `smith2024` from search.
+- After changing the API key or base URL, embeddings use the new key and endpoint right away instead of after an Obsidian restart.
+- After changing the embedding model, search says the index must be rebuilt instead of comparing vectors from two different models, and edited notes are not re-embedded into the old index.
+- PubMed search with only a start year (or only an end year) now applies that limit; before, PubMed ignored a one-sided date range.
+- "Download open-access PDF" no longer overwrites a PDF that is already in `PDFs/`, and importing a PDF for a paper that already links one keeps the existing link.
+- An OpenAlex outage is reported as an error instead of "not found", and a title-only lookup no longer accepts a different paper whose title merely contains this one ("… a randomized trial" vs "… a randomized trial protocol").
+- Screening: clearing the key questions of an included record is refused, the same rule as including one without a key question.
+- Duplicate checks also match the OpenAlex id, skip notes without a citekey (which could not be opened), and follow a corrected citekey or DOI instead of the value the note was created with.
+- MCP: `find_citing_papers` applies the same vault containment as the other library tools; paging through `list_notes` / `list_references` no longer skips names with mixed case; `rebuild_search_index` starts the rebuild and returns at once (a large library took longer than the bridge's 30-second timeout, and a retry queued a second rebuild), and `library_status` reports `rebuilding`.
+
 ## [0.8.8] — 2026-11-03
 
 ### Added

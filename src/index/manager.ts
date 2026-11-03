@@ -1,5 +1,5 @@
 import { App, TFile, normalizePath, debounce, Platform, Notice } from "obsidian";
-import { ScholarRagSettings } from "../types";
+import { ScholarRagSettings, effective } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
 import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA } from "./store";
@@ -17,6 +17,13 @@ import {
   chunkHash,
   Chunk,
 } from "./chunker";
+
+/** FNV-1a 32-bit: enough to notice that a secret changed without keeping the secret around. */
+function fingerprint(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(16);
+}
 
 /** Chunks pulled from the index before the per-reference cap thins them. */
 const OVERFETCH = 3;
@@ -136,12 +143,18 @@ export class IndexManager {
     return this.store.modelId;
   }
 
-  /** One provider per `provider:model`; rebuild only when settings defining the id change. */
+  /** One provider per set of settings its constructor snapshots (model, endpoint, API key). The
+   *  key enters the cache key only as a short non-cryptographic fingerprint, never as text. */
   private getProvider(): EmbeddingProvider {
-    const key = `${this.settings.embeddingProvider}:${this.settings.embeddingModel}`;
+    const s = this.settings;
+    const key =
+      s.embeddingProvider === "openai"
+        ? `openai|${s.embeddingModel}|${effective(s, "openaiBaseUrl")}|${fingerprint(s.openaiApiKey)}`
+        : `${s.embeddingProvider}|${s.embeddingModel}|${effective(s, "ollamaUrl")}`;
     if (!this.provider || this.providerKey !== key) {
-      this.provider = createProvider(this.settings);
+      this.provider = createProvider(s);
       this.providerKey = key;
+      this.queryVecs.clear(); // vectors from the old endpoint/model must not answer the new one
     }
     return this.provider;
   }
@@ -303,8 +316,16 @@ export class IndexManager {
         console.warn(`[Refwright] duplicate citekey "${citekey}" — skipping reindex of ${file.path}`);
         return false;
       }
+      // A different model's vectors would be written into an index labelled with the old one.
+      const provider = this.getProvider();
+      if (provider.id !== this.store.modelId) {
+        console.warn(
+          `[Refwright] embedding model ${provider.id} ≠ index model ${this.store.modelId} — rebuild required; ${file.path} left as-is`
+        );
+        return false;
+      }
       // embed + dim-check BEFORE touching the index, so a model mismatch can't drop the note
-      const vecs = await this.getProvider().embed(chunks.map((c) => c.embedText));
+      const vecs = await provider.embed(chunks.map((c) => c.embedText));
       if (vecs[0]?.length !== this.store.dim) {
         console.warn(
           `[Refwright] embedding dim ${vecs[0]?.length} ≠ index dim ${this.store.dim} — rebuild required; ${file.path} left as-is`
@@ -317,25 +338,22 @@ export class IndexManager {
       this.store.setPath(file.path, citekey, hash);
       return true;
     }
-    const citekey = oldCitekey ?? this.citekeyOfPath(file.path);
-    if (!citekey) return false;
-    await this.store.removeCitekey(citekey);
+    // Only a path the index tracks: a same-named note elsewhere must not delete this key's chunks.
+    if (!oldCitekey) return false;
+    await this.store.removeCitekey(oldCitekey);
     return true;
   }
 
   removeFile(path: string): Promise<void> {
     return this.serialized(async () => {
       if (!this.store.ready) return;
-      // chunks are keyed by frontmatter citekey, which may differ from the filename
-      const citekey = this.store.citekeyForPath(path) ?? this.citekeyOfPath(path);
+      // chunks are keyed by frontmatter citekey, which may differ from the filename; a path the
+      // index never tracked (a draft named like a reference) owns no chunks
+      const citekey = this.store.citekeyForPath(path);
       if (!citekey) return;
       await this.store.removeCitekey(citekey);
       await this.persist();
     });
-  }
-
-  private citekeyOfPath(path: string): string {
-    return (path.split("/").pop() ?? "").replace(/\.md$/, "");
   }
 
   /** Queue a file for debounced incremental reindexing. */
@@ -374,6 +392,12 @@ export class IndexManager {
     opts: { rerank?: boolean; translate?: boolean; outcome?: RerankOutcome } = {}
   ): Promise<SearchHit[]> {
     if (this.rebuilding) throw new Error("The search index is being rebuilt — search again when it finishes.");
+    // Query vectors from another model are meaningless against the stored ones, even at equal dimension.
+    if (this.store.ready && this.store.modelId !== this.getProvider().id) {
+      throw new Error(
+        `The embedding model changed (index: ${this.store.modelId}, now: ${this.getProvider().id}) — run “Rebuild search index”.`
+      );
+    }
     // A Korean question lands far from its English twin in embedding space (cosine ~0.45), so
     // translate first when allowed; MCP passes translate:false (its agent translates itself).
     const english = opts.translate !== false ? await this.toEnglish(query) : query;
@@ -459,10 +483,11 @@ export class IndexManager {
 
   /** Query embeddings are cached per provider+model: a repeated or re-filtered question skips the API call. */
   private async embedQuery(text: string): Promise<number[]> {
-    const key = `${this.settings.embeddingProvider}:${this.settings.embeddingModel}\u0000${text}`;
+    const provider = this.getProvider(); // first: a changed endpoint/key/model drops the cache
+    const key = `${provider.id}\u0000${text}`;
     const hit = this.queryVecs.get(key);
     if (hit) return hit;
-    const [vec] = await this.getProvider().embed([text]);
+    const [vec] = await provider.embed([text]);
     if (this.queryVecs.size >= 200) this.queryVecs.delete(this.queryVecs.keys().next().value as string);
     this.queryVecs.set(key, vec);
     return vec;

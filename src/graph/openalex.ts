@@ -36,6 +36,17 @@ function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+/** Do two titles name the same paper? Exact after normalizing, or one contains the other and the
+ *  shorter is at least 90% of the longer ("X: a trial" must not match "X: a trial protocol"). */
+export function titlesMatch(a: string, b: string): boolean {
+  const x = normalizeTitle(a);
+  const y = normalizeTitle(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return long.includes(short) && short.length >= 0.9 * long.length;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -78,14 +89,12 @@ export async function resolveWork(item: CSLItem, mailto = ""): Promise<OAWork | 
       )
     );
     const rJson: unknown = r.json;
-    if (r.status >= 400 || !rJson) return null;
+    if (r.status >= 400) throw new Error(`OpenAlex returned ${r.status}`);
     const w = arr(rec(rJson).results)[0];
     if (w === undefined) return null;
     // Guard against a wrong top hit being persisted: titles must match.
-    const want = normalizeTitle(String(item.title));
     const wRec = rec(w);
-    const got = normalizeTitle(str(wRec.title) || str(wRec.display_name));
-    if (!want || !got || (want !== got && !want.includes(got) && !got.includes(want))) return null;
+    if (!titlesMatch(String(item.title), str(wRec.title) || str(wRec.display_name))) return null;
     return toWork(w);
   } else {
     return null;
@@ -93,7 +102,9 @@ export async function resolveWork(item: CSLItem, mailto = ""): Promise<OAWork | 
 
   const res = await requestRetry429(withMailto(url, mailto));
   const resJson: unknown = res.json;
-  if (res.status >= 400 || !resJson) return null;
+  if (res.status === 404) return null;
+  if (res.status >= 400) throw new Error(`OpenAlex returned ${res.status}`);
+  if (!resJson) return null;
   return toWork(resJson);
 }
 

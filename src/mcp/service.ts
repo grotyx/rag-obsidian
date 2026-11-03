@@ -68,7 +68,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "rebuild_search_index",
-    description: "Rebuild Obsidian's private search index. Use only after INDEX_NOT_READY or an embedding-model change. Uses embeddings, never a chat or summary LLM.",
+    description: "Start a rebuild of Obsidian's private search index in the background and return at once ({status: started | already-running}); poll library_status until indexReady is true. Use only after INDEX_NOT_READY or an embedding-model change. Uses embeddings, never a chat or summary LLM.",
     inputSchema: objectSchema({}), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   {
@@ -346,7 +346,7 @@ export class McpService {
       case "library_status": return this.status();
       case "search_library": return this.searchLibrary(args);
       case "search_findings": return this.searchFindings(args);
-      case "rebuild_search_index": return { chunkCount: await this.plugin.indexManager.rebuild() };
+      case "rebuild_search_index": return this.startRebuild();
       case "list_references": return this.listReferences(args);
       case "get_reference": return this.getReference(stringArg(args, "citekey"));
       case "get_reference_source": return this.getReferenceSource(stringArg(args, "citekey"));
@@ -371,6 +371,13 @@ export class McpService {
     }
   }
 
+  /** A full rebuild outlives the bridge's 30 s inactivity timeout, so start it and let the agent poll library_status. */
+  private startRebuild(): Record<string, unknown> {
+    if (this.plugin.indexManager.rebuilding) return { status: "already-running" };
+    this.plugin.indexManager.rebuild().catch((e: unknown) => console.error("[Refwright] MCP index rebuild failed", e));
+    return { status: "started" };
+  }
+
   private status(): Record<string, unknown> {
     return {
       pluginVersion: this.plugin.manifest.version,
@@ -378,6 +385,7 @@ export class McpService {
       vaultPath: this.deps.vaultPath ?? null,
       referenceFolder: this.plugin.library.folder(),
       indexReady: this.plugin.indexManager.ready,
+      rebuilding: !!this.plugin.indexManager.rebuilding,
       chunkCount: this.plugin.indexManager.count,
       embeddingModel: this.plugin.indexManager.indexedModelId || null,
     };
@@ -521,7 +529,7 @@ export class McpService {
       .filter((entry) => !kq || (Array.isArray(entry.item.kq) && entry.item.kq.some((v) => kqKey(v) === kqKey(kq))))
       .filter((entry) => !include || entry.item.include === include)
       .filter((entry) => !guideline || entry.item.guideline === guideline)
-      .sort((a, b) => a.file.path.localeCompare(b.file.path));
+      .sort((a, b) => (a.file.path < b.file.path ? -1 : a.file.path > b.file.path ? 1 : 0)); // code-unit order, same as the cursor `>`
     const page = all.slice(0, limit);
     return {
       references: page.map((entry) => ({
@@ -701,8 +709,10 @@ export class McpService {
     if (!citekey === !identifier) throw new Error("INVALID_ARGUMENT: pass exactly one of citekey or identifier");
     let item: CSLItem;
     if (citekey) {
+      const file = this.plugin.library.getFile(citekey);
       const found = this.plugin.library.getItem(citekey);
-      if (!found) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
+      if (!file || !found) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
+      try { await this.vault.assertPath(file.path, false); } catch { throw new Error(`NOT_FOUND: reference not found: ${citekey}`); }
       item = found;
     } else {
       if (/^\d+$/.test(identifier!)) throw new Error("AMBIGUOUS_IDENTIFIER: use an explicit PMID such as PMID:12345");
@@ -718,10 +728,20 @@ export class McpService {
       fromYear: args.year_from === undefined ? undefined : numberArg(args, "year_from", 0, 1000, 3000),
     });
     if (!found) throw new Error("NOT_FOUND: paper not found on OpenAlex");
-    const results = found.works.map((w) => ({
-      ...w,
-      existingCitekey: this.plugin.library.findDuplicate({ type: "article-journal", title: w.title, DOI: w.doi, PMID: w.pmid }),
-    }));
+    const results = [];
+    for (const w of found.works) {
+      let existingCitekey = this.plugin.library.findDuplicate({ type: "article-journal", title: w.title, DOI: w.doi, PMID: w.pmid, openalex_id: w.openalexId });
+      if (existingCitekey) {
+        const dup = this.plugin.library.getFile(existingCitekey);
+        try {
+          if (!dup) existingCitekey = null;
+          else await this.vault.assertPath(dup.path, false);
+        } catch {
+          existingCitekey = null;
+        }
+      }
+      results.push({ ...w, existingCitekey });
+    }
     return {
       paper: { citekey: citekey ?? null, openalexId: found.work.openalexId, title: found.work.title },
       totalCount: found.total,
