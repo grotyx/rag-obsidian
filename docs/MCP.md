@@ -156,15 +156,15 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | `search_findings` | Individual results (effect size, p, CI, verbatim quote) from the notes' `## Evidence (extracted)` sections of the best-matching papers, reranked against the question | Embeddings + rerank call; read-only |
 | `search_library` | Search the same BM25+vector index as Obsidian (keyword half expanded with the library's synonyms). Query in English; pass `rerank: true` for the hosted cross-encoder (recommended for evidence) | Embeddings; rerank call when asked; read-only |
 | `rebuild_search_index` | Start a full rebuild of the private index in the background and return at once (`started` / `already-running`); poll `library_status` until `indexReady` | Embeddings possible; index write |
-| `list_references` | Page and filter reference metadata (year, author, status, tags, and the screening fields `kq`, `include`, `guideline`) | Read-only |
+| `list_references` | Page and filter reference metadata (year, author, status, tags, and the screening fields `kq`, `include`, `guideline`, `rob_overall`) | Read-only |
 | `get_reference` | Read metadata and note content by citekey | Read-only |
 | `get_reference_source` | Get a linked PDF's extracted text, else PMC full text, else the abstract, for external summarization | Network possible; read-only |
 | `save_reference_summary` | Save the external model's structured summary under a hash guard | Edits a reference note |
 | `list_tags` | List library tags and counts | Read-only |
-| `search_pubmed` | Search PubMed (`limit` up to 150; `totalCount`/`truncated` report if the query matched more than was returned) | Network; read-only |
+| `search_pubmed` | Search PubMed (`limit` up to 150; `totalCount`/`truncated` report if the query matched more than was returned; `log: true` also writes a PRISMA-S search-log note under `Searches/` and returns `logPath`) | Network; creates a note only with `log` |
 | `add_reference` | Add a paper from an explicit identifier, tagged with its PubMed MeSH headings and author keywords, plus optional `tags` (merged onto an existing duplicate too) | Network; creates or edits a note |
 | `find_citing_papers` | Later papers citing one paper (`citekey`, or `identifier` DOI / `PMID:` / OpenAlex id), newest first from OpenAlex, flagged retracted / erratum / already in library; optional `limit`, `year_from` | Network (OpenAlex); read-only |
-| `set_reference_fields` | Set screening fields (key questions, include/exclude/pending, evidence level, design, note) and `guideline` for a systematic-review workflow, stored as note fields (never tags; legacy mirrored tags are removed) | Edits a reference note |
+| `set_reference_fields` | Set screening fields (key questions, include/exclude/pending, evidence level, design, note), `guideline` and risk-of-bias (`rob_tool`, `rob_overall`, `rob_note`; empty string clears) for a systematic-review workflow, stored as note fields (never tags; legacy mirrored tags are removed) | Edits a reference note |
 | `list_notes` | Page through Markdown note paths | Read-only |
 | `read_note` | Read a bounded range and return the whole-note SHA-256 | Read-only |
 | `create_note` | Create a note and missing parent folders | Creates a note |

@@ -6,6 +6,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-11-03
+
+New systematic-review tools.
+
+### Added
+- **Search log.** Importing from the PubMed search window writes a note under `Searches/` with the exact query, date, filters, total matches, and the PMIDs returned and imported. MCP `search_pubmed` writes the same note with `log: true`. "Create PRISMA flow diagram" lists the logged searches and the records they identified per source (PRISMA-S reporting).
+- **Snowball from included records.** For every record marked include (optionally one key question), collects the papers it cites and the newest papers citing it (OpenAlex), drops what is already in the library, and writes a ranked candidate note (top 200) for screening.
+- **Risk of bias.** New properties `rob_tool` (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2, other), `rob_overall` and `rob_note`, set in the Screening pane or with MCP `set_reference_fields` (and filterable in `list_references`). "Risk-of-bias summary table" writes one table per tool with counts and the included records still to assess. They are kept out of printed bibliographies.
+- **Export evidence table (CSV).** All extracted findings in a scope (all, folder or tag) as one CSV for R or RevMan, with the reference and screening columns; values are copied verbatim, and Excel opens Korean text correctly.
+
+### Changed
+- "Check references in this manuscript" also reports retracted papers first, then references with no DOI or PMID and preprints (check for a published version), then references never checked for retraction and ones whose note has no summary or full text — grouped by severity, report only.
+
 ## [0.9.0] — 2026-11-03
 
 Second round of fixes from the two code reviews: index safety, large-library speed, and safer merges.

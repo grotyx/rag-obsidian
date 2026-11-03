@@ -24,6 +24,9 @@ import { ChatView, VIEW_TYPE_CHAT } from "./src/ui/ChatView";
 import { RelatedView, VIEW_TYPE_RELATED } from "./src/ui/RelatedView";
 import { ScreeningView, VIEW_TYPE_SCREENING } from "./src/ui/ScreeningView";
 import { PrismaScopeModal } from "./src/ui/PrismaScopeModal";
+import { EvidenceScopeModal } from "./src/commands/evidenceExport";
+import { SnowballScopeModal } from "./src/commands/snowball";
+import { RobScopeModal } from "./src/commands/rob";
 import { CitationGraph } from "./src/graph/citations";
 import { ImportPdfModal } from "./src/ui/ImportPdfModal";
 import { CitationSuggest } from "./src/cite/suggest";
@@ -393,6 +396,21 @@ export default class ScholarRagPlugin extends Plugin {
       id: "prisma-diagram",
       name: "Create PRISMA flow diagram…",
       callback: () => new PrismaScopeModal(this.app, this).open(),
+    });
+    this.addCommand({
+      id: "export-evidence-table",
+      name: "Export evidence table (CSV)",
+      callback: () => new EvidenceScopeModal(this.app, this).open(),
+    });
+    this.addCommand({
+      id: "snowball-included",
+      name: "Snowball from included records…",
+      callback: () => new SnowballScopeModal(this.app, this).open(),
+    });
+    this.addCommand({
+      id: "rob-summary-table",
+      name: "Risk-of-bias summary table…",
+      callback: () => new RobScopeModal(this.app, this).open(),
     });
 
     // Phase 5: @-autocomplete for citekeys.

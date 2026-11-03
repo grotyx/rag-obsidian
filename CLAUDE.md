@@ -3,7 +3,7 @@
 > Display name: **Refwright** (was "Academic Paper Citation Manager" through 0.8.2) · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.9.0 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.10.0 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [User guide](docs/manual/README.md) (screenshots, en/ko/zh/ja/es; `scripts/manual/capture.py` reshoots them) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -58,6 +58,9 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `data/pdfMatch.ts` | `matchPdf` — PDF ↔ reference by file name = citekey, then DOI / PMID / title+year in the first 4,000 chars only (reference lists name other papers) |
 | `data/findings.ts` | `parseFindings` / `findingText` / `evidenceSection` — the `## Evidence (extracted)` callout (Dataview `[key:: value]` fields + verbatim quote per finding); read by MCP `search_findings`, excluded from chunking by `index/chunker.ts` |
 | `data/screening.ts` | `applyScreening` — the one screening write (kq / include / level / design / note / guideline, stored in fields only — never mirrored into tags; legacy mirrored tags are dropped when their field is set), shared by the MCP `set_reference_fields` tool and the Screening pane; include needs ≥1 KQ |
+| `data/searchLog.ts` | `searchLogNote` / `parseSearchLog` / `searchLogTotals` — one Markdown record per PubMed search run under `Searches/` (`type: search-log`; query, date, filters, total, returned / imported PMIDs), written by the PubMed modal on import and by MCP `search_pubmed` with `log: true`; PRISMA lists them |
+| `data/snowball.ts` | `aggregateSnowball` / `snowballMarkdown` — backward + forward citation candidates of included records, de-duplicated against the library and ranked by links (`commands/snowball.ts` runs the OpenAlex lookups) |
+| `data/rob.ts` | `robMarkdown` — the risk-of-bias summary note (one table per `rob_tool`, counts, included records not yet assessed); `commands/rob.ts` picks the scope |
 | `data/prisma.ts` | `prismaCounts` / `prismaMarkdown` — PRISMA 2020 numbers and the Mermaid + table note (`commands/prisma.ts` gathers the records) |
 | `data/merge.ts` | duplicate merge logic: `pickKeeper`, `mergeFrontmatter`, `mergeBodies` (`renameCiteKeys` lives in `cite/bibliography.ts`) |
 | `ingest/metadata.ts` | `detectId` + Crossref / PubMed / arXiv fetchers → CSLItem |
@@ -104,6 +107,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `commands/writing.ts` | update bibliography, compile manuscript, copy citation, annotated bibliography, suggest citations for selection, find unsupported claims |
 | `commands/openaccess.ts` | Unpaywall lookup, OA PDF download (+ stashes the saved PDF's text), retraction check, PDF highlight extraction |
 | `commands/pdfs.ts` | `indexLinkedPdfs` / `indexLinkedPdfActive` — extract + stash the text of linked PDFs that have none (pool width 2: pdfjs is CPU-bound in the renderer; writes sequential, one note written as its text lands) + `findPdfFile`, the one resolver (`pdf:` link → `PDFs/<citekey>.pdf`) shared with `commands/openaccess.ts` |
+| `commands/evidenceExport.ts` | "Export evidence table (CSV)": `evidenceCsv` (BOM, RFC 4180, values verbatim; reference columns + union of finding keys + quote) over `collectEvidenceRows` for all / folder / tag |
 | `commands/merge.ts` | `mergeDuplicateGroups` — merge, rewrite `[@old]` across the vault, trash the others; skips a group whose files changed since the modal opened |
 | `commands/backfill.ts` | `backfillSummaries` — summaries + MeSH tags for notes added without them, scoped via `BackfillScope`/`inScope` (`src/data/library.ts`) to all, one note, a folder, or a tag |
 | `commands/summaries.ts` | re-summarize one note, or every note whose `summary_model` is not the current one |
@@ -112,9 +116,9 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `mcp/bridge.ts` | source generator for the standalone Node stdio bridge written beside `main.js` |
 | `mcp/http.ts` | desktop-only authenticated loopback lifecycle, discovery file, setup snippets, realpath containment |
 | `mcp/vault.ts` | Markdown-only vault CRUD, pagination, hash-based concurrency checks, serialized writes |
-| `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch, including `add_reference` (tags a new note with its PubMed MeSH headings + author keywords, no LLM) and external source-read/summary-save (`get_reference_source` prefers a linked PDF's stashed extracted text over PMC full text over the abstract) and `find_citing_papers` (OpenAlex `citingWorks`, injectable dep) and `set_reference_fields` (screening kq/include/level/design/screening_note/guideline, fields only; `list_references` filters on kq/include/guideline); deliberately bypasses chat/summary/rerank LLM paths |
+| `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch, including `add_reference` (tags a new note with its PubMed MeSH headings + author keywords, no LLM) and external source-read/summary-save (`get_reference_source` prefers a linked PDF's stashed extracted text over PMC full text over the abstract) and `find_citing_papers` (OpenAlex `citingWorks`, injectable dep) and `set_reference_fields` (screening kq/include/level/design/screening_note/guideline and rob_tool/rob_overall/rob_note, fields only; `list_references` filters on kq/include/guideline); deliberately bypasses chat/summary/rerank LLM paths |
 | `write/docx.ts` + `write/pandoc.ts` | "Export manuscript to Word": Pandoc with the bundled `styles/manuscript-reference.docx` (esbuild `.docx` binary loader); `pandocCandidates` is the pure probe list |
-| `write/refcheck.ts` | `referenceProblems` / `refcheckReport` for "Check references in this manuscript" |
+| `write/refcheck.ts` | `referenceProblems` / `refcheckReport` for "Check references in this manuscript" — grouped by severity: retracted; missing DOI/PMID, preprint, metadata gaps; not yet retraction-checked, thin evidence (no summary or stashed text) |
 | `write/manuscript.ts` | pure citation compilation shared by the Obsidian command and MCP output-copy tool |
 | `ui/{LibraryView,SearchView}.ts` | sidebar panes |
 | `ui/ScreeningView.ts` | one-record-at-a-time screening pane (scope, status filter, decisions, KQ/level/design, keyboard), mtime-guarded writes via `applyScreening` |
@@ -136,7 +140,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (543) + MCP checks + live integration suite (290 checks)
+npm test               # unit (610) + MCP checks + live integration suite (290 checks)
 ```
 
 ## Testing approach (important)

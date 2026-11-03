@@ -10,6 +10,8 @@ import {
   KQ_IDS,
   Level,
   LEVELS,
+  ROB_OVERALL,
+  ROB_TOOLS,
   ScreeningFields,
 } from "../data/screening";
 import { extractSummaryBlock } from "../cite/bibliography";
@@ -48,6 +50,8 @@ export class ScreeningView extends ItemView {
   private working: { kq: Set<string>; level?: Level; design?: string; note: string } = { kq: new Set(), note: "" };
   private loadedMtime: number | null = null;
   private writing = false;
+  /** The in-flight risk-of-bias save: a click on Include blurs the note field first, so commit waits for it. */
+  private robSave: Promise<void> = Promise.resolve();
 
   private progressEl!: HTMLElement;
   private bodyEl!: HTMLElement;
@@ -246,6 +250,25 @@ export class ScreeningView extends ItemView {
     designSelect.value = this.working.design ?? "";
     designSelect.onchange = () => { this.working.design = designSelect.value || undefined; };
 
+    controls.createDiv({ text: "Risk of bias", cls: "srag-count" });
+    const robRow = controls.createDiv({ cls: "srag-header" });
+    const robField = (el: HTMLSelectElement | HTMLInputElement, name: "rob_tool" | "rob_overall" | "rob_note") => {
+      el.onchange = () => void this.saveRob({ [name]: el.value.trim() }, entry.citekey);
+    };
+    const toolSelect = robRow.createEl("select");
+    toolSelect.createEl("option", { value: "", text: "(No tool)" });
+    for (const t of ROB_TOOLS) toolSelect.createEl("option", { value: t, text: t });
+    toolSelect.value = typeof entry.item.rob_tool === "string" ? entry.item.rob_tool : "";
+    robField(toolSelect, "rob_tool");
+    const overallSelect = robRow.createEl("select");
+    overallSelect.createEl("option", { value: "", text: "(No judgement)" });
+    for (const o of ROB_OVERALL) overallSelect.createEl("option", { value: o, text: o });
+    overallSelect.value = typeof entry.item.rob_overall === "string" ? entry.item.rob_overall : "";
+    robField(overallSelect, "rob_overall");
+    const robNote = robRow.createEl("input", { type: "text", placeholder: "Risk-of-bias note" });
+    robNote.value = typeof entry.item.rob_note === "string" ? entry.item.rob_note : "";
+    robField(robNote, "rob_note");
+
     controls.createDiv({ text: "Screening note", cls: "srag-count" });
     this.noteInput = controls.createEl("textarea", { cls: "srag-chat-input" });
     this.noteInput.value = this.working.note;
@@ -272,7 +295,48 @@ export class ScreeningView extends ItemView {
     };
   }
 
+  /** The one mtime-guarded write: refuses (and reloads) when the note changed since it was shown. */
+  private async writeFields(item: QueueItem, fields: ScreeningFields): Promise<boolean> {
+    const fresh = this.plugin.app.vault.getAbstractFileByPath(item.file.path);
+    if (!(fresh instanceof TFile) || (this.loadedMtime !== null && fresh.stat.mtime !== this.loadedMtime)) {
+      new Notice("This note changed on disk — reloading it instead of overwriting.");
+      this.recompute();
+      return false;
+    }
+    try {
+      await this.plugin.app.fileManager.processFrontMatter(fresh, (fm: Record<string, unknown>) => {
+        applyScreening(fm, fields);
+      });
+    } catch (e) {
+      this.errorEl.setText(e instanceof Error ? e.message : String(e));
+      return false;
+    }
+    return true;
+  }
+
+  /** Save the risk-of-bias row; stays on the same record. */
+  private saveRob(fields: ScreeningFields, citekey: string): Promise<void> {
+    this.robSave = this.robSave.then(() => this.doSaveRob(fields, citekey));
+    return this.robSave;
+  }
+
+  private async doSaveRob(fields: ScreeningFields, citekey: string): Promise<void> {
+    const item = this.queue[this.index];
+    if (this.writing || !item || item.citekey !== citekey) return;
+    this.errorEl.setText("");
+    this.writing = true;
+    try {
+      if (!(await this.writeFields(item, fields))) return;
+      this.plugin.library.invalidateKeyCache();
+      const written = this.plugin.app.vault.getAbstractFileByPath(item.file.path);
+      if (written instanceof TFile) this.loadedMtime = written.stat.mtime;
+    } finally {
+      this.writing = false;
+    }
+  }
+
   private async commit(include: IncludeValue): Promise<void> {
+    await this.robSave;
     if (this.writing) return;
     const item = this.queue[this.index];
     if (!item) return;
@@ -288,20 +352,7 @@ export class ScreeningView extends ItemView {
     this.errorEl.setText("");
     this.writing = true;
     try {
-      const fresh = this.plugin.app.vault.getAbstractFileByPath(item.file.path);
-      if (!(fresh instanceof TFile) || (this.loadedMtime !== null && fresh.stat.mtime !== this.loadedMtime)) {
-        new Notice("This note changed on disk — reloading it instead of overwriting.");
-        this.recompute();
-        return;
-      }
-      try {
-        await this.plugin.app.fileManager.processFrontMatter(fresh, (fm: Record<string, unknown>) => {
-          applyScreening(fm, this.buildFields(include));
-        });
-      } catch (e) {
-        this.errorEl.setText(e instanceof Error ? e.message : String(e));
-        return;
-      }
+      if (!(await this.writeFields(item, this.buildFields(include)))) return;
       this.plugin.library.invalidateKeyCache();
       const key = item.citekey;
       // metadataCache re-parses the note asynchronously, so entries() still holds the old

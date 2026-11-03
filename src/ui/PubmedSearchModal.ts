@@ -6,8 +6,9 @@ import { LLMClient } from "../llm/client";
 import { mapPool, poolWidth } from "../util/pool";
 import { startBatch, cancelBatch, Batch } from "./progress";
 import { summarizeSource } from "../ingest/summarize";
+import { searchLogNote, suffixedPath, SEARCH_LOG_FOLDER } from "../data/searchLog";
 import {
-  searchPubmed,
+  searchPubmedPage,
   fetchPubmedRecord,
   fetchPmcFullText,
   buildTagsWithMesh,
@@ -28,6 +29,8 @@ export class PubmedSearchModal extends Modal {
   private footerEl!: HTMLDivElement;
   private addBtn: ButtonComponent | null = null;
   private batch: Batch | null = null;
+  /** The search the shown results came from — the query box may have been edited since. */
+  private searched: { query: string; total: number; pmids: string[] } | null = null;
 
   constructor(app: App, plugin: ScholarRagPlugin) {
     super(app);
@@ -84,14 +87,16 @@ export class PubmedSearchModal extends Modal {
     this.resultsEl.empty();
     this.footerEl.empty();
     this.rows = [];
+    this.searched = null;
     const loading = this.resultsEl.createEl("p", { text: `Searching PubMed for "${q}"…` });
     try {
-      const hits = await searchPubmed(q, {
+      const { hits, total } = await searchPubmedPage(q, {
         n: this.maxResults,
         apiKey: this.plugin.settings.pubmedApiKey,
         email: this.plugin.settings.openalexMailto,
       });
       loading.remove();
+      this.searched = { query: q, total, pmids: hits.map((h) => h.pmid) };
       if (!hits.length) {
         this.resultsEl.createEl("p", { text: "No results." });
         return;
@@ -163,6 +168,30 @@ export class PubmedSearchModal extends Modal {
     this.addBtn?.setButtonText("Add selected");
   }
 
+  /** One Markdown record per search run (PRISMA-S). Never blocks or fails the import. */
+  private async writeSearchLog(imported: string[]): Promise<void> {
+    const s = this.searched;
+    if (!s) return;
+    try {
+      const { path, content } = searchLogNote({
+        source: "PubMed",
+        query: s.query,
+        date: new Date().toISOString(),
+        total: s.total,
+        returnedPmids: s.pmids,
+        importedPmids: imported,
+      });
+      const vault = this.app.vault;
+      if (!vault.getAbstractFileByPath(SEARCH_LOG_FOLDER)) await vault.createFolder(SEARCH_LOG_FOLDER);
+      let n = 1;
+      while (vault.getAbstractFileByPath(suffixedPath(path, n))) n++;
+      await vault.create(suffixedPath(path, n), content);
+    } catch (e) {
+      console.error("[Refwright] search log failed", e);
+      new Notice(`Search log not saved: ${errMsg(e)}`);
+    }
+  }
+
   private async addSelected(): Promise<void> {
     const chosen = this.rows.filter((r) => r.checkbox.checked).map((r) => r.hit);
     if (!chosen.length) {
@@ -190,6 +219,7 @@ export class PubmedSearchModal extends Modal {
     let failed = 0;
     let added = 0;
     let lastFile = null as import("obsidian").TFile | null;
+    const importedPmids: string[] = [];
 
     // The slow half — one PubMed record, maybe a PMC full text, and the summary — runs several
     // papers at a time. The vault writes afterwards stay sequential.
@@ -256,7 +286,9 @@ export class PubmedSearchModal extends Modal {
       if (this.plugin.library.findDuplicate(p.item)) continue;
       lastFile = await this.plugin.library.createReference(p.item, p.opts);
       added++;
+      importedPmids.push(p.hit.pmid);
     }
+    await this.writeSearchLog(importedPmids);
 
     const notStarted = fresh.length - done;
     const summary =

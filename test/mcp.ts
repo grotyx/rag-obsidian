@@ -261,6 +261,11 @@ async function serviceChecks(): Promise<void> {
     "read_note", "create_note", "update_note", "replace_in_note", "move_note",
     "trash_note", "compile_manuscript", "set_reference_fields",
   ]);
+  const robSchema = (MCP_TOOLS.find((t) => t.name === "set_reference_fields")!.inputSchema as any).properties.fields.properties;
+  assert.deepEqual(robSchema.rob_tool.enum, ["RoB 2", "ROBINS-I", "QUADAS-2", "NOS", "AMSTAR 2", "other", ""]);
+  assert.deepEqual(robSchema.rob_overall.enum, ["low", "some concerns", "moderate", "serious", "critical", "high", "unclear", ""]);
+  assert.equal(robSchema.rob_note.type, "string");
+  assert.deepEqual((MCP_TOOLS.find((t) => t.name === "list_references")!.inputSchema as any).properties.rob_overall.enum, ["low", "some concerns", "moderate", "serious", "critical", "high", "unclear"]);
   assert.equal(MCP_TOOLS.find((t) => t.name === "search_library")?.annotations?.readOnlyHint, true);
   assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
   const libraryOnly = mcpToolsFor(false).map((t) => t.name);
@@ -478,6 +483,15 @@ async function serviceChecks(): Promise<void> {
   assert.equal(truncated.results.length, 2);
   assert.equal(truncated.totalCount, 500);
   assert.equal(truncated.truncated, true, "totalCount above the returned page means truncated");
+
+  const logged = await service.callTool("search_pubmed", { query: "trial", year_from: 2020, log: true }) as any;
+  assert.match(logged.logPath, /^Searches\/\d{4}-\d{2}-\d{2} \d{4} PubMed - trial\.md$/);
+  const logFile = fake.files.get(logged.logPath);
+  assert.ok(logFile && /type: search-log/.test(logFile.content) && /year_from: 2020/.test(logFile.content) && /imported: 0/.test(logFile.content), "log note written through the vault");
+  const loggedAgain = await service.callTool("search_pubmed", { query: "trial", year_from: 2020, log: true }) as any;
+  assert.match(loggedAgain.logPath, / 2\.md$/, "same-minute collision gets a numeric suffix");
+  assert.equal(((await service.callTool("search_pubmed", { query: "trial", log: false })) as any).logPath, undefined, "log:false writes nothing");
+  await assert.rejects(() => service.callTool("search_pubmed", { query: "trial", log: "yes" }), /INVALID_ARGUMENT/);
 
   await assert.rejects(() => service.callTool("add_reference", { identifier: "123" }), /explicit PMID/i);
   await assert.rejects(() => service.callTool("add_reference", { identifier: "a title" }), /explicit identifier/i);
@@ -778,6 +792,30 @@ async function screeningFieldChecks(): Promise<void> {
   assert.equal(cleared.fields.guideline, null, "an empty guideline removes the field");
   included.hash = cleared.hash;
 
+  const rob = await service.callTool("set_reference_fields", {
+    citekey: "kq2024", expected_hash: included.hash,
+    fields: { rob_tool: "RoB 2", rob_overall: "some concerns", rob_note: " randomisation unclear " },
+  }) as any;
+  assert.equal(rob.fields.rob_tool, "RoB 2");
+  assert.equal(rob.fields.rob_overall, "some concerns");
+  assert.equal(rob.fields.rob_note, "randomisation unclear");
+  assert.ok(!rob.tags.includes("RoB 2") && !rob.tags.includes("some concerns"), "rob fields are never mirrored into tags");
+  await assert.rejects(
+    () => service.callTool("set_reference_fields", { citekey: "kq2024", expected_hash: rob.hash, fields: { rob_overall: "fine" } }),
+    /INVALID_ARGUMENT: rob_overall must be one of/
+  );
+  await assert.rejects(
+    () => service.callTool("set_reference_fields", { citekey: "kq2024", expected_hash: rob.hash, fields: { rob_tool: "Cochrane" } }),
+    /INVALID_ARGUMENT: rob_tool must be one of/
+  );
+  const robCleared = await service.callTool("set_reference_fields", {
+    citekey: "kq2024", expected_hash: rob.hash, fields: { rob_overall: "", rob_note: "" },
+  }) as any;
+  assert.equal(robCleared.fields.rob_overall, null, "an empty rob_overall removes the field");
+  assert.equal(robCleared.fields.rob_note, null);
+  assert.equal(robCleared.fields.rob_tool, "RoB 2", "rob_tool, not named, is untouched");
+  included.hash = robCleared.hash;
+
   const retagged = await service.callTool("set_reference_fields", {
     citekey: "kq2024", expected_hash: included.hash,
     fields: { add_tags: ["extra-tag"], remove_tags: ["existing-tag"] },
@@ -785,7 +823,7 @@ async function screeningFieldChecks(): Promise<void> {
   assert.ok(retagged.tags.includes("extra-tag"));
   assert.ok(!retagged.tags.includes("existing-tag"), "remove_tags takes effect");
 
-  const withScreening = { ...item, kq: ["1"], include: "include", level: "2", design: "rct", guideline: "BE" };
+  const withScreening = { ...item, kq: ["1"], include: "include", level: "2", design: "rct", guideline: "BE", rob_tool: "RoB 2", rob_overall: "high" };
   const screenedService = new McpService(
     { ...plugin, library: { ...plugin.library, entries: () => [{ citekey: "kq2024", item: withScreening, file, year: "2024", authors: "", title: "Trial" }] } },
     vault
@@ -806,10 +844,16 @@ async function screeningFieldChecks(): Promise<void> {
   assert.equal(await count({ guideline: "BE" }), 1);
   assert.equal(await count({ guideline: "XX" }), 0);
   assert.equal(await count({ kq: "1", include: "include", guideline: "BE" }), 1, "filters combine with AND");
+  assert.equal(listed.rob_tool, "RoB 2", "list_references surfaces rob_tool");
+  assert.equal(listed.rob_overall, "high", "list_references surfaces rob_overall");
+  assert.equal(await count({ rob_overall: "high" }), 1);
+  assert.equal(await count({ rob_overall: "low" }), 0);
+  assert.equal(await count({ include: "include", rob_overall: "high" }), 1, "rob_overall combines with the other filters");
+  await assert.rejects(() => screenedService.callTool("list_references", { rob_overall: "bad" }), /INVALID_ARGUMENT/);
   await assert.rejects(() => screenedService.callTool("list_references", { include: "maybe" }), /INVALID_ARGUMENT/);
 
   const engineFields = (CiteEngine as unknown as { PLUGIN_FIELDS: Set<string> }).PLUGIN_FIELDS;
-  for (const key of ["kq", "include", "level", "design", "screening_note", "guideline", "search_chunk", "sweep_category", "imported_from"]) {
+  for (const key of ["kq", "include", "level", "design", "screening_note", "guideline", "rob_tool", "rob_overall", "rob_note", "search_chunk", "sweep_category", "imported_from"]) {
     assert.ok(engineFields.has(key), `PLUGIN_FIELDS must strip ${key} from citeproc rendering`);
   }
 }

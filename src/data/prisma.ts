@@ -1,4 +1,5 @@
 import { EXCLUDE_REASONS } from "./screening";
+import { SearchLogSummary, searchLogTotals } from "./searchLog";
 
 /** The one slice of a reference an in-scope PRISMA count needs — the caller (the command layer,
  *  which has vault access) projects `library.entries()` down to this before calling `prismaCounts`. */
@@ -72,7 +73,7 @@ export function prismaCounts(
 /** A PRISMA 2020-style flow diagram (Mermaid `flowchart TD`, identification/screening/included
  *  blocks with exclusions off to the side) plus a plain table of the same numbers, so the counts
  *  survive an export that drops the diagram. */
-export function prismaMarkdown(counts: PrismaCounts, scopeLabel: string, date: string): string {
+export function prismaMarkdown(counts: PrismaCounts, scopeLabel: string, date: string, searchLogs: SearchLogSummary[] = []): string {
   const c = counts;
   const reasonLines = c.exclusionReasons.length
     ? c.exclusionReasons.map((r) => `| ${r.reason} | ${r.count} |`).join("\n")
@@ -119,6 +120,24 @@ export function prismaMarkdown(counts: PrismaCounts, scopeLabel: string, date: s
     `| Studies included in review | ${c.studiesIncluded} |`,
   ].join("\n");
 
+  // From the notes under Searches/, whatever the scope: they record what the databases returned,
+  // not what is in the library, so they sit beside the counts above rather than replacing them.
+  const cell = (s: string): string => s.replace(/\s+/g, " ").replace(/\|/g, "\\|");
+  const logSection = searchLogs.length
+    ? [
+        "## Records identified through database searching (from search logs)",
+        "",
+        "Summed from the search-log notes in `Searches/`, not from the library. Not limited to the scope above.",
+        "",
+        ...searchLogTotals(searchLogs).map((t) => `- ${t.source}: ${t.total}`),
+        "",
+        "| Source | Date | Query | Matches |",
+        "|---|---|---|---|",
+        ...searchLogs.map((l) => `| ${cell(l.source)} | ${l.date.slice(0, 10)} | ${cell(l.query)} | ${l.total} |`),
+        "",
+      ]
+    : [];
+
   return [
     `# PRISMA flow (${scopeLabel})`,
     "",
@@ -136,5 +155,6 @@ export function prismaMarkdown(counts: PrismaCounts, scopeLabel: string, date: s
     "|---|---|",
     reasonLines,
     "",
+    ...logSection,
   ].join("\n");
 }

@@ -29,7 +29,7 @@ import { parseCitingPage, titlesMatch, resolveWork } from "../src/graph/openalex
 import { rerankHttpReason, mmr, parseRerankResponse } from "../src/index/rerank";
 import { requestWithRetry } from "../src/llm/client";
 import { mergeDuplicateGroups } from "../src/commands/merge";
-import { TFile } from "obsidian";
+import { TFile, parseYaml } from "obsidian";
 import {
   buildCliArgs,
   cliCandidates,
@@ -45,8 +45,9 @@ import { windowsCliShimChecks } from "./windows";
 import { cacheRoot, legacyCacheRoot } from "../src/index/localFiles";
 import { pandocCandidates, pandocSuperscripts } from "../src/write/pandoc";
 import { stripFrontmatter, chunkReference } from "../src/index/chunker";
-import { parseFindings, findingText, isRestated } from "../src/data/findings";
-import { referenceProblems, refcheckReport } from "../src/write/refcheck";
+import { parseFindings, findingText, isRestated, Finding } from "../src/data/findings";
+import { evidenceCsv, collectEvidenceRows } from "../src/commands/evidenceExport";
+import { referenceProblems, refcheckReport, problemSeverity, PROBLEM_UNCHECKED, PROBLEM_THIN, PROBLEM_PREPRINT } from "../src/write/refcheck";
 import { parseStyleIndex } from "../src/cite/styleIndex";
 import {
   duplicateGroups,
@@ -92,7 +93,10 @@ import {
 } from "../src/data/reference";
 import { DEFAULT_SETTINGS, effective } from "../src/types";
 import { applyScreening } from "../src/data/screening";
+import { robMarkdown, RobRecord } from "../src/data/rob";
 import { prismaCounts, prismaMarkdown, PrismaRecord } from "../src/data/prisma";
+import { aggregateSnowball, snowballMarkdown, SnowballRecord, SnowballWork } from "../src/data/snowball";
+import { searchLogNote, suffixedPath, parseSearchLog, searchLogTotals } from "../src/data/searchLog";
 
 let passed = 0;
 function check(cond: boolean, label: string): void {
@@ -105,19 +109,42 @@ async function main(): Promise<void> {
 {
   const good = { type: "article-journal", title: "T", author: [{ family: "A" }], issued: { "date-parts": [[2020]] },
     "container-title": "J", volume: "1", page: "1-2", DOI: "10.1/x" };
-  check(referenceProblems(good, {}).length === 0, "refcheck: complete reference has no problems");
+  const OK = { retracted: false };
+  check(referenceProblems(good, OK).length === 0, "refcheck: complete reference has no problems");
   check(referenceProblems(null, {})[0] === "not in the library", "refcheck: missing item");
-  check(referenceProblems(good, { retracted: true }).includes("retracted"), "refcheck: retracted flag");
-  check(referenceProblems({ ...good, DOI: undefined }, {}).includes("no DOI or PMID"), "refcheck: no DOI");
-  check(referenceProblems({ ...good, DOI: undefined, PMID: "1" }, {}).length === 0, "refcheck: PMID suffices");
-  check(referenceProblems({ ...good, title: undefined }, {}).includes("missing title"), "refcheck: title");
-  check(referenceProblems({ ...good, author: [] }, {}).includes("missing authors"), "refcheck: authors");
-  check(referenceProblems({ ...good, issued: undefined }, {}).includes("missing year"), "refcheck: year");
-  check(referenceProblems({ ...good, "container-title": undefined }, {}).includes("missing journal"), "refcheck: journal");
-  check(referenceProblems({ ...good, volume: undefined, page: undefined }, {}).includes("incomplete: volume, pages"), "refcheck: volume/pages");
-  check(referenceProblems({ ...good, type: "book", volume: undefined, "container-title": undefined }, {}).length === 0, "refcheck: volume only for journal articles");
+  check(referenceProblems({ ...good, DOI: undefined }, OK).includes("no DOI or PMID"), "refcheck: no DOI");
+  check(referenceProblems({ ...good, DOI: undefined, PMID: "1" }, OK).length === 0, "refcheck: PMID suffices");
+  check(referenceProblems({ ...good, title: undefined }, OK).includes("missing title"), "refcheck: title");
+  check(referenceProblems({ ...good, author: [] }, OK).includes("missing authors"), "refcheck: authors");
+  check(referenceProblems({ ...good, issued: undefined }, OK).includes("missing year"), "refcheck: year");
+  check(referenceProblems({ ...good, "container-title": undefined }, OK).includes("missing journal"), "refcheck: journal");
+  check(referenceProblems({ ...good, volume: undefined, page: undefined }, OK).includes("incomplete: volume, pages"), "refcheck: volume/pages");
+  check(referenceProblems({ ...good, type: "book", volume: undefined, "container-title": undefined }, OK).length === 0, "refcheck: volume only for journal articles");
   const rep = refcheckReport("ms", [{ key: "a", problems: [] }, { key: "b", problems: ["no DOI or PMID"] }], ["note x"]);
   check(rep.includes("2 cited, 1 with problems") && rep.includes("| `b` | no DOI or PMID |") && !rep.includes("`a`") && rep.includes("- note x"), "refcheckReport: table of problem rows only");
+  const BODY = "## Summary\n\ntext\n";
+  const none = (it: typeof good, fm: Record<string, unknown> = OK, body?: string) => referenceProblems(it, fm, body);
+  check(referenceProblems(good, { retracted: true }).includes("retracted") && referenceProblems(good, { retracted: "true" }).includes("retracted"), "refcheck: retracted flag");
+  check(problemSeverity("retracted") === 0 && problemSeverity("no DOI or PMID") === 1 && problemSeverity(PROBLEM_UNCHECKED) === 2 && problemSeverity(PROBLEM_THIN) === 2, "refcheck: severities");
+  check(referenceProblems(good, { retracted: true }).every((p) => p !== PROBLEM_UNCHECKED), "refcheck: retracted is not 'unchecked'");
+  check(none(good).length === 0 && !none(good).includes(PROBLEM_UNCHECKED), "refcheck: retracted:false counts as checked");
+  check(referenceProblems(good, {}).includes(PROBLEM_UNCHECKED) && referenceProblems(good, { retracted: null }).includes(PROBLEM_UNCHECKED), "refcheck: no retracted field -> unchecked, names the command");
+  check(PROBLEM_UNCHECKED.includes("Check retraction status for all references"), "refcheck: unchecked message names the command");
+  for (const ct of ["medRxiv", "bioRxiv", "arXiv", "Research Square", "SSRN Electronic Journal", "Preprints.org"]) check(none({ ...good, "container-title": ct }).includes(PROBLEM_PREPRINT), `refcheck: preprint by container ${ct}`);
+  check(none({ ...good, publisher: "Cold Spring Harbor: bioRxiv" }).includes(PROBLEM_PREPRINT), "refcheck: preprint by publisher");
+  check(none({ ...good, type: "article" }).includes(PROBLEM_PREPRINT) && none({ ...good, type: "post" }).includes(PROBLEM_PREPRINT), "refcheck: preprint by CSL type");
+  check(!none(good).includes(PROBLEM_PREPRINT), "refcheck: journal article is not a preprint");
+  check(!none(good, OK, BODY).includes(PROBLEM_THIN) && !none(good, OK, "## 요약 (KR)\nx").includes(PROBLEM_THIN), "refcheck: summary block is enough");
+  check(!none(good, OK, "abstract\n\n## Full text (extracted)\n\nlong").includes(PROBLEM_THIN), "refcheck: stashed text is enough");
+  check(none(good, OK, "abstract only\n").includes(PROBLEM_THIN), "refcheck: thin evidence");
+  check(!none(good).includes(PROBLEM_THIN), "refcheck: thin evidence skipped without a body");
+  const sev = refcheckReport("ms", [
+    { key: "r", problems: [PROBLEM_UNCHECKED, "retracted"] },
+    { key: "m", problems: ["no DOI or PMID"] },
+    { key: "l", problems: [PROBLEM_THIN] },
+  ]);
+  check(sev.includes("By severity: 1 retracted, 1 needs attention, 2 low severity.") && sev.indexOf("## Retracted") < sev.indexOf("## Needs attention") && sev.indexOf("## Needs attention") < sev.indexOf("## Low severity"), "refcheckReport: count line and severity order");
+  check(sev.includes("| `r` | retracted |") && sev.includes("| `r` | " + PROBLEM_UNCHECKED + " |"), "refcheckReport: a key's problems split by severity");
   check(refcheckReport("ms", [{ key: "a", problems: [] }]).includes("All 1 references look complete."), "refcheckReport: all complete");
 
   const idx = parseStyleIndex([
@@ -1222,6 +1249,22 @@ check(
   applyScreening(fm4, { guideline: "  " });
   check(!("guideline" in fm4), "applyScreening: blank guideline removes the field");
 
+  // risk of bias: enums validated before anything is written, "" clears, no tags touched.
+  const fmR: Record<string, unknown> = { tags: ["mine"] };
+  const rR = applyScreening(fmR, { rob_tool: "RoB 2", rob_overall: "some concerns", rob_note: "  deviations from protocol  " });
+  check(fmR.rob_tool === "RoB 2" && fmR.rob_overall === "some concerns" && fmR.rob_note === "deviations from protocol", "applyScreening: rob fields stored, note trimmed");
+  check(rR.fields.rob_tool === "RoB 2" && rR.fields.rob_overall === "some concerns" && rR.fields.rob_note === "deviations from protocol", "applyScreening: result reports rob fields");
+  check(rR.tags.length === 1 && rR.tags[0] === "mine", "applyScreening: rob fields add no tags");
+  assert.throws(() => applyScreening(fmR, { rob_tool: "RoB 3", rob_note: "x" }), /rob_tool must be one of/, "applyScreening: unknown rob_tool rejected");
+  assert.throws(() => applyScreening(fmR, { rob_overall: "fine" }), /rob_overall must be one of/, "applyScreening: unknown rob_overall rejected");
+  check(fmR.rob_tool === "RoB 2" && fmR.rob_note === "deviations from protocol", "applyScreening: rejected rob call wrote nothing");
+  applyScreening(fmR, { rob_overall: "" });
+  check(!("rob_overall" in fmR) && fmR.rob_tool === "RoB 2", "applyScreening: empty rob_overall clears only that field");
+  applyScreening(fmR, { rob_tool: "", rob_note: " " });
+  check(!("rob_tool" in fmR) && !("rob_note" in fmR), "applyScreening: empty rob_tool / blank rob_note clear");
+  applyScreening(fmR, { level: "2" });
+  check(!("rob_tool" in fmR), "applyScreening: untouched rob fields stay untouched");
+
   // legacy mirrored tags are dropped when their field is set, and only then.
   const fm6: Record<string, unknown> = { tags: ["mine", "kq-01", "kq-xyz", "pending", "level-2", "design-rct", "design-foo"] };
   const r6 = applyScreening(fm6, { include: "exclude" });
@@ -1242,6 +1285,31 @@ check(
     "applyScreening: a blank design is rejected"
   );
   check(!("design" in fm5), "applyScreening: rejected design call left fm.design unset");
+}
+
+// ---------- data/rob.ts: robMarkdown ----------
+{
+  const r = (citekey: string, include: string | null, tool: string | null, overall: string | null, note: string | null = null): RobRecord =>
+    ({ citekey, authors: "Kim et al.", year: "2021", include, rob_tool: tool, rob_overall: overall, rob_note: note });
+  const md = robMarkdown([
+    r("b2021", "include", "RoB 2", "low"),
+    r("a2021", "include", "RoB 2", "high", "no blinding | open label"),
+    r("c2021", "include", "ROBINS-I", "serious"),
+    r("d2021", "include", null, null),
+    r("e2021", "include", "NOS", null),
+    r("f2021", "exclude", null, null),
+    r("g2021", "pending", null, "low"),
+  ], "included records", "2026-11-03");
+  check(md.indexOf("## RoB 2") < md.indexOf("## ROBINS-I") && md.indexOf("## NOS") < md.indexOf("## RoB 2"), "robMarkdown: one table per tool, sorted");
+  check(md.indexOf("[@a2021]") < md.indexOf("[@b2021]"), "robMarkdown: rows sorted by citekey");
+  check(md.includes("| [@a2021] | Kim et al. 2021 | high | no blinding \\| open label |"), "robMarkdown: row cells, pipe escaped");
+  check(md.includes("## Tool not set") && md.includes("[@g2021]"), "robMarkdown: judgement without a tool gets its own table");
+  check(md.includes("| low | 2 |") && md.includes("| high | 1 |") && md.includes("| serious | 1 |") && md.includes("| (not set) | 1 |"), "robMarkdown: count per judgement");
+  const missing = md.slice(md.indexOf("## Included records without an assessment"));
+  check(missing.includes("(2)") && missing.includes("- [@d2021]") && missing.includes("- [@e2021] (tool: NOS)"), "robMarkdown: unassessed included records listed");
+  check(!missing.includes("f2021") && !missing.includes("g2021") && !missing.includes("a2021"), "robMarkdown: excluded, pending and assessed records not listed as missing");
+  const empty = robMarkdown([], "all references", "2026-11-03");
+  check(empty.includes("No risk-of-bias assessments yet.") && empty.includes("None."), "robMarkdown: empty scope reads cleanly");
 }
 
 // ---------- data/prisma.ts: prismaCounts / prismaMarkdown ----------
@@ -1289,6 +1357,43 @@ check(
   const brokenDupGroups: string[][] = [];
   const brokenCounts = prismaCounts(records, brokenDupGroups, (r) => fullText.has(r.citekey));
   check(brokenCounts.recordsScreened === 7, "prismaCounts mutation check: no dup groups -> nothing removed");
+}
+
+// ---------- data/searchLog.ts: search-log note + PRISMA search-log section ----------
+{
+  const date = new Date(2026, 10, 3, 14, 5).toISOString();
+  const entry = {
+    source: "PubMed", query: 'biportal  endoscop*: "discectomy" / outcomes?', year_from: 2020, year_to: 2025,
+    date, total: 412, returnedPmids: ["111", "222", "333"], importedPmids: ["111", "333"],
+  };
+  const { path, content } = searchLogNote(entry);
+  check(path === "Searches/2026-11-03 1405 PubMed - biportal endoscop discectomy outcomes.md", `searchLogNote: path (${path})`);
+  check(!/[\\:?"<>|]/.test(path.slice("Searches/".length)), "searchLogNote: no illegal filename characters");
+  const longPath = searchLogNote({ ...entry, query: "a".repeat(100) }).path;
+  check(longPath.endsWith(` - ${"a".repeat(60)}.md`), "searchLogNote: query capped at 60 chars in the name");
+  const fm = parseYaml(content.split("---")[1]) as Record<string, unknown>;
+  check(fm.type === "search-log" && fm.source === "PubMed" && fm.query === entry.query && fm.date === date, "searchLogNote: frontmatter identity fields");
+  check(fm.year_from === 2020 && fm.year_to === 2025 && fm.total === 412 && fm.returned === 3 && fm.imported === 2, "searchLogNote: frontmatter filters and counts");
+  check(content.includes("```\n" + entry.query + "\n```"), "searchLogNote: exact query in a code block");
+  check(content.includes("- [PMID 111](https://pubmed.ncbi.nlm.nih.gov/111/)") && !content.includes("[PMID 222]"), "searchLogNote: imported PMIDs linked, unimported not");
+  check(content.includes("publication year 2020 to 2025"), "searchLogNote: filters in the body");
+  const bare = searchLogNote({ ...entry, year_from: undefined, year_to: undefined, importedPmids: [] });
+  const bareFm = parseYaml(bare.content.split("---")[1]) as Record<string, unknown>;
+  check(!("year_from" in bareFm) && !("year_to" in bareFm) && bareFm.imported === 0, "searchLogNote: no year keys when unfiltered, imported 0");
+  check(suffixedPath(path, 1) === path && suffixedPath(path, 2).endsWith(" 2.md"), "suffixedPath: numeric suffix from 2");
+
+  const summary = parseSearchLog(fm);
+  check(summary?.total === 412 && summary.source === "PubMed", "parseSearchLog: reads a log's frontmatter");
+  check(parseSearchLog({ type: "reference", total: 5 }) === null, "parseSearchLog: ignores other notes");
+  const logs = [summary!, { ...summary!, total: 8 }, { source: "Embase", date, query: "q", total: 5 }];
+  const totals = searchLogTotals(logs);
+  check(totals.length === 2 && totals[0].total === 420 && totals[1].source === "Embase", "searchLogTotals: sums per source");
+
+  const counts = prismaCounts([{ citekey: "a2020", include: "include" }], [], () => true);
+  const withLogs = prismaMarkdown(counts, "all references", "2026-11-03", logs);
+  check(withLogs.includes("from search logs") && withLogs.includes("- PubMed: 420") && withLogs.includes("- Embase: 5"), "prismaMarkdown: search-log totals per source");
+  check(withLogs.includes("| Records identified | 1 |"), "prismaMarkdown: existing counts unchanged beside the log totals");
+  check(!prismaMarkdown(counts, "all references", "2026-11-03").includes("search logs"), "prismaMarkdown: no log section without logs");
 }
 
 // ---------- index/providers/ollama.ts: embed() rejects a non-finite value in the payload ----------
@@ -1939,6 +2044,60 @@ check(
     }) as never;
     const r3 = await mergeDuplicateGroups(h3.plugin as never, [h3.plan]);
     check(r3.skippedChanged === 1 && !h3.files.get(h3.keeper.path)!.text.includes("loser text") && h3.trashed.length === 0, "mergeDuplicateGroups: a loser edited after its text was copied abandons the group");
+  }
+
+  // ---------- commands/evidenceExport.ts: CSV + row collection ----------
+  {
+    const base = { citekey: "k1", author: "Kim", year: "2020", title: "T, with comma", doi: "10.1/x", pmid: "1", kq: "KQ1; KQ2", include: "include", design: "RCT", level: "1" };
+    const fa: Finding = { kind: "comparative", outcome: "fusion rate", quote: 'He said "96%", then\nleft; 한글 근거 문장', effect: "96%" };
+    const fb: Finding = { kind: "prognostic", outcome: "reop", quote: "Older had more.", predictor: "age > 65", p: "0.01" };
+    const csv = evidenceCsv([{ ...base, finding: fa }, { ...base, citekey: "k2", title: "척추 유합", finding: fb }]);
+    check(csv.charCodeAt(0) === 0xfeff, "evidenceCsv: starts with a UTF-8 BOM");
+    const head = csv.slice(1).split("\r\n")[0];
+    check(head === "citekey,first_author,year,title,doi,pmid,kq,include,design,level,kind,outcome,effect,predictor,p,quote", "evidenceCsv: reference columns, union of finding keys in first-seen order, quote last");
+    check(csv.includes('"T, with comma"'), "evidenceCsv: a comma-bearing field is quoted");
+    check(csv.includes('"He said ""96%"", then\nleft; 한글 근거 문장"'), "evidenceCsv: quote with quotes, comma, newline and Korean is copied verbatim, quotes doubled");
+    check(csv.includes(",척추 유합,") && csv.includes(",96%,,,"), "evidenceCsv: Korean unquoted, absent keys left empty");
+    check(csv.endsWith("Older had more.\r\n") && csv.slice(1).split("\r\n").length === 4, "evidenceCsv: CRLF rows, one row per finding");
+
+    const NOTE = (n: string) => `---\ncitekey: x\n---\n\n## Evidence (extracted)\n\n> - [kind:: comparative] [outcome:: o${n}]\n>   "q${n}"\n`;
+    const mk = (path: string, item: Record<string, unknown>, body: string) => ({ citekey: String(item.citekey), file: Object.assign(new TFile(path), { stat: { mtime: 1 } }), item, body });
+    const ents = [
+      mk("References/A/a1.md", { citekey: "a1", author: [{ family: "Lee" }], issued: { "date-parts": [[2021]] }, title: "A1", DOI: "10.2/a", PMID: "22", kq: ["KQ1", "KQ3"], include: "include", tags: ["spine"] }, NOTE("1")),
+      mk("References/B/b1.md", { citekey: "b1", title: "B1" }, "---\ncitekey: b1\n---\n\nno evidence"),
+      mk("References/B/b2.md", { citekey: "b2", title: "B2", tags: ["spine"] }, NOTE("2")),
+    ];
+    const bodies = new Map(ents.map((e) => [e.file.path, e.body]));
+    const plug = { library: { entries: () => ents }, app: { vault: { cachedRead: async (f: TFile) => bodies.get(f.path)! } } };
+    const all = await collectEvidenceRows(plug as never, { kind: "all" });
+    check(all.rows.length === 2 && all.papers === 2 && all.rows[0].author === "Lee" && all.rows[0].year === "2021" && all.rows[0].kq === "KQ1; KQ3" && all.rows[0].doi === "10.2/a" && all.rows[0].pmid === "22" && all.rows[1].year === "", "collectEvidenceRows: reference fields mapped, papers without findings skipped");
+    const fold = await collectEvidenceRows(plug as never, { kind: "folder", folder: "References/B" });
+    const tag = await collectEvidenceRows(plug as never, { kind: "tag", tag: "#Spine" });
+    check(fold.rows.length === 1 && fold.rows[0].citekey === "b2" && tag.rows.length === 2, "collectEvidenceRows: folder and tag scope");
+    const none = await collectEvidenceRows(plug as never, { kind: "folder", folder: "References/C" });
+    check(none.rows.length === 0 && none.papers === 0, "collectEvidenceRows: empty scope -> no rows");
+  }
+
+  // ---------- data/snowball.ts: aggregation ----------
+  {
+    const recs: SnowballRecord[] = [
+      { citekey: "a", selfId: "WA", referenced: ["W1", "W2", "WB", "W1"], citing: [{ id: "W3", title: "Three", year: 2020 }, { id: "W4", title: "Four", year: 2023 }] },
+      { citekey: "b", selfId: "WB", referenced: ["W1", "W5", "WA"], citing: [{ id: "W3", title: "Three", year: 2020 }, { id: "W6", title: "Six", year: 2021, doi: "10.1/known" }] },
+    ];
+    const known = (w: SnowballWork): boolean => w.id === "W2" || w.doi === "10.1/known";
+    const out = aggregateSnowball(recs, known);
+    const ids = out.map((c) => c.id);
+    check(!ids.includes("WA") && !ids.includes("WB"), "snowball: included records are never candidates");
+    check(!ids.includes("W2") && !ids.includes("W6"), "snowball: works already in the library are dropped (by id and by DOI)");
+    check(ids.join(",") === "W3,W1,W4,W5", `snowball: ranked by links then year desc (${ids.join(",")})`);
+    const w1 = out.find((c) => c.id === "W1")!;
+    check(w1.citedBy.join() === "a,b" && w1.cites.length === 0, "snowball: backward link counts each record once, duplicates collapse");
+    const w3 = out.find((c) => c.id === "W3")!;
+    check(w3.cites.join() === "a,b" && w3.title === "Three" && w3.year === 2020, "snowball: forward link carries both records and the metadata");
+    const mix = aggregateSnowball([{ citekey: "a", selfId: "WA", referenced: ["W9"], citing: [{ id: "W9", title: "Nine", year: 2019 }] }], () => false)[0];
+    check(mix.citedBy.length === 1 && mix.cites.length === 1 && mix.title === "Nine", "snowball: a work both cited and citing merges into one row");
+    const md = snowballMarkdown({ scope: "all included records", processed: 2, failures: 1, date: "2026-11-03 14:30" }, out);
+    check(md.includes("not for citing directly") && md.includes("newest 100") && md.includes("[W1](https://openalex.org/W1)") && md.includes("cited by: a, b"), "snowballMarkdown: provenance, caveat and rows");
   }
 
 console.log(`unit: all ${passed} assertions passed`);

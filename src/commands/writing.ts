@@ -12,7 +12,7 @@ import { renderCompiledManuscript } from "../write/manuscript";
 import { exportDocx, findPandoc } from "../write/docx";
 import { stripFrontmatter } from "../index/chunker";
 import { StyleSuggestModal } from "../ui/StyleSuggestModal";
-import { referenceProblems, refcheckReport } from "../write/refcheck";
+import { referenceProblems, refcheckReport, PROBLEM_RETRACTED, PROBLEM_UNCHECKED } from "../write/refcheck";
 import { checkRetraction } from "../ingest/retraction";
 import { mapPool } from "../util/pool";
 import { RETRACTION_POOL_WIDTH } from "./openaccess";
@@ -332,8 +332,14 @@ export async function checkManuscriptReferences(plugin: ScholarRagPlugin): Promi
     const f = byKey.get(k)?.file;
     return f ? rec(plugin.app.metadataCache.getFileCache(f)?.frontmatter) : {};
   };
-  const rows = keys.map((key) => ({ key, problems: referenceProblems(byKey.get(key)?.item ?? null, fmOf(key)) }));
-  const toCheck = rows.filter((r) => byKey.has(r.key) && !r.problems.includes("retracted"));
+  const rows = await Promise.all(
+    keys.map(async (key) => {
+      const f = byKey.get(key)?.file;
+      const body = f ? await plugin.app.vault.cachedRead(f) : undefined;
+      return { key, problems: referenceProblems(byKey.get(key)?.item ?? null, fmOf(key), body) };
+    }),
+  );
+  const toCheck = rows.filter((r) => byKey.has(r.key) && !r.problems.includes(PROBLEM_RETRACTED));
   const notice = new Notice(`Checking ${keys.length} references…`, 0);
   let failed = 0;
   try {
@@ -341,7 +347,11 @@ export async function checkManuscriptReferences(plugin: ScholarRagPlugin): Promi
       try {
         const res = await checkRetraction(byKey.get(r.key)!.item, plugin.settings.openalexMailto);
         if (!res) failed++; // no identifier OpenAlex knows, or the lookup failed (429/5xx)
-        else if (res.retracted) r.problems.unshift("retracted");
+        else {
+          // the live lookup just answered, so "not checked yet" no longer holds
+          r.problems = r.problems.filter((p) => p !== PROBLEM_UNCHECKED);
+          if (res.retracted) r.problems.unshift(PROBLEM_RETRACTED);
+        }
       } catch {
         failed++;
       }

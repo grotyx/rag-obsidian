@@ -43,6 +43,12 @@ export const EXCLUDE_REASONS = [
   "Other",
 ] as const;
 
+/** Risk-of-bias tools (stored in `rob_tool`). */
+export const ROB_TOOLS = ["RoB 2", "ROBINS-I", "QUADAS-2", "NOS", "AMSTAR 2", "other"] as const;
+
+/** Overall risk-of-bias judgements (stored in `rob_overall`); each tool uses its own subset. */
+export const ROB_OVERALL = ["low", "some concerns", "moderate", "serious", "critical", "high", "unclear"] as const;
+
 export interface ScreeningFields {
   kq?: string[];
   include?: IncludeValue;
@@ -51,6 +57,11 @@ export interface ScreeningFields {
   screening_note?: string;
   /** Guideline the record was screened for (e.g. "BE"); empty string clears it. */
   guideline?: string;
+  /** Risk-of-bias assessment: tool and overall judgement (enums above), free-text note. For all
+   *  three an empty string clears the field, like `guideline`. */
+  rob_tool?: string;
+  rob_overall?: string;
+  rob_note?: string;
   add_tags?: string[];
   remove_tags?: string[];
 }
@@ -64,6 +75,9 @@ export interface ScreeningResult {
     design: string | null;
     screening_note: string | null;
     guideline: string | null;
+    rob_tool: string | null;
+    rob_overall: string | null;
+    rob_note: string | null;
   };
 }
 
@@ -95,6 +109,15 @@ export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFie
   if (fields.design !== undefined && (typeof fields.design !== "string" || !fields.design.trim())) {
     throw new Error("INVALID_ARGUMENT: design must be a non-empty string");
   }
+  for (const [name, allowed] of [["rob_tool", ROB_TOOLS], ["rob_overall", ROB_OVERALL]] as const) {
+    const v = fields[name];
+    if (v !== undefined && v !== "" && !(allowed as readonly unknown[]).includes(v)) {
+      throw new Error(`INVALID_ARGUMENT: ${name} must be one of ${allowed.join(", ")} (or empty to clear)`);
+    }
+  }
+  if (fields.rob_note !== undefined && typeof fields.rob_note !== "string") {
+    throw new Error("INVALID_ARGUMENT: rob_note must be a string");
+  }
 
   if (fields.kq !== undefined) {
     fm.kq = fields.kq;
@@ -118,6 +141,12 @@ export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFie
     if (g) fm.guideline = g;
     else delete fm.guideline;
   }
+  for (const name of ["rob_tool", "rob_overall", "rob_note"] as const) {
+    const v = fields[name]?.trim();
+    if (v === undefined) continue;
+    if (v) fm[name] = v;
+    else delete fm[name];
+  }
   if (fields.add_tags) for (const t of keywordsToTags(fields.add_tags)) addTag(t);
   if (fields.remove_tags) {
     const drop = new Set(keywordsToTags(fields.remove_tags));
@@ -134,6 +163,9 @@ export function applyScreening(fm: Record<string, unknown>, fields: ScreeningFie
       design: typeof fm.design === "string" ? fm.design : null,
       screening_note: typeof fm.screening_note === "string" ? fm.screening_note : null,
       guideline: typeof fm.guideline === "string" ? fm.guideline : null,
+      rob_tool: typeof fm.rob_tool === "string" ? fm.rob_tool : null,
+      rob_overall: typeof fm.rob_overall === "string" ? fm.rob_overall : null,
+      rob_note: typeof fm.rob_note === "string" ? fm.rob_note : null,
     },
   };
 }

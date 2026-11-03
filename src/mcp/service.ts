@@ -6,7 +6,8 @@ import { STASH_MARKER, stashedText } from "../ingest/pdfStash";
 import { SearchFilters } from "../index/store";
 import type { RerankOutcome } from "../index/manager";
 import { summaryBlock, keywordsToTags } from "../data/reference";
-import { applyScreening, INCLUDE_VALUES, LEVELS, ScreeningFields } from "../data/screening";
+import { applyScreening, INCLUDE_VALUES, LEVELS, ROB_OVERALL, ROB_TOOLS, ScreeningFields } from "../data/screening";
+import { searchLogNote, suffixedPath } from "../data/searchLog";
 import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
@@ -73,7 +74,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "list_references",
-    description: "List reference metadata without model or network calls. Use to browse known papers, filtering by metadata, tags or screening fields (kq, include, guideline); use search_library for evidence passages.",
+    description: "List reference metadata without model or network calls. Use to browse known papers, filtering by metadata, tags or screening fields (kq, include, guideline, rob_overall); use search_library for evidence passages.",
     inputSchema: objectSchema({
       limit: integer("Page size.", 1, 100), cursor: string("Path cursor returned by the previous page."),
       status: string("Reading status."), year_from: integer("Earliest publication year.", 1000, 3000),
@@ -82,6 +83,7 @@ export const MCP_TOOLS: McpTool[] = [
       kq: string("Key-question id the reference's kq field must contain, e.g. \"3\" (matches \"03\")."),
       include: { type: "string", enum: [...INCLUDE_VALUES], description: "Screening decision the include field must equal." },
       guideline: string("Guideline the reference's guideline field must equal, e.g. \"BE\"."),
+      rob_overall: { type: "string", enum: [...ROB_OVERALL], description: "Risk-of-bias judgement the rob_overall field must equal." },
     }), annotations: readOnly,
   },
   {
@@ -118,11 +120,12 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "search_pubmed",
-    description: "Search PubMed when local evidence is missing. Results are relevance-sorted, capped at limit (max 150); when the returned truncated is true, the query matched more than was returned — narrow it (e.g. a shorter [dp] date range) rather than assume this call saw everything. Review results, then pass an explicit PMID to add_reference. Does not add or summarize papers.",
+    description: "Search PubMed when local evidence is missing. Results are relevance-sorted, capped at limit (max 150); when the returned truncated is true, the query matched more than was returned — narrow it (e.g. a shorter [dp] date range) rather than assume this call saw everything. Review results, then pass an explicit PMID to add_reference. Does not add or summarize papers. With log=true it also writes a search-log note under Searches/ (exact query, date, filters, total, returned PMIDs) and returns logPath.",
     inputSchema: objectSchema({
       query: string("PubMed query."), limit: integer("Maximum results.", 1, 150),
       year_from: integer("Earliest publication year.", 1000, 3000), year_to: integer("Latest publication year.", 1000, 3000),
-    }, ["query"]), annotations: { ...readOnly, openWorldHint: true },
+      log: { type: "boolean", description: "Write a Searches/ log note for this search (PRISMA-S). Default false." },
+    }, ["query"]), annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
   },
   {
     name: "add_reference",
@@ -186,7 +189,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "set_reference_fields",
-    description: "Set screening fields on a reference (key questions, include/exclude/pending decision, evidence level, study design, a free-text note) for a systematic-review workflow. Results are stored in the note's own fields (kq, include, level, design, screening_note, guideline), not in tags; filter with list_references. Setting a field also removes the legacy mirrored tag (kq-*, include/exclude/pending, level-*, design-*). Hash-guarded like the note-edit tools; get the current hash from get_reference or a prior call's result.",
+    description: "Set screening fields on a reference (key questions, include/exclude/pending decision, evidence level, study design, a free-text note, a risk-of-bias assessment) for a systematic-review workflow. Results are stored in the note's own fields (kq, include, level, design, screening_note, guideline, rob_tool, rob_overall, rob_note), not in tags; filter with list_references. Setting a field also removes the legacy mirrored tag (kq-*, include/exclude/pending, level-*, design-*). Hash-guarded like the note-edit tools; get the current hash from get_reference or a prior call's result.",
     inputSchema: objectSchema({
       citekey: string("Exact citekey returned by another library tool."),
       expected_hash: string("Whole-note SHA-256 from get_reference or a prior set_reference_fields result."),
@@ -200,6 +203,9 @@ export const MCP_TOOLS: McpTool[] = [
           design: string("Study design (free text)."),
           screening_note: string("Free-text screening note."),
           guideline: string("Guideline the record was screened for, e.g. \"BE\"; empty string clears it."),
+          rob_tool: { type: "string", enum: [...ROB_TOOLS, ""], description: "Risk-of-bias tool used; empty string clears it." },
+          rob_overall: { type: "string", enum: [...ROB_OVERALL, ""], description: "Overall risk-of-bias judgement; empty string clears it." },
+          rob_note: string("Free-text risk-of-bias note; empty string clears it."),
           add_tags: strings("Additional tags to add, merged and deduped."),
           remove_tags: strings("Tags to remove."),
         },
@@ -517,6 +523,7 @@ export class McpService {
     const kq = optionalString(args, "kq")?.trim();
     const include = enumArg(args, "include", INCLUDE_VALUES);
     const guideline = optionalString(args, "guideline")?.trim();
+    const robOverall = enumArg(args, "rob_overall", ROB_OVERALL);
     const kqKey = (v: unknown): string => { const s = String(v).trim(); return /^\d+$/.test(s) ? String(Number(s)) : s; };
     const cursor = optionalString(args, "cursor") ?? "";
     const limit = numberArg(args, "limit", 50, 1, 100);
@@ -529,6 +536,7 @@ export class McpService {
       .filter((entry) => !kq || (Array.isArray(entry.item.kq) && entry.item.kq.some((v) => kqKey(v) === kqKey(kq))))
       .filter((entry) => !include || entry.item.include === include)
       .filter((entry) => !guideline || entry.item.guideline === guideline)
+      .filter((entry) => !robOverall || entry.item.rob_overall === robOverall)
       .sort((a, b) => (a.file.path < b.file.path ? -1 : a.file.path > b.file.path ? 1 : 0)); // code-unit order, same as the cursor `>`
     // Containment last, like McpVault.listNotes: check candidates in order until a page plus one
     // look-ahead is safe, so a 21k-note library costs ~limit realpath pairs, not 21k.
@@ -552,6 +560,7 @@ export class McpService {
         kq: Array.isArray(entry.item.kq) ? entry.item.kq : null,
         include: entry.item.include ?? null, level: entry.item.level ?? null, design: entry.item.design ?? null,
         guideline: entry.item.guideline ?? null,
+        rob_tool: entry.item.rob_tool ?? null, rob_overall: entry.item.rob_overall ?? null,
       })),
       ...(all.length > limit ? { nextCursor: page[page.length - 1].file.path } : {}),
     };
@@ -642,10 +651,14 @@ export class McpService {
   }
 
   private async searchPubmed(args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const { hits, total }: { hits: PubmedHit[]; total: number } = await this.deps.searchPubmed(stringArg(args, "query"), {
+    if (args.log !== undefined && typeof args.log !== "boolean") throw new Error("INVALID_ARGUMENT: log must be a boolean");
+    const query = stringArg(args, "query");
+    const from = args.year_from === undefined ? undefined : numberArg(args, "year_from", 0, 1000, 3000);
+    const to = args.year_to === undefined ? undefined : numberArg(args, "year_to", 0, 1000, 3000);
+    const { hits, total }: { hits: PubmedHit[]; total: number } = await this.deps.searchPubmed(query, {
       n: numberArg(args, "limit", 8, 1, 150),
-      from: args.year_from === undefined ? undefined : String(numberArg(args, "year_from", 0, 1000, 3000)),
-      to: args.year_to === undefined ? undefined : String(numberArg(args, "year_to", 0, 1000, 3000)),
+      from: from === undefined ? undefined : String(from),
+      to: to === undefined ? undefined : String(to),
       apiKey: this.plugin.settings.pubmedApiKey,
       email: this.plugin.settings.openalexMailto,
     });
@@ -663,7 +676,23 @@ export class McpService {
       }
       results.push({ ...hit, existingCitekey });
     }
-    return { results, totalCount: total, truncated: total > results.length };
+    const out: Record<string, unknown> = { results, totalCount: total, truncated: total > results.length };
+    if (args.log === true) {
+      // Imports happen later via add_reference, so none are recorded here.
+      const note = searchLogNote({
+        source: "PubMed", query, year_from: from, year_to: to, date: new Date().toISOString(),
+        total, returnedPmids: hits.map((h) => h.pmid), importedPmids: [],
+      });
+      for (let n = 1; ; n++) {
+        try {
+          out.logPath = (await this.vault.createNote(suffixedPath(note.path, n), note.content)).path;
+          break;
+        } catch (e) {
+          if (!(e instanceof Error && e.message.startsWith("ALREADY_EXISTS")) || n >= 100) throw e;
+        }
+      }
+    }
+    return out;
   }
 
   private async addReference(identifier: string, tags?: string[]): Promise<Record<string, unknown>> {
@@ -771,7 +800,7 @@ export class McpService {
       throw new Error("INVALID_ARGUMENT: fields must be an object");
     }
     const fields = fieldsRaw as Record<string, unknown>;
-    const allowedFields = new Set(["kq", "include", "level", "design", "screening_note", "guideline", "add_tags", "remove_tags"]);
+    const allowedFields = new Set(["kq", "include", "level", "design", "screening_note", "guideline", "rob_tool", "rob_overall", "rob_note", "add_tags", "remove_tags"]);
     const badKey = Object.keys(fields).find((k) => !allowedFields.has(k));
     if (badKey) throw new Error(`INVALID_ARGUMENT: unknown field: ${badKey}`);
 
@@ -782,6 +811,9 @@ export class McpService {
       design: optionalNonEmptyString(fields, "design"),
       screening_note: optionalString(fields, "screening_note"),
       guideline: optionalString(fields, "guideline"),
+      rob_tool: optionalString(fields, "rob_tool"),
+      rob_overall: optionalString(fields, "rob_overall"),
+      rob_note: optionalString(fields, "rob_note"),
       add_tags: boundedStringArrayArg(fields, "add_tags"),
       remove_tags: boundedStringArrayArg(fields, "remove_tags"),
     };

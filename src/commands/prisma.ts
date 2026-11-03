@@ -2,6 +2,7 @@ import { normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { duplicateGroups, inScope, BackfillScope } from "../data/library";
 import { prismaCounts, prismaMarkdown, PrismaRecord } from "../data/prisma";
+import { parseSearchLog, SEARCH_LOG_FOLDER, SearchLogSummary } from "../data/searchLog";
 import { localDate } from "../data/reference";
 import { findPdfFile } from "./pdfs";
 import { str } from "../util/json";
@@ -30,6 +31,13 @@ export async function buildPrismaDiagram(plugin: ScholarRagPlugin, scope: Backfi
   const fullTextSet = new Set(scoped.filter((e) => hasFullText(plugin, e)).map((e) => e.citekey));
   const counts = prismaCounts(records, groups, (r) => fullTextSet.has(r.citekey));
   const label = scopeLabel(scope);
-  const md = prismaMarkdown(counts, label, localDate());
+  const logs: SearchLogSummary[] = [];
+  for (const f of plugin.app.vault.getMarkdownFiles()) {
+    if (!f.path.startsWith(`${SEARCH_LOG_FOLDER}/`)) continue;
+    const log = parseSearchLog(plugin.app.metadataCache.getFileCache(f)?.frontmatter);
+    if (log) logs.push(log);
+  }
+  logs.sort((a, b) => a.date.localeCompare(b.date));
+  const md = prismaMarkdown(counts, label, localDate(), logs);
   await plugin.writeAndOpen(normalizePath(`PRISMA flow (${label.replace(/^#/, "").replace(/[\\/:*?"<>|#^[\]]/g, "-")}).md`), md);
 }
