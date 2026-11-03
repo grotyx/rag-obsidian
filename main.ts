@@ -35,6 +35,7 @@ import {
   resolveCluster,
 } from "./src/cite/bibliography";
 import { citationEditorExtension, setCiteLabel } from "./src/cite/editorCite";
+import { itemMemo } from "./src/cite/itemMemo";
 import { citeTooltip } from "./src/cite/format";
 import { CiteEngine } from "./src/cite/csl";
 import { ImportModal } from "./src/ui/ImportModal";
@@ -468,6 +469,7 @@ export default class ScholarRagPlugin extends Plugin {
 
   onunload(): void {
     void this.mcpServer?.stop();
+    void this.indexManager?.flushPending();
   }
 
   mcpStatus(): McpServerStatus {
@@ -697,9 +699,9 @@ export default class ScholarRagPlugin extends Plugin {
     }
     if (!targets.length) return;
     const cslMap = sourcePath ? await this.citeMapFor(sourcePath) : null;
-    // One library scan for the whole block — getItem() walks every markdown file, so calling it
-    // per citekey turned a 40-citation note into 40 full-vault scans per render.
-    const byKey = new Map(this.library.entries().map((e) => [e.citekey, e.item]));
+    // getItem() is a citekey→path lookup: ask only for the keys this block cites, once each,
+    // instead of scanning the whole library per render.
+    const items = itemMemo((k) => this.library.getItem(k));
     for (const text of targets) {
       const value = text.nodeValue ?? "";
       const frag = createFragment();
@@ -710,7 +712,7 @@ export default class ScholarRagPlugin extends Plugin {
       while ((m = re.exec(value)) !== null) {
         const keys = keysInCite(m[1]);
         const resolved = resolveCluster(keys, (k) => {
-          const item = byKey.get(k) ?? null;
+          const item = items.get(k);
           const label = (cslMap && cslMap[k]) || null;
           return item || label ? { key: k, item, label } : null;
         });

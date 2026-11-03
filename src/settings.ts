@@ -508,7 +508,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
       text(
         "cliPath",
         "CLI executable",
-        "Leave empty to look in the usual install folders. Uses your existing CLI login — " +
+        "Leave empty to look in the usual install folders; a path must point to a file named codex or opencode. Uses your existing CLI login — " +
           "no API key is stored by this plugin. Calls run in the background, a few at a time.",
         "Auto-detect",
         undefined,

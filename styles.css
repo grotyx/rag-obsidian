@@ -274,6 +274,10 @@
 .rag-obsidian-related .srag-rel-row:hover {
   background: var(--background-modifier-hover);
 }
+.rag-obsidian-related .srag-rel-row:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+}
 .rag-obsidian-related .srag-rel-badge {
   color: var(--text-accent);
   font-weight: 600;

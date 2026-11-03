@@ -385,6 +385,35 @@ async function serviceChecks(): Promise<void> {
   }
   assert.deepEqual(refSeen, ["References/B.md", "References/D.md", "References/a.md", "References/c.md"], "list_references pages without omission or repeat");
 
+  // Containment is checked lazily, after filter+sort: a denied entry mid-page is skipped and never
+  // counted, pages stay full, and only about a page's worth of paths is ever checked.
+  const refChecked: string[] = [];
+  const refGuardVault = new McpVault(plugin.app, (path) => path.startsWith("References/"), ".obsidian", async (p) => {
+    refChecked.push(p);
+    if (p === "References/D.md") throw new Error("outside vault");
+  });
+  const refGuardService = new McpService(mixedPlugin, refGuardVault);
+  const g1 = await refGuardService.callTool("list_references", { limit: 2 }) as any;
+  assert.deepEqual(g1.references.map((r: any) => r.path), ["References/B.md", "References/a.md"], "denied D skipped, page still full");
+  assert.equal(g1.nextCursor, "References/a.md");
+  assert.deepEqual(refChecked, ["References/B.md", "References/D.md", "References/a.md", "References/c.md"], "limit + look-ahead checked, in order");
+  refChecked.length = 0;
+  const g1b = await refGuardService.callTool("list_references", { limit: 1 }) as any;
+  assert.deepEqual(g1b.references.map((r: any) => r.path), ["References/B.md"]);
+  assert.deepEqual(refChecked, ["References/B.md", "References/D.md", "References/a.md"], "a page does not check the whole library");
+  const g2 = await refGuardService.callTool("list_references", { limit: 2, cursor: g1.nextCursor }) as any;
+  assert.deepEqual(g2.references.map((r: any) => r.path), ["References/c.md"]);
+  assert.equal(g2.nextCursor, undefined);
+  const gSeen: string[] = [];
+  let gCursor: string | undefined;
+  for (let i = 0; i < 10; i++) {
+    const p = await refGuardService.callTool("list_references", { limit: 1, ...(gCursor ? { cursor: gCursor } : {}) }) as any;
+    gSeen.push(...p.references.map((r: any) => r.path));
+    if (!p.nextCursor) break;
+    gCursor = p.nextCursor;
+  }
+  assert.deepEqual(gSeen, ["References/B.md", "References/a.md", "References/c.md"], "paging returns every allowed entry exactly once");
+
   const refs = await service.callTool("list_references", { tags: ["Spine"] }) as any;
   assert.equal(refs.references[0].citekey, "smith2024");
   assert.equal(refs.references[0].summarySource, null);

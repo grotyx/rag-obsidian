@@ -1,7 +1,7 @@
 import { App, TFile } from "obsidian";
 import { ScholarRagSettings, CSLItem } from "../types";
 import { Library } from "../data/library";
-import { extractPdfText, findIdentifier } from "./pdf";
+import { extractPdfText, findIdentifier, titleInHead } from "./pdf";
 import { appendStash, resolvePdfLink } from "./pdfStash";
 import { fetchMetadata } from "./metadata";
 import { LLMClient } from "../llm/client";
@@ -25,6 +25,11 @@ export class PdfImporter {
     if (id) {
       try {
         item = await fetchMetadata(id, this.settings.pubmedApiKey);
+        if (!titleInHead(item.title, text)) {
+          // The first DOI may belong to a paper this one only cites.
+          console.debug(`PDF import: ${id.value} resolved to "${item.title}", which is not on the PDF's first page — using LLM extraction`);
+          item = null;
+        }
       } catch {
         /* fall back to LLM extraction */
       }

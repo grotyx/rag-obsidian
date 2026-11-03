@@ -14,7 +14,12 @@ export interface MergeResult {
   groupsMerged: number;
   notesTrashed: number;
   notesRewritten: number;
+  /** Groups skipped because a file changed since the modal opened. */
   skipped: number;
+  /** Groups abandoned because a file changed between reading it and writing the merge. */
+  skippedChanged: number;
+  /** Losers kept (not trashed) because they were edited after their content was merged. */
+  losersKept: number;
 }
 
 function fmCitekey(fm: Record<string, unknown>): string {
@@ -26,7 +31,9 @@ function fmCitekey(fm: Record<string, unknown>): string {
  *  wikilinks across the WHOLE vault in one combined pass, then trash the losers last. Staleness
  *  (a group's files changed since the modal opened) is checked for every group up front, before
  *  any write, so one group's rewrite can never falsely stale another. A file counts as rewritten
- *  only when its content actually changed — a citekey/basename that is merely a prefix of
+ *  only when its content actually changed. Every write re-checks what it read: a keeper that
+ *  changed before the merge landed is left alone (group skipped), a loser edited after its text
+ *  was copied is kept instead of trashed — a citekey/basename that is merely a prefix of
  *  another (`smith2020` vs. `smith2020a`) must not miscount. */
 export async function mergeDuplicateGroups(
   plugin: ScholarRagPlugin,
@@ -47,8 +54,10 @@ export async function mergeDuplicateGroups(
 
   const citeMap: Record<string, string> = {};
   const wikiRenames: WikilinkRename[] = [];
-  const allLoserFiles: TFile[] = [];
+  /** Each loser with the exact text that was merged into its keeper. */
+  const allLosers: { file: TFile; snapshot: string }[] = [];
   let groupsMerged = 0;
+  let skippedChanged = 0;
 
   // (b) merge each non-stale group's frontmatter + body.
   for (let i = 0; i < plans.length; i++) {
@@ -74,19 +83,41 @@ export async function mergeDuplicateGroups(
       others
     );
 
+    // A loser edited since its text was copied would lose that edit: abandon the group.
+    let loserChanged = false;
+    for (let j = 0; j < losers.length; j++) {
+      if ((await plugin.app.vault.read(losers[j].file)) !== others[j].body) loserChanged = true;
+    }
+    if (loserChanged) {
+      skippedChanged++;
+      continue;
+    }
+
     // Body first: `mergedBody` is the whole file as read above (old frontmatter included), so
-    // writing it after processFrontMatter would put the old frontmatter back.
-    await plugin.app.vault.process(plan.keeperFile, () => mergedBody);
+    // writing it after processFrontMatter would put the old frontmatter back. If the keeper
+    // changed since that read (editor, sync, MCP), leave it exactly as it is now.
+    let keeperChanged = false;
+    await plugin.app.vault.process(plan.keeperFile, (current) => {
+      if (current !== keeperBody) {
+        keeperChanged = true;
+        return current;
+      }
+      return mergedBody;
+    });
+    if (keeperChanged) {
+      skippedChanged++;
+      continue;
+    }
     await plugin.app.fileManager.processFrontMatter(plan.keeperFile, (fm) => {
       Object.assign(fm, mergedFm);
     });
 
     // (c) one combined citekey map and one combined wikilink-rename list, across all groups.
-    for (const l of losers) {
+    losers.forEach((l, j) => {
       if (l.citekey && keeperCitekey) citeMap[l.citekey] = keeperCitekey;
       wikiRenames.push({ path: l.file.path.replace(/\.md$/, ""), keeperBasename: plan.keeperFile.basename });
-      allLoserFiles.push(l.file);
-    }
+      allLosers.push({ file: l.file, snapshot: others[j].body });
+    });
     groupsMerged++;
   }
 
@@ -94,8 +125,9 @@ export async function mergeDuplicateGroups(
   let notesRewritten = 0;
   if (Object.keys(citeMap).length || wikiRenames.length) {
     const resolvedLinks = plugin.app.metadataCache.resolvedLinks;
-    const loserPaths = new Set(allLoserFiles.map((f) => f.path));
+    const loserPaths = new Set(allLosers.map((l) => l.file.path));
     for (const file of plugin.app.vault.getMarkdownFiles()) {
+      if (loserPaths.has(file.path)) continue; // about to be trashed; rewriting would break its snapshot check
       const text = await plugin.app.vault.cachedRead(file);
       const hasCiteCandidate = Object.keys(citeMap).some((k) => text.includes("@" + k));
       const linksHere = resolvedLinks[file.path] ?? {};
@@ -112,12 +144,18 @@ export async function mergeDuplicateGroups(
     }
   }
 
-  // (e) trash the losers last.
+  // (e) trash the losers last, each only if it still holds the text that was merged.
   let notesTrashed = 0;
-  for (const file of allLoserFiles) {
+  let losersKept = 0;
+  for (const { file, snapshot } of allLosers) {
+    const cur = plugin.app.vault.getAbstractFileByPath(file.path);
+    if (!(cur instanceof TFile) || (await plugin.app.vault.read(file)) !== snapshot) {
+      losersKept++;
+      continue;
+    }
     await plugin.app.fileManager.trashFile(file);
     notesTrashed++;
   }
 
-  return { groupsMerged, notesTrashed, notesRewritten, skipped: stale.size };
+  return { groupsMerged, notesTrashed, notesRewritten, skipped: stale.size, skippedChanged, losersKept };
 }

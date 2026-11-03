@@ -16,18 +16,25 @@ import { parseLibrary } from "../src/ingest/import";
 import { parseCollections, parseCslPage } from "../src/ingest/zotero";
 import { cleanDoi, detectId, splitName, parsePubDate, esummaryToItem } from "../src/ingest/metadata";
 import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
-import { findIdentifier, isPdfMagic, extractPdfHighlights, setPdfjsLoader } from "../src/ingest/pdf";
+import { findIdentifier, titleInHead, isPdfMagic, extractPdfHighlights, setPdfjsLoader } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, stashedText, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
 import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summarize";
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
+import { CitationGraph } from "../src/graph/citations";
+import { itemMemo } from "../src/cite/itemMemo";
+import { inTextLabel } from "../src/cite/bibliography";
 import { parseCitingPage, titlesMatch, resolveWork } from "../src/graph/openalex";
 import { rerankHttpReason, mmr, parseRerankResponse } from "../src/index/rerank";
 import { requestWithRetry } from "../src/llm/client";
+import { mergeDuplicateGroups } from "../src/commands/merge";
+import { TFile } from "obsidian";
 import {
   buildCliArgs,
   cliCandidates,
+  cliBinaryAllowed,
+  buildCliEnv,
   parseOpencodeOutput,
   promptFromMessages,
   shouldUseShell,
@@ -1526,6 +1533,16 @@ check(
     passed++;
   }
 
+  const sliced = await store.serializeStream();
+  const slices = [...sliced.vectorSlices(DIM * 4 * 7)]; // 7 rows per slice
+  assert.ok(slices.length === Math.ceil(N / 7) && slices.every((b) => b.byteLength <= DIM * 4 * 7), "vector slices respect the byte cap");
+  assert.deepEqual(
+    Buffer.concat(slices.map((b) => Buffer.from(b))),
+    Buffer.from(ser.vectors),
+    "concatenated vector slices are byte-identical to the one-buffer serialize()"
+  );
+  passed += 2;
+
   const streamed = await store.serializeStream();
   assert.equal([...streamed.parts].join(""), ser.docs, "streamed docs.json is byte-identical to serialize()");
   store.flush();
@@ -1740,6 +1757,189 @@ check(
   assert.deepEqual(amb.expand("shared term").matched, []);
   passed += 20;
 }
+
+// ---------- cite/itemMemo.ts: per-citekey lookup replaces the whole-library scan ----------
+{
+  const lib = [
+    { citekey: "a2020", item: { type: "article-journal", title: "A", author: [{ family: "Alpha" }], issued: { "date-parts": [[2020]] } } },
+    { citekey: "b2021", item: { type: "article-journal", title: "B", author: [{ family: "Beta" }], issued: { "date-parts": [[2021]] } } },
+    ...Array.from({ length: 2000 }, (_, i) => ({ citekey: `x${i}`, item: { type: "article-journal", title: `X${i}` } })),
+  ];
+  let entriesCalls = 0;
+  let getCalls = 0;
+  const byKey = new Map(lib.map((e) => [e.citekey, e.item]));
+  const stub = {
+    entries: () => (entriesCalls++, lib),
+    getItem: (k: string) => (getCalls++, byKey.get(k) ?? null),
+  };
+  const cited = ["a2020", "b2021", "a2020", "nope", "b2021", "nope"]; // repeats + an unknown key
+  const old = new Map(stub.entries().map((e) => [e.citekey, e.item])); // the pre-0.8.10 render path
+  entriesCalls = 0;
+  const memo = itemMemo((k) => stub.getItem(k) as never);
+  const labelOf = (it: unknown) => (it ? inTextLabel(it as never) : null);
+  for (const k of cited) {
+    check(labelOf(memo.get(k)) === labelOf(old.get(k) ?? null), `itemMemo: label for ${k} matches the full-scan map`);
+  }
+  check(entriesCalls === 0, "itemMemo: no library scan");
+  check(getCalls === 3, `itemMemo: one getItem per distinct cited key, misses memoized (got ${getCalls})`);
+  memo.clear();
+  memo.get("a2020");
+  check(getCalls === 4, "itemMemo: clear() drops the memo");
+}
+
+// ---------- graph/citations.ts: prune is debounced (a bulk delete = one library scan) ----------
+{
+  const data = {
+    byCitekey: { k1: { openalexId: "W1", refs: [] }, k2: { openalexId: "W2", refs: ["W1"] }, k3: { openalexId: "W3", refs: [] } },
+    idToCitekey: { W1: "k1", W2: "k2", W3: "k3" },
+  };
+  let scans = 0;
+  let live = ["k1", "k2", "k3"];
+  const app = {
+    vault: { adapter: { exists: async () => true, read: async () => JSON.stringify(data), write: async () => {}, mkdir: async () => {} } },
+  };
+  const lib = {
+    entries: () => (scans++, live.map((citekey) => ({ citekey, item: {}, file: {} }))),
+    folder: () => "References",
+  };
+  const g = new CitationGraph(app as never, lib as never, {} as never, "_x");
+  await g.restore();
+  g.pruneDelayMs = 30;
+  let notified = 0;
+  g.onChange(() => notified++);
+  live = ["k1", "k2"]; // k3's note was deleted along with 499 others
+  const calls = Array.from({ length: 500 }, () => g.prune());
+  check(scans === 0, "prune: nothing scans while the burst is still arriving");
+  await Promise.all(calls);
+  await new Promise((r) => setTimeout(r, 100)); // stray timers from an un-debounced version would fire by now
+  check(scans === 1, `prune: 500 calls, one library scan (got ${scans})`);
+  check(g.size === 2 && !g.has("k3"), "prune: the missing note's node is dropped");
+  check(notified === 1, `prune: listeners fire once (got ${notified})`);
+  await g.prune();
+  check(scans === 2 && notified === 1, "prune: a later burst scans again; nothing changed, so no second notify");
+}
+  // ---------- ingest/pdf.ts: titleInHead ----------
+  {
+    const own = "Outcomes of Biportal Endoscopic Decompression for Lumbar Stenosis";
+    const page =
+      "Spine J. 2024\nOutcomes of Biportal Endoscopic Decompression for Lumbar Stenosis\nPark S, Kim H\n" +
+      "Abstract. Background: as in 10.1016/j.other.2020.01.001 (Smith) ...\n" +
+      "x".repeat(5000) + "\nReferences\n1. Smith J. A Completely Different Paper About Knees. Lancet 2020.";
+    check(titleInHead(own, page), "titleInHead: the PDF's own title is accepted");
+    check(!titleInHead("A Completely Different Paper About Knees", page), "titleInHead: a title found only in the references is rejected");
+    check(!titleInHead("", page) && !titleInHead(undefined, page), "titleInHead: empty title is rejected");
+    const wrapped = "Outcomes of Biportal Endo-\nscopic Decompression for Lum-\nbar Stenosis\nPark S";
+    check(titleInHead(own, wrapped), "titleInHead: a wrapped / hyphenated title is accepted");
+    check(
+      titleInHead(
+        "Comparison of unilateral biportal endoscopic and microscopic decompression for lumbar spinal stenosis",
+        "Comparison of unilateral biportal endoscopic and microscopic decompression for lumbar disc herniation"
+      ),
+      "titleInHead: only the first 60 normalized characters must match"
+    );
+  }
+
+  // ---------- llm/cli.ts: binary allowlist + minimal environment ----------
+  {
+    check(cliBinaryAllowed("codex", "/opt/homebrew/bin/codex"), "cliBinaryAllowed: codex");
+    check(cliBinaryAllowed("opencode", "C:\\Users\\x\\AppData\\Roaming\\npm\\OpenCode.CMD"), "cliBinaryAllowed: Windows .cmd, any case");
+    check(cliBinaryAllowed("codex", "C:\\x\\codex.exe"), "cliBinaryAllowed: .exe stripped");
+    check(!cliBinaryAllowed("codex", "/usr/bin/opencode"), "cliBinaryAllowed: the other provider's CLI is refused");
+    check(!cliBinaryAllowed("codex", "/bin/sh") && !cliBinaryAllowed("codex", "/tmp/codex-evil") && !cliBinaryAllowed("codex", "/tmp/codex.sh"), "cliBinaryAllowed: arbitrary programs are refused");
+    const env = buildCliEnv(
+      {
+        PATH: "/x", HOME: "/home/u", LANG: "en_US.UTF-8", LC_ALL: "C", XDG_DATA_HOME: "/d", CODEX_HOME: "/c", OPENCODE_CONFIG: "/o",
+        OPENAI_API_KEY: "sk-secret", AWS_SECRET_ACCESS_KEY: "aws", ANTHROPIC_API_KEY: "a", GITHUB_TOKEN: "g",
+        Path: "C:\\win", SystemRoot: "C:\\Windows",
+      },
+      "/final"
+    );
+    check(env.OPENAI_API_KEY === undefined && env.AWS_SECRET_ACCESS_KEY === undefined && env.ANTHROPIC_API_KEY === undefined && env.GITHUB_TOKEN === undefined, "buildCliEnv: drops API keys and cloud secrets");
+    check(env.HOME === "/home/u" && env.LANG === "en_US.UTF-8" && env.LC_ALL === "C" && env.XDG_DATA_HOME === "/d" && env.CODEX_HOME === "/c" && env.OPENCODE_CONFIG === "/o" && env.SystemRoot === "C:\\Windows", "buildCliEnv: keeps HOME, locale, XDG_*, CODEX_*, OPENCODE_*, SystemRoot");
+    check(env.PATH === "/final" && env.Path === undefined, "buildCliEnv: PATH is replaced, not duplicated");
+  }
+
+  // ---------- commands/merge.ts: concurrent edits ----------
+  {
+    const KEEP = "---\ncitekey: keep2020\n---\n\n## Notes\n\nkeeper text\n";
+    const LOSE = "---\ncitekey: lose2020\n---\n\n## Notes\n\nloser text\n";
+    const setup = (_hooks: object) => {
+      const files = new Map<string, { f: TFile; text: string }>();
+      const add = (path: string, text: string) => {
+        const f = Object.assign(new TFile(path), { stat: { mtime: 1 } });
+        files.set(path, { f, text });
+        return f;
+      };
+      const keeper = add("References/keep2020.md", KEEP);
+      const loser = add("References/lose2020.md", LOSE);
+      const trashed: string[] = [];
+      const fmOf = (f: TFile) => ({ frontmatter: { citekey: f.basename.replace(/^(\D+)(\d+)$/, "$1$2") } });
+      const plugin = {
+        app: {
+          vault: {
+            getAbstractFileByPath: (p: string) => files.get(p)?.f ?? null,
+            read: async (f: TFile) => {
+              const text = files.get(f.path)!.text;
+              return text;
+            },
+            cachedRead: async (f: TFile) => files.get(f.path)!.text,
+            process: async (f: TFile, fn: (c: string) => string) => {
+              const e = files.get(f.path)!;
+              e.text = fn(e.text);
+              return e.text;
+            },
+            getMarkdownFiles: () => [...files.values()].map((e) => e.f),
+          },
+          metadataCache: { getFileCache: (f: TFile) => fmOf(f), resolvedLinks: {} },
+          fileManager: {
+            processFrontMatter: async () => undefined,
+            trashFile: async (f: TFile) => {
+              trashed.push(f.path);
+              files.delete(f.path);
+            },
+          },
+        },
+      };
+      const plan = { keeperFile: keeper, loserFiles: [loser], expectedMtimes: new Map([[keeper.path, 1], [loser.path, 1]]) };
+      return { plugin, plan, files, trashed, keeper, loser };
+    };
+
+    const ok = setup({});
+    const r0 = await mergeDuplicateGroups(ok.plugin as never, [ok.plan]);
+    check(r0.groupsMerged === 1 && r0.notesTrashed === 1 && r0.losersKept === 0 && r0.skippedChanged === 0, "mergeDuplicateGroups: untouched group merges and trashes the loser");
+    check(ok.files.get("References/keep2020.md")!.text.includes("loser text"), "mergeDuplicateGroups: loser notes land in the keeper");
+
+    const EDITED = KEEP + "\nwritten while merging\n";
+    const h1 = setup({});
+    h1.plugin.app.vault.read = (async (f: TFile) => {
+      const e = h1.files.get(f.path)!;
+      const text = e.text;
+      if (f === h1.keeper) e.text = EDITED; // the keeper changes right after the merge read it
+      return text;
+    }) as never;
+    const r1 = await mergeDuplicateGroups(h1.plugin as never, [h1.plan]);
+    check(h1.files.get(h1.keeper.path)!.text === EDITED, "mergeDuplicateGroups: a keeper edited between read and write keeps the edit");
+    check(r1.groupsMerged === 0 && r1.skippedChanged === 1 && r1.notesTrashed === 0 && h1.trashed.length === 0, "mergeDuplicateGroups: that group is reported skipped and nothing is trashed");
+
+    const h2 = setup({});
+    h2.plugin.app.fileManager.processFrontMatter = (async () => {
+      h2.files.get(h2.loser.path)!.text = LOSE + "\nlate edit\n"; // after merge, before trashing
+    }) as never;
+    const r2 = await mergeDuplicateGroups(h2.plugin as never, [h2.plan]);
+    check(r2.groupsMerged === 1 && r2.notesTrashed === 0 && r2.losersKept === 1, "mergeDuplicateGroups: a loser edited before trashing is kept and reported");
+    check(h2.files.has(h2.loser.path) && h2.trashed.length === 0, "mergeDuplicateGroups: the edited loser is still in the vault");
+
+    const h3 = setup({});
+    const origRead = h3.plugin.app.vault.read;
+    let loserReads = 0;
+    h3.plugin.app.vault.read = (async (f: TFile) => {
+      const text = await origRead(f);
+      if (f === h3.loser && ++loserReads === 1) h3.files.get(f.path)!.text = LOSE + "\nedited after copy\n";
+      return text;
+    }) as never;
+    const r3 = await mergeDuplicateGroups(h3.plugin as never, [h3.plan]);
+    check(r3.skippedChanged === 1 && !h3.files.get(h3.keeper.path)!.text.includes("loser text") && h3.trashed.length === 0, "mergeDuplicateGroups: a loser edited after its text was copied abandons the group");
+  }
 
 console.log(`unit: all ${passed} assertions passed`);
 }

@@ -114,7 +114,10 @@ export class MergeDuplicatesModal extends Modal {
       return { keeperFile: keeper.file, loserFiles: losers.map((l) => l.file), expectedMtimes };
     });
     const result = await mergeDuplicateGroups(this.plugin, plans);
-    const skippedNotice = result.skipped ? ` · ${result.skipped} group(s) skipped (changed since opening)` : "";
+    const skippedNotice =
+      (result.skipped ? ` · ${result.skipped} group(s) skipped (changed since opening)` : "") +
+      (result.skippedChanged ? ` · ${result.skippedChanged} group(s) skipped (changed during merge)` : "") +
+      (result.losersKept ? ` · ${result.losersKept} note(s) kept, edited during merge — merge them again` : "");
     new Notice(
       `Merged ${result.groupsMerged} group(s) · ${result.notesTrashed} note(s) trashed · ` +
         `citations rewritten in ${result.notesRewritten} note(s)${skippedNotice}`

@@ -45,6 +45,11 @@ export class CitationGraph {
   /** Notes added since the last build, waiting for their one OpenAlex lookup. */
   private addQueue = new Set<string>();
   private flush: () => void;
+  /** Quiet period before `prune` scans the library (settable so tests need not wait 2 s). */
+  pruneDelayMs = 2000;
+  private pruneTimer: number | null = null;
+  private pruneWaiters: Promise<void> | null = null;
+  private pruneDone: () => void = () => undefined;
   /** Every mutation (build / incremental add / prune) is chained so two can't interleave
    *  their read-modify-persist of `this.data`. */
   private chain: Promise<unknown> = Promise.resolve();
@@ -198,6 +203,22 @@ export class CitationGraph {
   /** Drop nodes whose note no longer exists (delete, or a rename that changed the citekey).
    *  One vault pass, no network. Ids other notes cite simply count as "missing" again. */
   prune(): Promise<void> {
+    if (!this.size) return Promise.resolve();
+    // A 500-file bulk delete fires 500 events: collapse them into one scan after things go quiet.
+    this.pruneWaiters ??= new Promise<void>((resolve) => (this.pruneDone = resolve));
+    if (this.pruneTimer !== null) window.clearTimeout(this.pruneTimer);
+    this.pruneTimer = window.setTimeout(() => {
+      const done = this.pruneDone;
+      this.pruneTimer = null;
+      this.pruneWaiters = null;
+      this.pruneNow()
+        .catch((e) => console.warn("[Refwright] citation-graph prune failed", e))
+        .finally(() => done());
+    }, this.pruneDelayMs);
+    return this.pruneWaiters;
+  }
+
+  private pruneNow(): Promise<void> {
     if (!this.size) return Promise.resolve();
     return this.serialized(async () => {
       const live = new Set(this.library.entries().map((e) => e.citekey));

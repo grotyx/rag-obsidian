@@ -6,6 +6,7 @@ import { CSLItem } from "../types";
 import { decodeEntities, inTextLabel } from "./bibliography";
 import { citeClusters } from "./clusters";
 import { citeTooltip } from "./format";
+import { itemMemo } from "./itemMemo";
 
 /** What the editor needs from the plugin (structural, so this file never imports main.ts). */
 export interface CiteHost {
@@ -65,10 +66,6 @@ function leadingBlanks(text: string, at: number): number {
   return at - i;
 }
 
-function itemsByKey(host: CiteHost): Map<string, CSLItem> {
-  return new Map(host.library.entries().map((e) => [e.citekey, e.item]));
-}
-
 function filePath(state: EditorState): string | undefined {
   return state.field(editorInfoField, false)?.file?.path;
 }
@@ -80,7 +77,7 @@ export function citationEditorExtension(host: CiteHost): Extension {
     class {
       decorations: DecorationSet = Decoration.none;
       private map: Record<string, string> | null = null; // null until the note's labels resolved
-      private items = new Map<string, CSLItem>();
+      private items = itemMemo((k) => host.library.getItem(k)); // only the keys this note cites
       private promise: Promise<Record<string, string>> | null = null;
       private dead = false;
 
@@ -109,7 +106,7 @@ export function citationEditorExtension(host: CiteHost): Extension {
         void p.then((map) => {
           if (this.dead || p !== this.promise) return;
           this.map = map;
-          this.items = itemsByKey(host);
+          this.items.clear(); // references changed: look the cited keys up again
           this.view.dispatch({ effects: refresh.of(null) });
         });
       }
@@ -126,7 +123,7 @@ export function citationEditorExtension(host: CiteHost): Extension {
           if (text.slice(c.from, c.to).includes("\n")) continue; // plugins may not replace line breaks
           if (sel.some((r) => r.from <= c.to && r.to >= c.from)) continue; // editing it: show the source
           const parts = c.keys.map((k) => {
-            const item = this.items.get(k) ?? null;
+            const item = this.items.get(k);
             const label = this.map?.[k] || (item ? inTextLabel(item) : null);
             return label ? { key: k, label } : null;
           });
@@ -151,8 +148,7 @@ export function citationEditorExtension(host: CiteHost): Extension {
     const text = view.state.doc.toString();
     const c = citeClusters(text).find((x) => pos >= x.from - leadingBlanks(text, x.from) && pos <= x.to);
     if (!c) return null;
-    const items = itemsByKey(host);
-    const tips = c.keys.map((k) => items.get(k)).filter((i): i is CSLItem => !!i).map(citeTooltip);
+    const tips = c.keys.map((k) => host.library.getItem(k)).filter((i): i is CSLItem => !!i).map(citeTooltip);
     if (!tips.length) return null;
     return {
       pos: c.from,

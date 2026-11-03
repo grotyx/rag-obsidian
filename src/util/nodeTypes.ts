@@ -67,6 +67,7 @@ export interface FsPromisesLike {
     options?: string | { mode?: number; flag?: string }
   ): Promise<void>;
   mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
+  readdir(path: string, options: { withFileTypes: true }): Promise<Array<{ name: string; isFile(): boolean }>>;
   rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   stat(path: string): Promise<StatsLike>;

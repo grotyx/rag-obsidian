@@ -135,6 +135,36 @@ export function spawnInvocation(bin: string, args: string[], shell: boolean): { 
   return shell ? { command: winQuote(bin), args: args.map(winQuote) } : { command: bin, args };
 }
 
+/** `settings.cliPath` syncs between devices inside `data.json`, so it must not be able to name
+ *  an arbitrary program: the file name has to be the selected provider's CLI. */
+export function cliBinaryAllowed(provider: "codex" | "opencode", bin: string): boolean {
+  const name = (bin.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/\.(exe|cmd)$/, "");
+  return name === provider;
+}
+
+const ENV_EXACT = new Set([
+  "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TEMP", "TMP", "LANG",
+  // Windows: profile folders, the shell for `.cmd` shims, and the system root Node needs.
+  "SYSTEMROOT", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "COMSPEC", "PATHEXT", "WINDIR", "HOMEDRIVE", "HOMEPATH",
+  // Corporate networks: a CLI behind a proxy or custom CA cannot log in or answer without these.
+  "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS",
+]);
+
+/** The environment a CLI child gets: the login lives in files under HOME, so nothing else from
+ *  the host process (API keys, cloud credentials…) needs to reach it. Names are matched
+ *  case-insensitively (Windows spells it `Path`, `SystemRoot`). `CODEX_*` / `OPENCODE_*` and
+ *  `XDG_*` pass through; PATH is replaced by `pathValue`. */
+export function buildCliEnv(parent: ProcessEnv, pathValue: string): ProcessEnv {
+  const env: ProcessEnv = {};
+  for (const [key, value] of Object.entries(parent)) {
+    const k = key.toUpperCase();
+    if (k === "PATH" || value === undefined) continue;
+    if (ENV_EXACT.has(k) || /^(LC_|XDG_|CODEX_|OPENCODE_)/.test(k)) env[key] = value;
+  }
+  env.PATH = pathValue;
+  return env;
+}
+
 function firstExisting(paths: string[], fs: FsSyncLike): string | undefined {
   for (const p of paths) {
     try {
@@ -171,6 +201,12 @@ export async function runCli(
     );
   }
 
+  if (!cliBinaryAllowed(provider, bin)) {
+    throw new Error(
+      `Refusing to run "${bin}": the "CLI executable" setting (Settings → Refwright) must point to a file named ${provider}.`
+    );
+  }
+
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "rag-obsidian-cli-"));
   try {
     const lastMsgPath = path.join(tmp, "last.txt");
@@ -185,10 +221,8 @@ export async function runCli(
       "/opt/homebrew/bin",
       "/usr/local/bin",
     ];
-    const env: ProcessEnv = {
-      ...process.env,
-      PATH: `${process.env.PATH ?? ""}${path.delimiter}${commonBinDirs.join(path.delimiter)}`,
-    };
+    const hostPath = Object.entries(process.env).find(([k]) => k.toUpperCase() === "PATH")?.[1] ?? "";
+    const env = buildCliEnv(process.env, `${hostPath}${path.delimiter}${commonBinDirs.join(path.delimiter)}`);
     if (provider === "opencode") {
       const cfg = path.join(tmp, "cfg");
       await fsp.mkdir(cfg, { recursive: true });

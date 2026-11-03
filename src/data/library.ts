@@ -178,6 +178,48 @@ export class Library {
   /** Drop the `getFile` cache; call when notes are created, changed, moved, or deleted. */
   invalidateKeyCache(): void {
     this.citekeyPathCache = null;
+    this.idMap = null;
+  }
+
+  /** match key → first note (in vault scan order, `order`) carrying it; built lazily in one pass
+   *  and cleared with the citekey cache. `findDuplicate` used to rescan every note per call. */
+  private idMap: Map<string, { citekey: string; path: string; order: number }> | null = null;
+
+  private buildIdMap(): Map<string, { citekey: string; path: string; order: number }> {
+    const m = new Map<string, { citekey: string; path: string; order: number }>();
+    const prefix = this.folder() + "/";
+    let order = 0;
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      if (!file.path.startsWith(prefix)) continue;
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (!fm || !fm.citekey) continue;
+      const hit = { citekey: String(fm.citekey), path: file.path, order: order++ };
+      for (const k of matchKeys(fm)) if (!m.has(k)) m.set(k, hit);
+    }
+    return m;
+  }
+
+  /** The note the scan would have returned (earliest in scan order across `keys`), checked against
+   *  its current frontmatter; a stale entry drops the map and retries once on a fresh one. */
+  private mapDuplicate(keys: string[]): string | null {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const map = (this.idMap ??= this.buildIdMap());
+      let best: { citekey: string; path: string; order: number } | undefined;
+      let bestKey = "";
+      for (const k of keys) {
+        const h = map.get(k);
+        if (h && (!best || h.order < best.order)) {
+          best = h;
+          bestKey = k;
+        }
+      }
+      if (!best) return null;
+      const file = this.app.vault.getAbstractFileByPath(best.path);
+      const fm = file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
+      if (fm && fm.citekey && String(fm.citekey) === best.citekey && matchKeys(fm).includes(bestKey)) return best.citekey;
+      this.idMap = null;
+    }
+    return null;
   }
 
   private keyCache(): Map<string, string> {
@@ -230,14 +272,7 @@ export class Library {
       const live = hit && this.liveCreated(hit.path, (fm) => !!fm.citekey && matchKeys(fm).includes(k));
       if (hit && live) return live.fm ? String(live.fm.citekey) : hit.citekey;
     }
-    const prefix = this.folder() + "/";
-    for (const file of this.app.vault.getMarkdownFiles()) {
-      if (!file.path.startsWith(prefix)) continue;
-      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      if (!fm || !fm.citekey) continue;
-      if (matchKeys(fm).some((k) => keys.includes(k))) return String(fm.citekey);
-    }
-    return null;
+    return this.mapDuplicate(keys);
   }
 
   /** Same scan as `entries()`, without the parsed CSL item. */

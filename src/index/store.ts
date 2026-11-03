@@ -20,6 +20,9 @@ export interface StoredMeta {
   hashes?: Record<string, string>;
   /** `INDEX_SCHEMA` this index was written under (absent = 1, the pre-facet schema). */
   schema?: number;
+  /** Generation id of the `docs-<gen>.json` / `vectors-<gen>.f32` pair this meta commits (absent =
+   *  legacy plain `docs.json` / `vectors.f32`). The meta write is the single commit point of a persist. */
+  gen?: string;
 }
 
 export interface SearchHit {
@@ -58,6 +61,9 @@ const TEXT_LIMIT = 2000;
 
 /** Size (chars) of one piece of the streamed docs.json. */
 const PART_CHARS = 4_000_000;
+
+/** Largest packed slice of the vector bank handed to the writer at once (bytes). */
+export const VECTOR_SLICE_BYTES = 64 * 1024 * 1024;
 
 function unit(v: ArrayLike<number>, out: Float32Array, at: number): void {
   let n = 0;
@@ -306,12 +312,10 @@ export class VectorStore {
     return Object.values(this.chunkIds).reduce((a, b) => a + b.length, 0);
   }
 
-  /** Documents (without their embedding — `docs`) + one packed Float32Array of every
-   *  embedding in the same order (`vectors`), instead of persisting the whole Orama DB
-   *  (which wrote each vector twice, as JSON text). Order follows `this.chunkIds`. */
-  /** Join of `serializeStream()` — one big string; the writer should prefer the stream. */
+  /** Join of `serializeStream()` — one big string and one big buffer; the writer should prefer the stream. */
   async serialize(): Promise<{ docs: string; vectors: ArrayBuffer; meta: StoredMeta }> {
-    const { parts, vectors, meta } = await this.serializeStream();
+    const { parts, vectorSlices, meta } = await this.serializeStream();
+    const [vectors] = [...vectorSlices(Infinity)];
     return { docs: [...parts].join(""), vectors, meta };
   }
 
@@ -321,9 +325,17 @@ export class VectorStore {
     this.syncFree();
   }
 
-  /** Same content as `serialize()`, but `docs.json` comes out as pieces (a generator of
-   *  ≤ ~`PART_CHARS` strings whose concatenation is the file) so it is never one 150 MB+ string. */
-  async serializeStream(): Promise<{ parts: Generator<string>; vectors: ArrayBuffer; meta: StoredMeta }> {
+  /** Documents (without their embedding — `parts`) + every embedding in the same order
+   *  (`vectorSlices`), instead of persisting the whole Orama DB (which wrote each vector twice, as
+   *  JSON text). Order follows `this.chunkIds`. `parts` yields ≤ ~`PART_CHARS` strings whose
+   *  concatenation is docs.json, so it is never one 150 MB+ string; `vectorSlices(maxBytes)` packs the
+   *  bank into consecutive ≤ `maxBytes` buffers (concatenation = vectors.f32), so the full 1+ GB copy
+   *  never exists. Both read live store state: consume them inside the manager's serialized job. */
+  async serializeStream(): Promise<{
+    parts: Generator<string>;
+    vectorSlices: (maxBytes?: number) => Generator<ArrayBuffer>;
+    meta: StoredMeta;
+  }> {
     const ti = this.ti;
     if (!ti) throw new Error("store not initialized");
     const ids: string[] = [];
@@ -335,8 +347,19 @@ export class VectorStore {
       if (row === undefined || !ti.has(row)) throw new Error(`index/meta desync — rebuild required (missing doc ${id})`);
       rows[i] = row;
     });
-    const vectors = new Float32Array(ids.length * dim);
-    for (let i = 0; i < rows.length; i++) vectors.set(this.bank.subarray(rows[i] * dim, (rows[i] + 1) * dim), i * dim);
+    const bank = this.bank;
+    function* vectorSlices(maxBytes = VECTOR_SLICE_BYTES): Generator<ArrayBuffer> {
+      const per = Math.max(1, Math.floor(maxBytes / (Math.max(dim, 1) * 4)));
+      // do-while: an empty store still yields one (empty) buffer, so the file gets created
+      let from = 0;
+      do {
+        const to = Math.min(rows.length, from + per);
+        const out = new Float32Array((to - from) * dim);
+        for (let i = from; i < to; i++) out.set(bank.subarray(rows[i] * dim, (rows[i] + 1) * dim), (i - from) * dim);
+        yield out.buffer;
+        from = to;
+      } while (from < rows.length);
+    }
     const index: TextIndex = ti;
     function* parts(): Generator<string> {
       let out = "[";
@@ -373,7 +396,7 @@ export class VectorStore {
       hashes: this.hashes,
       schema: INDEX_SCHEMA,
     };
-    return { parts: parts(), vectors: vectors.buffer, meta };
+    return { parts: parts(), vectorSlices, meta };
   }
 
   async load(docsJson: string, vectors: ArrayBuffer, meta: StoredMeta): Promise<void> {

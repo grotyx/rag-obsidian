@@ -6,6 +6,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-11-03
+
+Second round of fixes from the two code reviews: index safety, large-library speed, and safer merges.
+
+### Fixed
+- **The search index survives a crash while it is being saved.** It is now written as a new set of files and switched over in one step, so a crash mid-save leaves the previous index intact instead of pairing one paper's text with another paper's vector. Existing indexes load as before; no rebuild is needed.
+- Saving the index after an edit no longer makes a second full copy of every vector in memory (about 1.3 GB on a 200,000-passage library); vectors are written in 64 MB pieces. A burst of deletions saves the index once instead of once per file.
+- Merging duplicates no longer loses an edit made while the merge runs: a group whose notes changed is skipped, and a duplicate edited after its text was copied is kept instead of being trashed.
+- Importing a PDF uses the DOI found in its text only when the fetched paper's title appears on the PDF's first pages; a DOI from the reference list no longer attaches the PDF to the cited paper.
+- The Codex / OpenCode CLI setting only runs a program named `codex` or `opencode`, and the CLI no longer receives unrelated environment variables such as API keys.
+
+### Changed
+- Large libraries: duplicate checks use one identifier map instead of scanning every note per result; MCP `list_references` checks paths for one page only; citation rendering and the Related pane look up only the papers they show; the citation graph tidies up once after a bulk delete.
+- Related pane rows can be reached with Tab and opened with Enter or Space.
+
 ## [0.8.9] — 2026-11-03
 
 Fixes from two independent code reviews.

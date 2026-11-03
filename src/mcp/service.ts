@@ -520,7 +520,7 @@ export class McpService {
     const kqKey = (v: unknown): string => { const s = String(v).trim(); return /^\d+$/.test(s) ? String(Number(s)) : s; };
     const cursor = optionalString(args, "cursor") ?? "";
     const limit = numberArg(args, "limit", 50, 1, 100);
-    const all = (await this.safeEntries())
+    const candidates = this.plugin.library.entries()
       .filter((entry) => entry.file.path > cursor)
       .filter((entry) => yearOf(entry.item) >= from && yearOf(entry.item) <= to)
       .filter((entry) => !author || entry.authors.toLowerCase().includes(author))
@@ -530,6 +530,18 @@ export class McpService {
       .filter((entry) => !include || entry.item.include === include)
       .filter((entry) => !guideline || entry.item.guideline === guideline)
       .sort((a, b) => (a.file.path < b.file.path ? -1 : a.file.path > b.file.path ? 1 : 0)); // code-unit order, same as the cursor `>`
+    // Containment last, like McpVault.listNotes: check candidates in order until a page plus one
+    // look-ahead is safe, so a 21k-note library costs ~limit realpath pairs, not 21k.
+    const all: typeof candidates = [];
+    for (const entry of candidates) {
+      try {
+        await this.vault.assertPath(entry.file.path, false);
+        all.push(entry);
+        if (all.length > limit) break;
+      } catch {
+        // Skip references whose real path leaves the vault; they never count toward the page.
+      }
+    }
     const page = all.slice(0, limit);
     return {
       references: page.map((entry) => ({

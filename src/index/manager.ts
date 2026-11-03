@@ -2,7 +2,7 @@ import { App, TFile, normalizePath, debounce, Platform, Notice } from "obsidian"
 import { ScholarRagSettings, effective } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
-import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA } from "./store";
+import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA, VECTOR_SLICE_BYTES } from "./store";
 import { capPerReference, hostedRerank, mmr } from "./rerank";
 import { buildExpander, expandedTerm, Expander, Expansion, isForeignQuery, parseVocabulary } from "./expand";
 import { MeshThesaurus, MeshAddOptions } from "./thesaurus";
@@ -44,12 +44,12 @@ export class IndexManager {
   // (via `NodeFileIO`), resolved lazily on first use and only changed again by `relocate()`.
   private io: FileIO;
   private dir: string;
-  private docsPath = "";
-  private vectorsPath = "";
   private metaPath = "";
-  // Pre-0.7 format, persisted whole-DB-as-JSON via @orama/plugin-data-persistence — only ever
-  // written to the vault-relative location; cleaned up opportunistically after a persist there.
-  private legacyOramaPath = "";
+  // A removal not yet persisted (see `removeFile`): the next flush must write the index even when no
+  // note was re-embedded.
+  private dirty = false;
+  /** Largest packed slice of vectors written at once (a field so tests can force several slices). */
+  vectorSliceBytes = VECTOR_SLICE_BYTES;
   private locationResolved = false;
   private reindexQueue = new Set<string>();
   private flush: () => void;
@@ -73,10 +73,7 @@ export class IndexManager {
   }
 
   private setPaths(): void {
-    this.docsPath = `${this.dir}/docs.json`;
-    this.vectorsPath = `${this.dir}/vectors.f32`;
     this.metaPath = `${this.dir}/meta.json`;
-    this.legacyOramaPath = `${this.dir}/orama.json`;
   }
 
   /** Where the index currently lives, based on `settings.indexLocal` (desktop only). */
@@ -174,8 +171,14 @@ export class IndexManager {
     this.restoreError = null;
     try {
       await this.ensureLocation();
-      if (!(await this.io.exists(this.metaPath))) return;
-      const meta = JSON.parse(await this.io.read(this.metaPath)) as StoredMeta;
+      // A crash between "remove old meta" and "rename new meta" in `writeAtomicText` leaves only the
+      // fully written .tmp, which names a complete generation.
+      let metaFile = this.metaPath;
+      if (!(await this.io.exists(metaFile))) {
+        metaFile = `${this.metaPath}.tmp`;
+        if (!(await this.io.exists(metaFile))) return;
+      }
+      const meta = JSON.parse(await this.io.read(metaFile)) as StoredMeta;
       if (meta.modelId !== this.modelId) {
         console.debug("[Refwright] embedding model changed since last build — rebuild required");
         return;
@@ -184,8 +187,10 @@ export class IndexManager {
         this.restoreError = "The search index format changed — run “Rebuild search index” once.";
         return;
       }
-      const docs = await this.io.read(this.docsPath);
-      const vectors = await this.io.readBinary(this.vectorsPath);
+      // meta names the generation it commits; a meta without `gen` is a pre-generation index.
+      if (meta.gen !== undefined && !/^[a-z0-9]+$/.test(meta.gen)) throw new Error("index meta has a bad generation id");
+      const docs = await this.io.read(`${this.dir}/${meta.gen ? `docs-${meta.gen}.json` : "docs.json"}`);
+      const vectors = await this.io.readBinary(`${this.dir}/${meta.gen ? `vectors-${meta.gen}.f32` : "vectors.f32"}`);
       await this.store.load(docs, vectors, meta);
       console.debug(`[Refwright] index restored: ${this.store.count} chunks`);
     } catch (e) {
@@ -352,8 +357,16 @@ export class IndexManager {
       const citekey = this.store.citekeyForPath(path);
       if (!citekey) return;
       await this.store.removeCitekey(citekey);
-      await this.persist();
+      // Persisted by the debounced flush: a burst of deletes (500 trashed notes) writes the index
+      // once, not 500 times. Search already sees the removal; only the disk copy lags a few seconds.
+      this.dirty = true;
+      this.flush();
     });
+  }
+
+  /** Plugin unload: run what the debounce has not yet (a reindex burst, a delete burst's persist). */
+  flushPending(): Promise<void> {
+    return this.reindexQueue.size || this.dirty ? this.flushReindex() : Promise.resolve();
   }
 
   /** Queue a file for debounced incremental reindexing. */
@@ -378,7 +391,7 @@ export class IndexManager {
           console.error("[Refwright] reindex failed", p, e);
         }
       }
-      if (changed) await this.persist(); // once per burst, not once per note
+      if (changed || this.dirty) await this.persist(); // once per burst, not once per note
     });
   }
 
@@ -576,18 +589,60 @@ export class IndexManager {
     await this.persistNow();
   }
 
+  /** Persist as a new generation: `docs-<gen>.json` and `vectors-<gen>.f32` are written whole first,
+   *  then `meta.json` (naming `gen`) is swapped in — that single write is the commit point. A crash
+   *  before it leaves the previous generation (meta + its two files) untouched; the half-written
+   *  new files are orphans swept by the next persist. */
   private async persistNow(): Promise<void> {
     if (!(await this.io.exists(this.dir))) await this.io.mkdir(this.dir);
     this.store.flush();
-    const { parts, vectors, meta } = await this.store.serializeStream();
-    // docs, then vectors, then meta last: meta is the commit marker (restore bails if it's
-    // missing, and store.load rejects a count/size desync from a crash between the writes)
-    await this.writeAtomicParts(this.docsPath, parts);
-    await this.writeAtomicBinary(this.vectorsPath, vectors);
+    const { parts, vectorSlices, meta } = await this.store.serializeStream();
+    const gen = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const docsName = `docs-${gen}.json`;
+    const vectorsName = `vectors-${gen}.f32`;
+    let first = true;
+    for (const part of parts) {
+      if (first) await this.io.write(`${this.dir}/${docsName}`, part);
+      else await this.io.append(`${this.dir}/${docsName}`, part);
+      first = false;
+    }
+    const vectorsPath = `${this.dir}/${vectorsName}`;
+    if (this.io.appendBinary) {
+      // <= 64 MB packed at a time: packing the whole bank (212k x 1536 x 4 B ~ 1.3 GB) per persist
+      // peaked far above the bank itself in the renderer
+      let firstSlice = true;
+      for (const slice of vectorSlices(this.vectorSliceBytes)) {
+        if (firstSlice) await this.io.writeBinary(vectorsPath, slice);
+        else await this.io.appendBinary(vectorsPath, slice);
+        firstSlice = false;
+      }
+    } else {
+      // ponytail: Obsidian < 1.12.3 has no DataAdapter.appendBinary, so one full packed copy (~1.3 GB
+      // at 212k chunks) lives for the write; the vault location is the only user of this path
+      const [all] = vectorSlices(Infinity);
+      await this.io.writeBinary(vectorsPath, all);
+    }
+    meta.gen = gen;
     await this.writeAtomicText(this.metaPath, JSON.stringify(meta));
-    // a pre-0.7 whole-DB dump left behind at this same location is now dead weight
-    for (const p of [this.legacyOramaPath, `${this.legacyOramaPath}.tmp`]) {
-      if (await this.io.exists(p)) await this.io.remove(p);
+    this.dirty = false;
+    // Committed. Everything else in the folder (previous generation, pre-generation docs.json /
+    // vectors.f32, orama.json, *.tmp, orphans of a crashed persist) is now dead weight; failing to
+    // delete it must not fail the persist.
+    try {
+      await this.sweep(this.io, this.dir, new Set(["meta.json", docsName, vectorsName]));
+    } catch (e) {
+      console.warn("[Refwright] could not remove old index files", e);
+    }
+  }
+
+  /** Remove index files in `dir` except the `keep` names: any `docs*.json`, `vectors*.f32`,
+   *  `meta.json`, pre-0.7 `orama.json`, and their `.tmp` stages. */
+  private async sweep(io: FileIO, dir: string, keep: Set<string>): Promise<void> {
+    if (!(await io.exists(dir))) return;
+    const own = /^(docs|vectors|meta|orama)(-[a-z0-9]+)?\.(json|f32)(\.tmp)?$/;
+    for (const p of (await io.list(dir)).files) {
+      const name = p.slice(p.lastIndexOf("/") + 1);
+      if (own.test(name) && !keep.has(name)) await io.remove(p);
     }
   }
 
@@ -602,38 +657,15 @@ export class IndexManager {
     await this.io.rename(tmp, path);
   }
 
-  /** `writeAtomicText` for content that arrives in pieces (docs.json is too big for one string). */
-  private async writeAtomicParts(path: string, parts: Iterable<string>): Promise<void> {
-    const tmp = `${path}.tmp`;
-    let first = true;
-    for (const part of parts) {
-      if (first) await this.io.write(tmp, part);
-      else await this.io.append(tmp, part);
-      first = false;
-    }
-    if (await this.io.exists(path)) await this.io.remove(path);
-    await this.io.rename(tmp, path);
-  }
-
-  private async writeAtomicBinary(path: string, content: ArrayBuffer): Promise<void> {
-    const tmp = `${path}.tmp`;
-    await this.io.writeBinary(tmp, content);
-    if (await this.io.exists(path)) await this.io.remove(path);
-    await this.io.rename(tmp, path);
-  }
-
   private async clearPersisted(): Promise<void> {
     await this.ensureLocation();
+    this.dirty = false;
     await this.clearPersistedAt(this.io, this.dir);
   }
 
   private async clearPersistedAt(io: FileIO, dir: string): Promise<void> {
-    const meta = `${dir}/meta.json`;
-    const docs = `${dir}/docs.json`;
-    const vectors = `${dir}/vectors.f32`;
-    const orama = `${dir}/orama.json`;
-    // meta first: without it, leftover data files are ignored on restore
-    const paths = [meta, docs, vectors, orama, `${meta}.tmp`, `${docs}.tmp`, `${vectors}.tmp`, `${orama}.tmp`];
-    for (const p of paths) if (await io.exists(p)) await io.remove(p);
+    // meta first: without it (or its .tmp), leftover data files are ignored on restore
+    for (const p of [`${dir}/meta.json`, `${dir}/meta.json.tmp`]) if (await io.exists(p)) await io.remove(p);
+    await this.sweep(io, dir, new Set());
   }
 }

@@ -12,6 +12,18 @@ const MAP_W = 320;
 const MAP_H = 260;
 const MAP_MAX = 40;
 
+/** A clickable row the keyboard reaches too: focusable, Enter/Space do what a click does. */
+function activatable(el: HTMLElement, action: () => void): void {
+  el.tabIndex = 0;
+  el.setAttribute("role", "button");
+  el.onclick = action;
+  el.onkeydown = (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    action();
+  };
+}
+
 type NodeKind = "active" | "ref" | "cited" | "coupled" | "missing";
 
 export class RelatedView extends ItemView {
@@ -63,20 +75,18 @@ export class RelatedView extends ItemView {
     return fm?.citekey ? String(fm.citekey) : null;
   }
 
-  /** citekey → title, rebuilt once per refresh: `getItem` is a full-vault scan and the pane
-   *  asks for up to ~100 titles per note switch. */
+  /** citekey → title, looked up lazily (`getItem` is O(1)) for only the keys the pane shows;
+   *  cleared once per refresh. */
   private titles = new Map<string, string>();
 
   private titleOf(citekey: string): string {
-    return this.titles.get(citekey) ?? citekey;
-  }
-
-  private refreshTitles(): void {
-    this.titles.clear();
-    for (const e of this.plugin.library.entries()) {
-      const ck = e.item.citekey;
-      if (typeof ck === "string" && ck) this.titles.set(ck, e.item.title ? String(e.item.title) : ck);
+    let t = this.titles.get(citekey);
+    if (t === undefined) {
+      const title = this.plugin.library.getItem(citekey)?.title;
+      t = title ? String(title) : citekey;
+      this.titles.set(citekey, t);
     }
+    return t;
   }
 
   private async build(): Promise<void> {
@@ -93,14 +103,14 @@ export class RelatedView extends ItemView {
   private citekeyRow(parent: HTMLElement, citekey: string, suffix = ""): void {
     const row = parent.createDiv({ cls: "srag-rel-row" });
     row.createSpan({ cls: "srag-rel-title", text: this.titleOf(citekey) + suffix });
-    row.onclick = () => void this.openCitekey(citekey);
+    activatable(row, () => void this.openCitekey(citekey));
   }
 
   private refresh(): void {
     if (!this.bodyEl) return;
     const gen = ++this.gen;
     this.bodyEl.empty();
-    this.refreshTitles();
+    this.titles.clear();
     const graph = this.plugin.citationGraph;
 
     this.bodyEl.createDiv({
@@ -152,7 +162,7 @@ export class RelatedView extends ItemView {
         const row = s4.createDiv({ cls: "srag-rel-row" });
         row.createSpan({ cls: "srag-rel-title", text: m.title });
         row.createSpan({ cls: "srag-rel-badge", text: `  ×${m.count}` });
-        row.onclick = () => this.plugin.safeOpenExternal(`https://openalex.org/${m.openalexId}`);
+        activatable(row, () => this.plugin.safeOpenExternal(`https://openalex.org/${m.openalexId}`));
       }
     }).catch(() => {
       if (gen !== this.gen) return;
@@ -191,8 +201,9 @@ export class RelatedView extends ItemView {
           ].filter(Boolean);
           if (w.journal) row.createSpan({ cls: "srag-rel-badge", text: `  · ${w.journal}` });
           if (flags.length) row.createSpan({ cls: "srag-rel-badge", text: `  · ${flags.join(" · ")}` });
-          row.onclick = () =>
-            have ? void this.openCitekey(have) : new AddReferenceModal(this.app, this.plugin, w.openalexId).open();
+          activatable(row, () =>
+            have ? void this.openCitekey(have) : new AddReferenceModal(this.app, this.plugin, w.openalexId).open()
+          );
         }
         sec.createDiv({
           cls: "srag-count",

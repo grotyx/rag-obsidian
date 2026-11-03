@@ -3,7 +3,7 @@
 > Display name: **Refwright** (was "Academic Paper Citation Manager" through 0.8.2) · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.8.9 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.9.0 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [User guide](docs/manual/README.md) (screenshots, en/ko/zh/ja/es; `scripts/manual/capture.py` reshoots them) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -77,9 +77,9 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `util/pool.ts` | `mapPool` bounded concurrency + `POOL_WIDTH` (15, sized for the LLM wait) + `poolWidth(settings)` (3 for the CLI providers) — the network/LLM half of a batch; vault writes stay sequential. Takes an optional `AbortSignal`: cancelling lets in-flight items finish, starts no new ones, and still resolves (unstarted slots come back empty) |
 | `index/providers/{ollama,openai}.ts` | embedding backends |
 | `index/chunker.ts` | contextual-prefix chunking, frontmatter helpers (`yearFromIssued`, `authorNames`), `chunkHash` (reindex change detector) |
-| `index/store.ts` | `VectorStore`: rows shared by the packed `Float32Array` **vector bank** (L2-normalized) and `TextIndex` (BM25) — no Orama at runtime. `search` fuses them like Orama's hybrid (text/max + vector/max, 0.5 each) except **gated**: a text hit gets the vector half only inside the vector arm's top `vectorArm` (500); `gatedFusion=false` reproduces Orama exactly (parity test). Hits carry a `vector` view (internal; `IndexManager.search` strips it). Persist format unchanged: `docs.json` + `vectors.f32` + meta (`INDEX_SCHEMA` 4); `SearchFilters` (year range, tag AND, author) + `describeFilters` |
+| `index/store.ts` | `VectorStore`: rows shared by the packed `Float32Array` **vector bank** (L2-normalized) and `TextIndex` (BM25) — no Orama at runtime. `search` fuses them like Orama's hybrid (text/max + vector/max, 0.5 each) except **gated**: a text hit gets the vector half only inside the vector arm's top `vectorArm` (500); `gatedFusion=false` reproduces Orama exactly (parity test). Hits carry a `vector` view (internal; `IndexManager.search` strips it). Persist format (`INDEX_SCHEMA` 4): generation files `docs-<gen>.json` + `vectors-<gen>.f32`, then `meta.json` (with `gen`) last as the one commit point; a meta without `gen` reads the legacy `docs.json` / `vectors.f32`; vectors are written in ≤64 MB `vectorSlices` (needs `FileIO.appendBinary`, Obsidian 1.12.3+; else one buffer); `SearchFilters` (year range, tag AND, author) + `describeFilters` |
 | `index/textIndex.ts` | pure BM25 index mirroring Orama 3.1's tokenizer/scoring (k 1.2, b 0.75, d 0.5, prefix match, per-field df, `tagText` ×1.5): postings and doc fields live in typed arrays / one UTF-8 byte store, lazy removal + compaction — ~45 MB of heap at 106k chunks (Orama took ~1.85 GB) |
-| `index/localFiles.ts` | `FileIO` (the vault adapter or `NodeFileIO` over fs.promises) + `cacheRoot`/`localIndexDir` — where the index lives when `indexLocal` keeps it out of a synced vault |
+| `index/localFiles.ts` | `FileIO` (the vault adapter or `NodeFileIO` over fs.promises; `list` + optional `appendBinary`) + `cacheRoot`/`localIndexDir` — where the index lives when `indexLocal` keeps it out of a synced vault |
 | `index/manager.ts` | build / incremental reindex / search / persist orchestration (all mutations serialized; unchanged notes skip re-embedding); `search` over-fetches ×3 and thins via `capPerReference`; `search(query, filters, k, {rerank, translate})`: optional LLM translation of non-English queries (`translator`, injected by main.ts, cached; MCP passes `translate:false`), query expansion of the BM25 term only (`expand`, `addMeshHeadings`, thesaurus at `<pluginDir>/mesh-thesaurus.json`), optional MMR, hosted rerank |
 | `index/rerank.ts` | retrieval quality, no Obsidian imports: `capPerReference` (≤3 chunks per reference, tops back up from the spill so k is still returned), `rerankHits`/`buildRerankUser`/`parseRerankOrder` (optional LLM reranker behind `llmRerank`; any failure falls back to retrieval order), `coupledCandidates` (citation-graph papers coupled to a top hit, offered to the reranker as unscored candidates via the `CoupledLookup`/`CandidateLookup` shapes `chat/rag.ts` adapts the real `CitationGraph`/`Library` to); `mmr` (λ 0.7 over bank vectors) and `hostedRerank`/`parseRerankResponse` (OpenRouter `/rerank`, default `voyageai/rerank-3-lite`; `null` on any failure → retrieval order) |
 | `index/expand.ts` | pure query expansion: `parseVocabulary` (user JSON vocabulary, any language), `buildExpander` (longest-match, Hangul substring / Latin word-edge matching, ≤12 added terms, label qualifiers stripped), `expandedTerm`, `isForeignQuery` |
@@ -92,6 +92,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `chat/rag.ts` | retrieve (under optional `SearchFilters`) → number sources → [n] grounded answer → resolve citations |
 | `cite/csl.ts` | citeproc-js rendering: bundled styles + CSL-repo fetch/cache, per-note `csl:` override |
 | `cite/format.ts` | CSL-JSON → APA / Vancouver / Plain (lightweight fallback; `cite/csl.ts` is primary) + `citeTooltip` (hover text) |
+| `cite/itemMemo.ts` | `itemMemo(getItem)` — per-citekey item lookup with a memo (misses too) for the reading-view and editor renderers, so a render looks up only the cited keys instead of scanning the library |
 | `cite/clusters.ts` | `citeClusters` — `[@…]` ranges in a note, skipping fenced and inline code (pure; the editor uses it) |
 | `cite/editorCite.ts` | CodeMirror extension: Live Preview widgets with the note's CSL labels (source shown when the cursor touches one) + hover tooltip in every mode; `setCiteLabel` shared with reading view. Relies on `citeMapFor` returning the same promise until the cache is dropped |
 | `cite/styleIndex.ts` | `parseStyleIndex` — Zotero's `styles.json` → `{id, title, short, format}` for the style picker |
@@ -135,7 +136,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (507) + MCP checks + live integration suite (256 checks)
+npm test               # unit (543) + MCP checks + live integration suite (290 checks)
 ```
 
 ## Testing approach (important)

@@ -12,6 +12,11 @@ export interface FileIO {
   append(path: string, data: string): Promise<void>;
   readBinary(path: string): Promise<ArrayBuffer>;
   writeBinary(path: string, data: ArrayBuffer): Promise<void>;
+  /** Append bytes to an existing file. Optional: the vault adapter only has it from Obsidian 1.12.3
+   *  (our minimum is 1.11.4), so callers fall back to one `writeBinary` when it is missing. */
+  appendBinary?(path: string, data: ArrayBuffer): Promise<void>;
+  /** Paths (as `dir/name`) of the files directly inside `dir`. */
+  list(dir: string): Promise<{ files: string[] }>;
   remove(path: string): Promise<void>;
   rename(from: string, to: string): Promise<void>;
 }
@@ -63,6 +68,13 @@ export class NodeFileIO implements FileIO {
   }
   async writeBinary(path: string, data: ArrayBuffer): Promise<void> {
     await this.fs.writeFile(path, Buffer.from(data));
+  }
+  async appendBinary(path: string, data: ArrayBuffer): Promise<void> {
+    await this.fs.writeFile(path, Buffer.from(data), { flag: "a" });
+  }
+  async list(dir: string): Promise<{ files: string[] }> {
+    const entries = await this.fs.readdir(dir, { withFileTypes: true });
+    return { files: entries.filter((e) => e.isFile()).map((e) => `${dir}/${e.name}`) };
   }
   async remove(path: string): Promise<void> {
     await this.fs.unlink(path);

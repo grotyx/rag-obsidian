@@ -12,7 +12,7 @@ import * as http from "http";
 import * as yaml from "yaml";
 
 import { detectId, fetchMetadata, parsePubDate } from "../src/ingest/metadata";
-import { duplicateGroups, inScope, BackfillScope, Library } from "../src/data/library";
+import { duplicateGroups, matchKeys, inScope, BackfillScope, Library } from "../src/data/library";
 import { mapPool, POOL_WIDTH } from "../src/util/pool";
 import { buildTags, MIN_TAGS, fetchPubmedRecord, searchPubmedPage } from "../src/ingest/pubmedSearch";
 import { ncbiGate, ncbiGapMs, resetNcbiGate } from "../src/ingest/ncbi";
@@ -50,6 +50,7 @@ import {
 } from "../src/cite/bibliography";
 import { ScholarRagSettings, DEFAULT_SETTINGS, CSLItem } from "../src/types";
 import { IndexManager } from "../src/index/manager";
+import { NodeFileIO } from "../src/index/localFiles";
 import ScholarRagPlugin from "../main";
 
 const MODEL = process.env.EMBED_MODEL || "qwen2.5:0.5b"; // any local Ollama model works for /api/embed
@@ -954,6 +955,61 @@ async function main() {
       files.set(nk.path, nk);
       fms.set(nk.path, { title: "A note that has no citekey at all", DOI: "10.7/nokey" });
       ok(lib3.findDuplicate({ type: "article-journal", DOI: "10.7/nokey" }) === null, "a note without a frontmatter citekey is not a duplicate");
+
+      // Identifier map vs. the original full scan: identical answers for DOI / PMID / OpenAlex /
+      // title / multi-key queries (earliest note in scan order wins), then invalidation.
+      {
+        const scan = (q: CSLItem): string | null => {
+          const keys = matchKeys(q);
+          for (const file of files.values()) {
+            const fm = fms.get(file.path);
+            if (!fm || !fm.citekey) continue;
+            if (matchKeys(fm).some((k) => keys.includes(k))) return String(fm.citekey);
+          }
+          return null;
+        };
+        const mk = (name: string, fm: Record<string, unknown>) => {
+          const f = new TFile(`References/${name}.md`);
+          files.set(f.path, f);
+          fms.set(f.path, fm);
+          return f;
+        };
+        const fA = mk("mapA", { citekey: "mapA", title: "Map note A: a long unique title here", DOI: "10.9/AAA", PMID: "9001" });
+        const fB = mk("mapB", { citekey: "mapB", title: "Map note B with another long title", DOI: "10.9/bbb", openalex_id: "W9002" });
+        mk("mapC", { citekey: "mapC", title: "Map note A: a long unique title here", PMID: "9003" }); // shares A's title
+        const lib4 = new Library(app2, settings);
+        const queries: CSLItem[] = [
+          { type: "article-journal", DOI: "https://doi.org/10.9/aaa" },
+          { type: "article-journal", PMID: "9001" },
+          { type: "article-journal", PMID: "9003" },
+          { type: "article-journal", openalex_id: "https://openalex.org/w9002" },
+          { type: "article-journal", title: "MAP NOTE A: a long unique title here" },
+          { type: "article-journal", PMID: "9001", DOI: "10.9/bbb" }, // two keys, two notes: the earlier note wins, not the first key
+          { type: "article-journal", PMID: "9003", DOI: "10.9/aaa" },
+          { type: "article-journal", DOI: "10.9/none", title: "short" },
+        ];
+        for (const q of queries) {
+          ok(lib4.findDuplicate(q) === scan(q), `id map matches the scan: ${JSON.stringify(q).slice(0, 70)} → ${scan(q)}`);
+        }
+        ok(lib4.findDuplicate(queries[0]) === "mapA", "id map: DOI hit");
+        // frontmatter edit + invalidation
+        fms.set(fA.path, { ...fms.get(fA.path)!, DOI: "10.9/edited" });
+        lib4.invalidateKeyCache();
+        ok(lib4.findDuplicate(queries[0]) === null, "id map: invalidated after a frontmatter edit (old DOI free)");
+        ok(lib4.findDuplicate({ type: "article-journal", DOI: "10.9/edited" }) === "mapA", "id map: new DOI matches after invalidation");
+        // stale map (no invalidation) never returns an edited-away or deleted note
+        fms.set(fA.path, { ...fms.get(fA.path)!, DOI: "10.9/edited-again" });
+        ok(lib4.findDuplicate({ type: "article-journal", DOI: "10.9/edited" }) === null, "id map: stale entry verified against frontmatter");
+        files.delete(fB.path);
+        fms.delete(fB.path);
+        ok(lib4.findDuplicate({ type: "article-journal", DOI: "10.9/bbb" }) === null, "id map: a deleted note does not match");
+        ok(lib4.findDuplicate({ type: "article-journal", openalex_id: "W9002" }) === null, "id map: deleted note gone for every key");
+        // a note created after the map was built still matches through the registry
+        const nItem: CSLItem = { type: "article-journal", title: "Registry beats the map", DOI: "10.9/fresh" };
+        const nf = await lib4.createReference(nItem);
+        const nk4 = lib4.findDuplicate(nItem);
+        ok(nk4 !== null && lib4.getFile(nk4) === nf, "id map: unparsed new note matches via registry");
+      }
     }
 
     // "Add by PMID" keeps the PMC id the esummary payload already carries, so the fill-gaps
@@ -1722,19 +1778,38 @@ async function main() {
     const embPort = (embSrv.address() as { port: number }).port;
 
     const disk = new Map<string, string | ArrayBuffer>();
+    let appends = 0;
     const adapter = {
-      exists: async (p: string) => disk.has(p),
+      exists: async (p: string) => disk.has(p) || [...disk.keys()].some((k) => k.startsWith(`${p}/`)),
       mkdir: async () => undefined,
       read: async (p: string) => String(disk.get(p)),
       write: async (p: string, d: string) => void disk.set(p, d),
       append: async (p: string, d: string) => void disk.set(p, String(disk.get(p) ?? "") + d),
       readBinary: async (p: string) => disk.get(p) as ArrayBuffer,
       writeBinary: async (p: string, d: ArrayBuffer) => void disk.set(p, d),
+      appendBinary: async (p: string, d: ArrayBuffer) => {
+        appends++;
+        const old = (disk.get(p) as ArrayBuffer | undefined) ?? new ArrayBuffer(0);
+        const joined = new Uint8Array(old.byteLength + d.byteLength);
+        joined.set(new Uint8Array(old), 0);
+        joined.set(new Uint8Array(d), old.byteLength);
+        disk.set(p, joined.buffer);
+      },
+      list: async (dir: string) => ({ files: [...disk.keys()].filter((k) => k.startsWith(`${dir}/`) && !k.slice(dir.length + 1).includes("/")) }),
       remove: async (p: string) => void disk.delete(p),
       rename: async (a: string, b: string) => {
         disk.set(b, disk.get(a) as string);
         disk.delete(a);
       },
+    };
+    // Test hooks: make a write to one path throw (a crash), count writes per path.
+    let crashOn = "";
+    const writes: string[] = [];
+    const realWrite = adapter.write;
+    adapter.write = async (p: string, d: string) => {
+      writes.push(p);
+      if (crashOn && p.endsWith(crashOn)) throw new Error("simulated crash");
+      return realWrite(p, d);
     };
     const notes = new Map<string, { fm: Record<string, unknown>; body: string }>([
       ["References/a.md", { fm: { citekey: "smith2024", title: "Alpha", abstract: "alpha alpha study" }, body: "alpha body" }],
@@ -1836,6 +1911,142 @@ async function main() {
     ok(mgr.indexedModelId === "openai:model-b", "rebuild() relabels the index with the new model");
     const after = await mgr.search("alpha", {}, 5, { translate: false });
     ok(after.length > 0, `search works again after the rebuild (${after.length} hits)`);
+
+    // ---- 25. generation files: crash-safe persist, legacy layout, cleanup, chunked vectors ----
+    log("\n[25] Index persistence (generation files)");
+    const dir = "plugin/index";
+    const indexFiles = () => [...disk.keys()].filter((k) => k.startsWith(`${dir}/`)).map((k) => k.slice(dir.length + 1)).sort();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const snap = (m: IndexManager) => (m as any).store.serialize() as Promise<{ docs: string; vectors: ArrayBuffer; meta: unknown }>;
+    const sameStore = async (a: IndexManager | Awaited<ReturnType<typeof snap>>, b: IndexManager): Promise<boolean> => {
+      const sa = a instanceof IndexManager ? await snap(a) : a;
+      const sb = await snap(b);
+      if (sa.docs !== sb.docs || sa.vectors.byteLength !== sb.vectors.byteLength) return false;
+      const va = new Float32Array(sa.vectors);
+      const vb = new Float32Array(sb.vectors);
+      return va.every((x, i) => Math.abs(x - vb[i]) < 1e-5);
+    };
+    const fresh = () => new IndexManager(app as never, { folder: () => "References", getItem: () => undefined } as never, mset, "plugin");
+    const restoredCount = async (m: IndexManager) => {
+      await m.restore();
+      return m.count;
+    };
+
+    // normal round trip: meta names one generation; no plain files, no tmp
+    const files1 = indexFiles();
+    const metaNow = JSON.parse(disk.get(`${dir}/meta.json`) as string) as { gen?: string };
+    ok(
+      !!metaNow.gen &&
+        files1.length === 3 &&
+        files1.includes(`docs-${metaNow.gen}.json`) &&
+        files1.includes(`vectors-${metaNow.gen}.f32`) &&
+        files1.includes("meta.json"),
+      `persist leaves meta.json + one generation: ${files1.join(", ")}`
+    );
+    const mgrR = fresh();
+    ok((await restoredCount(mgrR)) === mgr.count && (await sameStore(mgr, mgrR)), "round trip: a fresh manager restores identical docs and vectors");
+
+    // a second persist replaces the first generation
+    await priv.persist();
+    const files2 = indexFiles();
+    const gen2 = (JSON.parse(disk.get(`${dir}/meta.json`) as string) as { gen: string }).gen;
+    ok(gen2 !== metaNow.gen && files2.length === 3 && files2.includes(`docs-${gen2}.json`), `old generation is deleted after the commit: ${files2.join(", ")}`);
+
+    // crash after docs + vectors are written, before meta: the old index must come back intact
+    disk.set(`${dir}/docs-orphan1.json`, "[");
+    disk.set(`${dir}/vectors-orphan1.f32.tmp`, new ArrayBuffer(4));
+    disk.set(`${dir}/meta.json.tmp`, "{ half");
+    const snapBefore = await snap(mgr);
+    notes.set("References/a.md", { fm: { citekey: "smith2024", title: "Alpha", abstract: "crash crash abstract" }, body: "crash body" });
+    ok(await priv.reindexNow(tfile("References/a.md")), "setup: the edited note replaced its chunks in memory");
+    crashOn = "meta.json.tmp";
+    let crashed = false;
+    try {
+      await priv.persist();
+    } catch {
+      crashed = true;
+    }
+    crashOn = "";
+    ok(crashed, "the simulated crash aborted the persist");
+    const orphans = indexFiles().filter((f) => /^(docs|vectors)-/.test(f) && !f.includes(gen2) && !f.includes("orphan"));
+    ok(orphans.length === 2, `the crash left the new generation's two data files orphaned (${orphans.length})`);
+    const mgrC = fresh();
+    ok((await restoredCount(mgrC)) > 0 && !mgrC.restoreError, "restore after the crash succeeds");
+    const crashedHits = await mgrC.search("abstract", {}, 5, { translate: false });
+    const crashedText = crashedHits.filter((h) => h.citekey === "smith2024").map((h) => h.text).join(" ");
+    ok(/edited abstract/.test(crashedText) && !/crash/.test(crashedText), "...with the OLD content of smith2024, not the unpersisted edit");
+    // the old docs/vectors pair stays consistent (what the pre-generation layout got wrong)
+    ok(await sameStore(snapBefore, mgrC), "...and every restored vector still belongs to its restored text");
+    // the next successful persist sweeps the orphans (and the stray tmp)
+    await priv.persist();
+    const files3 = indexFiles();
+    ok(files3.length === 3 && !files3.some((f) => f.includes("orphan") || f.endsWith(".tmp")), `next persist sweeps orphans and tmp files: ${files3.join(", ")}`);
+
+    // legacy layout (no gen): plain docs.json / vectors.f32 still restore, then migrate on persist
+    const legacy = await priv.store.serialize();
+    for (const f of indexFiles()) disk.delete(`${dir}/${f}`);
+    const { gen: _g, ...legacyMeta } = legacy.meta;
+    disk.set(`${dir}/docs.json`, legacy.docs);
+    disk.set(`${dir}/vectors.f32`, legacy.vectors);
+    disk.set(`${dir}/meta.json`, JSON.stringify(legacyMeta));
+    const mgrL = fresh();
+    ok((await restoredCount(mgrL)) === mgr.count && (await sameStore(mgrL, mgr)), "legacy layout (meta without gen) restores from docs.json / vectors.f32");
+    await (mgrL as unknown as { persist(): Promise<void> }).persist();
+    const files4 = indexFiles();
+    ok(files4.length === 3 && !files4.includes("docs.json") && !files4.includes("vectors.f32"), `persisting a legacy index migrates it: ${files4.join(", ")}`);
+
+    // several vector slices appended, and the no-appendBinary fallback
+    priv.vectorSliceBytes = 16 * 4 * 2; // two 16-dim rows per slice
+    appends = 0;
+    await priv.persist();
+    const mgrS = fresh();
+    ok(
+      appends === Math.ceil(mgr.count / 2) - 1 && (await restoredCount(mgrS)) === mgr.count && (await sameStore(mgrS, mgr)),
+      `vectors written as ${appends + 1} slices (1 write + ${appends} appends) restore identically`
+    );
+    const savedAppend = adapter.appendBinary;
+    (adapter as { appendBinary?: unknown }).appendBinary = undefined;
+    await priv.persist();
+    adapter.appendBinary = savedAppend;
+    priv.vectorSliceBytes = 64 * 1024 * 1024;
+    const mgrF = fresh();
+    ok((await restoredCount(mgrF)) === mgr.count && (await sameStore(mgrF, mgr)), "without appendBinary the single-buffer fallback still writes a valid generation");
+
+    // a burst of deletes persists once
+    for (const k of ["c", "d", "e", "f"]) {
+      notes.set(`References/${k}.md`, { fm: { citekey: `extra${k}`, title: k, abstract: `${k} ${k} paper` }, body: `${k} body` });
+    }
+    await mgr.rebuild();
+    const before = mgr.count;
+    writes.length = 0;
+    await Promise.all(["c", "d", "e", "f", "a"].map((k) => mgr.removeFile(`References/${k}.md`)));
+    ok(mgr.count < before && writes.filter((w) => w.endsWith("meta.json.tmp")).length === 0, "removals hit the in-memory index at once, without writing");
+    await new Promise((r) => setTimeout(r, 1800));
+    await priv.chain;
+    const metaWrites = writes.filter((w) => w.endsWith("meta.json.tmp")).length;
+    ok(metaWrites === 1, `5 removals persisted once, not 5 times (${metaWrites})`);
+    const mgrD = fresh();
+    ok((await restoredCount(mgrD)) === mgr.count && (await sameStore(mgrD, mgr)), "...and the persisted index has the removals");
+
+    // clearing removes every generation file
+    disk.set(`${dir}/docs-stale.json`, "[");
+    await priv.clearPersisted();
+    ok(indexFiles().length === 0, `clearPersisted removes generation files and orphans: [${indexFiles().join(", ")}]`);
+
+    // NodeFileIO (the local-cache location): appendBinary and list over a real folder
+    {
+      const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "refwright-io-"));
+      const nio = new NodeFileIO();
+      await nio.writeBinary(`${tmp}/v.f32`, new Uint8Array([1, 2]).buffer);
+      await nio.appendBinary(`${tmp}/v.f32`, new Uint8Array([3]).buffer);
+      await nio.write(`${tmp}/m.json`, "{}");
+      const listed = (await nio.list(tmp)).files.map((f) => f.slice(tmp.length + 1)).sort();
+      ok(
+        [...fs.readFileSync(`${tmp}/v.f32`)].join() === "1,2,3" && listed.join() === "m.json,v.f32",
+        `NodeFileIO.appendBinary appends and list names the files: ${listed}`
+      );
+      fs.rmSync(tmp, { recursive: true });
+    }
 
     embSrv.close();
   }

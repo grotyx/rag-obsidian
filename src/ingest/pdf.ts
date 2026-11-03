@@ -216,6 +216,16 @@ export function findIdentifier(text: string): { kind: "doi" | "arxiv"; value: st
   return null;
 }
 
+const norm = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+/** Does `title` open the PDF? A DOI printed early in the text may belong to a cited paper, so a
+ *  fetched record is trusted only if its title (first 60 normalized characters, so a wrapped or
+ *  hyphenated title still matches) sits in the first ~4,000 characters. */
+export function titleInHead(title: string | undefined, text: string): boolean {
+  const t = norm(title ?? "").slice(0, 60);
+  return t.length > 0 && norm(text.slice(0, 4000)).includes(t);
+}
+
 /** True when `data` starts with the PDF magic number. A repository can 200 with an HTML landing
  *  page instead of the file it links to — this is the guard against saving that as a `.pdf`. */
 export function isPdfMagic(data: ArrayBuffer): boolean {
