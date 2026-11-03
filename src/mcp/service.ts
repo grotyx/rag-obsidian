@@ -13,6 +13,7 @@ import { McpVault } from "./vault";
 import { text } from "../util/json";
 import { Finding, findingText, isRestated, parseFindings } from "../data/findings";
 import { hostedRerank } from "../index/rerank";
+import { citingWorks } from "../graph/openalex";
 
 type JsonSchema = Record<string, unknown>;
 
@@ -133,6 +134,17 @@ export const MCP_TOOLS: McpTool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   {
+    name: "find_citing_papers",
+    description: "List later papers that cite one paper, newest first, from OpenAlex (only citations OpenAlex has indexed; very recent papers can be missing). Use before submission to catch newer work that updates or contradicts a key reference. Flags retracted papers and erratum/retraction notices, and marks papers already in the library. Discovery only: review a result and add it with add_reference before citing it. Never calls an LLM.",
+    inputSchema: objectSchema({
+      citekey: string("Citekey of a paper in the library."),
+      identifier: string("Or an explicit DOI, PMID:123, or OpenAlex work ID for a paper not in the library."),
+      limit: integer("Maximum papers to return.", 1, 100),
+      year_from: integer("Only citing papers published in or after this year.", 1000, 3000),
+    }),
+    annotations: { ...readOnly, openWorldHint: true },
+  },
+  {
     name: "list_notes", description: "List Markdown notes outside Obsidian's private configuration folder. Bodies are not returned.",
     inputSchema: objectSchema({ folder: string("Optional vault-relative folder."), limit: integer("Page size.", 1, 100), cursor: string("Path cursor from the previous page.") }),
     annotations: readOnly,
@@ -203,11 +215,12 @@ interface ServiceDeps {
   fetchMetadata: (id: SourceId, pubmedApiKey?: string, mailto?: string) => Promise<CSLItem>;
   fetchPubmedRecord: typeof fetchPubmedRecord;
   fetchPmcFullText: typeof fetchPmcFullText;
+  citingWorks: typeof citingWorks;
   compile?: (path: string, outputPath?: string, expectedOutputHash?: string) => Promise<unknown>;
   vaultPath?: string;
 }
 
-const DEFAULT_DEPS: ServiceDeps = { searchPubmed: searchPubmedPage, fetchMetadata, fetchPubmedRecord, fetchPmcFullText };
+const DEFAULT_DEPS: ServiceDeps = { searchPubmed: searchPubmedPage, fetchMetadata, fetchPubmedRecord, fetchPmcFullText, citingWorks };
 
 function stringArg(args: Record<string, unknown>, name: string): string {
   const value = args[name];
@@ -342,6 +355,7 @@ export class McpService {
       case "search_pubmed": return this.searchPubmed(args);
       case "add_reference": return this.addReference(stringArg(args, "identifier"), boundedStringArrayArg(args, "tags"));
       case "set_reference_fields": return this.setReferenceFields(args);
+      case "find_citing_papers": return this.findCitingPapers(args);
       case "list_notes": return this.vault.listNotes(optionalString(args, "folder"), numberArg(args, "limit", 50, 1, 100), optionalString(args, "cursor"));
       case "read_note": return this.vault.readNote(stringArg(args, "path"), numberArg(args, "offset", 0, 0, 2_000_000), numberArg(args, "max_chars", 12_000, 1, 50_000));
       case "create_note": return this.vault.createNote(stringArg(args, "path"), textArg(args, "content"));
@@ -679,6 +693,42 @@ export class McpService {
       const citekey = this.plugin.library.findDuplicate(item) ?? file.basename;
       return { status: "created", citekey, path: file.path, metadata: item, tagsAdded: newTags, nextAction: this.summaryNextAction(citekey) };
     });
+  }
+
+  private async findCitingPapers(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const citekey = optionalString(args, "citekey")?.trim();
+    const identifier = optionalString(args, "identifier")?.trim();
+    if (!citekey === !identifier) throw new Error("INVALID_ARGUMENT: pass exactly one of citekey or identifier");
+    let item: CSLItem;
+    if (citekey) {
+      const found = this.plugin.library.getItem(citekey);
+      if (!found) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
+      item = found;
+    } else {
+      if (/^\d+$/.test(identifier!)) throw new Error("AMBIGUOUS_IDENTIFIER: use an explicit PMID such as PMID:12345");
+      const id = detectId(identifier!);
+      if (id.kind === "doi") item = { type: "article-journal", DOI: id.value };
+      else if (id.kind === "pmid") item = { type: "article-journal", PMID: id.value };
+      else if (id.kind === "openalex") item = { type: "article-journal", openalex_id: id.value };
+      else throw new Error("INVALID_IDENTIFIER: use a DOI, PMID:123, or OpenAlex work ID");
+    }
+    const found = await this.deps.citingWorks(item, {
+      mailto: this.plugin.settings.openalexMailto,
+      limit: numberArg(args, "limit", 25, 1, 100),
+      fromYear: args.year_from === undefined ? undefined : numberArg(args, "year_from", 0, 1000, 3000),
+    });
+    if (!found) throw new Error("NOT_FOUND: paper not found on OpenAlex");
+    const results = found.works.map((w) => ({
+      ...w,
+      existingCitekey: this.plugin.library.findDuplicate({ type: "article-journal", title: w.title, DOI: w.doi, PMID: w.pmid }),
+    }));
+    return {
+      paper: { citekey: citekey ?? null, openalexId: found.work.openalexId, title: found.work.title },
+      totalCount: found.total,
+      truncated: found.total > results.length,
+      results,
+      coverage: "Citations indexed by OpenAlex only; newest first. Verify each paper and add it with add_reference before citing it.",
+    };
   }
 
   private async setReferenceFields(args: Record<string, unknown>): Promise<Record<string, unknown>> {

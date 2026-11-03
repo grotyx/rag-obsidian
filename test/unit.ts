@@ -22,6 +22,7 @@ import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summ
 import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
+import { parseCitingPage } from "../src/graph/openalex";
 import { rerankHttpReason, mmr, parseRerankResponse } from "../src/index/rerank";
 import { requestWithRetry } from "../src/llm/client";
 import {
@@ -200,6 +201,23 @@ AID - 10.1000/xyz123 [doi]
   check(oa.kind === "openalex" && oa.value === "W12345", "detectId: OpenAlex URL");
   check(detectId("W12345").kind === "openalex", "detectId: bare OpenAlex id");
   check(detectId("not an identifier at all!!!").kind === "unknown", "detectId: unknown");
+
+  const page = parseCitingPage({
+    meta: { count: 412 },
+    results: [
+      {
+        id: "https://openalex.org/W9", title: "Later trial", publication_year: 2026, is_retracted: true, type: "article",
+        ids: { doi: "https://doi.org/10.1/x", pmid: "https://pubmed.ncbi.nlm.nih.gov/42" },
+        primary_location: { source: { display_name: "Spine" } }, cited_by_count: 3,
+      },
+      { id: "https://openalex.org/W8", display_name: "Correction", type: "erratum", primary_location: null },
+    ],
+  });
+  check(page.total === 412 && page.works.length === 2, "parseCitingPage: total from meta.count");
+  const [w9, w8] = page.works;
+  check(w9.openalexId === "W9" && w9.doi === "10.1/x" && w9.pmid === "42" && w9.year === 2026 && w9.journal === "Spine" && w9.retracted, "parseCitingPage: ids, year, journal, retracted");
+  check(w8.title === "Correction" && w8.type === "erratum" && !w8.retracted && w8.journal === undefined && w8.year === undefined, "parseCitingPage: display_name fallback, missing source");
+  check(parseCitingPage({ results: [] }).total === 0, "parseCitingPage: empty page");
 
   check(JSON.stringify(splitName("Park Sang-Min")) === JSON.stringify({ family: "Park", given: "Sang-Min" }), "splitName: family initials");
   check(JSON.stringify(splitName("Plato")) === JSON.stringify({ family: "Plato" }), "splitName: single token");

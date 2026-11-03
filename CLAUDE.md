@@ -84,7 +84,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `index/rerank.ts` | retrieval quality, no Obsidian imports: `capPerReference` (≤3 chunks per reference, tops back up from the spill so k is still returned), `rerankHits`/`buildRerankUser`/`parseRerankOrder` (optional LLM reranker behind `llmRerank`; any failure falls back to retrieval order), `coupledCandidates` (citation-graph papers coupled to a top hit, offered to the reranker as unscored candidates via the `CoupledLookup`/`CandidateLookup` shapes `chat/rag.ts` adapts the real `CitationGraph`/`Library` to); `mmr` (λ 0.7 over bank vectors) and `hostedRerank`/`parseRerankResponse` (OpenRouter `/rerank`, default `voyageai/rerank-3-lite`; `null` on any failure → retrieval order) |
 | `index/expand.ts` | pure query expansion: `parseVocabulary` (user JSON vocabulary, any language), `buildExpander` (longest-match, Hangul substring / Latin word-edge matching, ≤12 added terms, label qualifiers stripped), `expandedTerm`, `isForeignQuery` |
 | `index/thesaurus.ts` | `MeshThesaurus`: NLM entry terms per MeSH heading via esearch+esummary db=mesh through `ncbiGate`; resumable, cancellable cache |
-| `graph/openalex.ts` | OpenAlex client (`resolveWork`, `fetchTitles`) |
+| `graph/openalex.ts` | OpenAlex client (`resolveWork`, `fetchTitles`, `citingWorks` — later papers citing a work, newest first, via `filter=cites:`; `parseCitingPage` is the pure parser) |
 | `graph/citations.ts` | citation graph build + `referencesInLibrary`/`citedByInLibrary`/`coupled`/`missingFrequent` + `refIds` (raw cited ids, for the map's dashed nodes) + incremental upkeep: `enqueue` (debounced, one OpenAlex lookup per newly added note, no-op until the graph has been built once), `prune` (drops nodes whose note is gone), `onChange` (views redraw when either fires) |
 | `graph/layout.ts` | `layoutGraph` — deterministic force-directed layout (circle seeding, no RNG) + `topByDegree` node cap; pure math behind the Related pane's SVG map |
 | `llm/cli.ts` | `codex` / `opencode` providers: spawns the logged-in CLI from an empty temp dir with its user config skipped (`--ignore-user-config`, `XDG_CONFIG_HOME`), prompt on stdin; `cliCandidates` probes install folders because Obsidian from the Dock lacks the shell PATH |
@@ -111,7 +111,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `mcp/bridge.ts` | source generator for the standalone Node stdio bridge written beside `main.js` |
 | `mcp/http.ts` | desktop-only authenticated loopback lifecycle, discovery file, setup snippets, realpath containment |
 | `mcp/vault.ts` | Markdown-only vault CRUD, pagination, hash-based concurrency checks, serialized writes |
-| `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch, including `add_reference` (tags a new note with its PubMed MeSH headings + author keywords, no LLM) and external source-read/summary-save (`get_reference_source` prefers a linked PDF's stashed extracted text over PMC full text over the abstract) and `set_reference_fields` (screening kq/include/level/design/screening_note/guideline, fields only; `list_references` filters on kq/include/guideline); deliberately bypasses chat/summary/rerank LLM paths |
+| `mcp/service.ts` | library/PubMed/search/writing tool schemas and dispatch, including `add_reference` (tags a new note with its PubMed MeSH headings + author keywords, no LLM) and external source-read/summary-save (`get_reference_source` prefers a linked PDF's stashed extracted text over PMC full text over the abstract) and `find_citing_papers` (OpenAlex `citingWorks`, injectable dep) and `set_reference_fields` (screening kq/include/level/design/screening_note/guideline, fields only; `list_references` filters on kq/include/guideline); deliberately bypasses chat/summary/rerank LLM paths |
 | `write/docx.ts` + `write/pandoc.ts` | "Export manuscript to Word": Pandoc with the bundled `styles/manuscript-reference.docx` (esbuild `.docx` binary loader); `pandocCandidates` is the pure probe list |
 | `write/refcheck.ts` | `referenceProblems` / `refcheckReport` for "Check references in this manuscript" |
 | `write/manuscript.ts` | pure citation compilation shared by the Obsidian command and MCP output-copy tool |
@@ -119,7 +119,7 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `ui/ScreeningView.ts` | one-record-at-a-time screening pane (scope, status filter, decisions, KQ/level/design, keyboard), mtime-guarded writes via `applyScreening` |
 | `ui/libraryFilter.ts` | `filterAndSort` for the Library pane (sort keys, quick-filter chips, missing values last) |
 | `ui/FilterRow.ts` | the year-range / author / tag-chip filter row shared by `SearchView` and `ChatView` (`new FilterRow(host, plugin)` → `.filters(): SearchFilters`, `.clear()`); state is pane-local and never persisted |
-| `ui/RelatedView.ts` | citation-graph pane: SVG map (`graph/layout.ts`, ≤40 nodes; dashed node → `AddReferenceModal` prefilled with the OpenAlex id) above the unchanged text lists |
+| `ui/RelatedView.ts` | citation-graph pane: SVG map (`graph/layout.ts`, ≤40 nodes; dashed node → `AddReferenceModal` prefilled with the OpenAlex id) above the text lists, plus an on-click "Later papers citing this (OpenAlex)" list (`citingWorks`, no network until clicked) |
 | `ui/ChatView.ts` | chat pane — a `FilterRow` between log and input scopes the next answer (its `describeFilters` label rides along on the persisted turn and heads the source list), history persisted to `<pluginDir>/chat.json` (last 50 messages; the model still sees the last 8), Clear chat, and "Save as note" per answer → `Chat/<date> <question>.md` |
 | `ui/progress.ts` | `startBatch`/`cancelBatch` — status-bar progress with a ✕ for the two batch commands, one batch at a time, hands out the `AbortSignal` |
 | `ui/CiteSuggestModal.ts` | `CiteSuggestModal` (pick a retrieved reference → insert `[@citekey]`) + `UnsupportedClaimsModal` (uncited claim paragraphs, one **Suggest** button each) |
@@ -135,7 +135,7 @@ npm run build          # tsc -noEmit + esbuild production
 npm run typecheck      # tsc only
 npm run lint            # eslint-plugin-obsidianmd over main.ts + src/ (community-store review checks)
 npm run test:mcp       # MCP protocol/bridge/HTTP/service/vault security contract checks
-npm test               # unit (488) + MCP checks + live integration suite (216 checks)
+npm test               # unit (493) + MCP checks + live integration suite (222 checks)
 ```
 
 ## Testing approach (important)

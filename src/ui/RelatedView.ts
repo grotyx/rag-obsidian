@@ -3,6 +3,7 @@ import type ScholarRagPlugin from "../../main";
 import type { CoupledPaper, MissingPaper } from "../graph/citations";
 import { layoutGraph, topByDegree, LayoutEdge, LayoutNode } from "../graph/layout";
 import { AddReferenceModal } from "./AddReferenceModal";
+import { citingWorks } from "../graph/openalex";
 
 export const VIEW_TYPE_RELATED = "rag-obsidian-related";
 
@@ -136,6 +137,8 @@ export class RelatedView extends ItemView {
     const s3 = this.section("Related by shared references", coupled.length);
     coupled.slice(0, 10).forEach((c) => this.citekeyRow(s3, c.citekey, `  · ${c.shared} shared`));
 
+    this.citingSection(ck, gen);
+
     // Missing frequently-cited (async)
     const s4 = this.section("Frequently cited by your library, but missing", 0);
     // The local neighbourhood needs no network: draw it now, add the dashed "missing" nodes
@@ -155,6 +158,53 @@ export class RelatedView extends ItemView {
       if (gen !== this.gen) return;
       s4.querySelector(".srag-rel-head")?.setText("Frequently cited by your library, but missing (OpenAlex unreachable)");
     });
+  }
+
+  /** Later papers citing `ck` from all of OpenAlex, not just the library — loaded on click, so
+   *  switching notes costs no network call. Retracted papers and correction notices are flagged. */
+  private citingSection(ck: string, gen: number): void {
+    const sec = this.section("Later papers citing this (OpenAlex)", 0);
+    const head = sec.querySelector(".srag-rel-head");
+    const load = sec.createEl("button", { text: "Find newest citing papers" });
+    load.onclick = async () => {
+      const item = this.plugin.library.getItem(ck);
+      if (!item) return;
+      load.disabled = true;
+      load.setText("Searching OpenAlex…");
+      try {
+        const found = await citingWorks(item, { mailto: this.plugin.settings.openalexMailto, limit: 30 });
+        if (gen !== this.gen) return;
+        load.remove();
+        if (!found) {
+          sec.createDiv({ cls: "srag-count", text: "This paper wasn't found on OpenAlex." });
+          return;
+        }
+        head?.setText(`Later papers citing this (OpenAlex) (${found.total})`);
+        for (const w of found.works) {
+          const have = this.plugin.library.findDuplicate({ type: "article-journal", title: w.title, DOI: w.doi, PMID: w.pmid });
+          const row = sec.createDiv({ cls: "srag-rel-row" });
+          row.createSpan({ cls: "srag-rel-title", text: [w.year, w.title || w.openalexId].filter(Boolean).join(" · ") });
+          const flags = [
+            w.retracted ? "RETRACTED" : "",
+            w.type === "erratum" ? "erratum" : w.type === "retraction" ? "retraction notice" : "",
+            have ? "in library" : "",
+          ].filter(Boolean);
+          if (w.journal) row.createSpan({ cls: "srag-rel-badge", text: `  ${w.journal}` });
+          if (flags.length) row.createSpan({ cls: "srag-rel-badge", text: `  · ${flags.join(" · ")}` });
+          row.onclick = () =>
+            have ? void this.openCitekey(have) : new AddReferenceModal(this.app, this.plugin, w.openalexId).open();
+        }
+        sec.createDiv({
+          cls: "srag-count",
+          text: `Newest ${found.works.length} of ${found.total} · only citations OpenAlex has indexed · click a paper to add it`,
+        });
+      } catch (e) {
+        if (gen !== this.gen) return;
+        load.disabled = false;
+        load.setText("Find newest citing papers");
+        new Notice(`Citing-papers lookup failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    };
   }
 
   /** Draw the neighbourhood of `ck` as an SVG force layout. Solid nodes are library notes

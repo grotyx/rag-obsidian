@@ -244,14 +244,14 @@ async function serviceChecks(): Promise<void> {
   );
   assert.deepEqual(MCP_TOOLS.map((t) => t.name), [
     "library_status", "search_library", "search_findings", "rebuild_search_index", "list_references",
-    "get_reference", "get_reference_source", "save_reference_summary", "list_tags", "search_pubmed", "add_reference", "list_notes",
+    "get_reference", "get_reference_source", "save_reference_summary", "list_tags", "search_pubmed", "add_reference", "find_citing_papers", "list_notes",
     "read_note", "create_note", "update_note", "replace_in_note", "move_note",
     "trash_note", "compile_manuscript", "set_reference_fields",
   ]);
   assert.equal(MCP_TOOLS.find((t) => t.name === "search_library")?.annotations?.readOnlyHint, true);
   assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
   const libraryOnly = mcpToolsFor(false).map((t) => t.name);
-  assert.equal(libraryOnly.length, 13, "note tools off leaves the 13 library tools");
+  assert.equal(libraryOnly.length, 14, "note tools off leaves the 14 library tools");
   for (const hidden of ["list_notes", "read_note", "create_note", "update_note", "replace_in_note", "move_note", "trash_note"]) {
     assert.ok(!libraryOnly.includes(hidden), `${hidden} hidden when note tools are off`);
   }
@@ -305,7 +305,6 @@ async function serviceChecks(): Promise<void> {
     vaultPath: "/vault/Research",
     searchPubmed: async () => ({ hits: [{ pmid: "123", pmc: "", item }], total: 1 }),
     fetchMetadata: async () => ({ type: "article-journal", title: "New", PMID: "999" }),
-    fetchPubmedRecord: async () => ({ abstract: "", descriptors: [], keywords: [], pmc: "" }),
     fetchPubmedRecord: async () => ({ abstract: "PubMed abstract", descriptors: [], keywords: [], pmc: "PMC123" }),
     fetchPmcFullText: async () => "Complete article body with quantitative results.",
   });
@@ -420,6 +419,41 @@ async function serviceChecks(): Promise<void> {
     /INVALID_ARGUMENT/,
     "a non-string tag is rejected"
   );
+
+  // find_citing_papers: citekey or explicit identifier → OpenAlex lookup item; results marked
+  // with the library citekey they duplicate.
+  let citingAsked: Record<string, unknown> | null = null;
+  let citingOpts: Record<string, unknown> | null = null;
+  const citingService = new McpService(plugin, vault, {
+    citingWorks: async (it, opts) => {
+      citingAsked = it as unknown as Record<string, unknown>;
+      citingOpts = opts as Record<string, unknown>;
+      return {
+        work: { openalexId: "W1", title: "Trial", citedByCount: 2, referencedWorks: [] },
+        total: 7,
+        works: [
+          { openalexId: "W9", title: "Newer", year: 2026, retracted: true, type: "article", citedByCount: 0, pmid: "123" },
+          { openalexId: "W8", title: "Other", year: 2025, retracted: false, type: "erratum", citedByCount: 0 },
+        ],
+      };
+    },
+  });
+  const citing = await citingService.callTool("find_citing_papers", { citekey: "smith2024", limit: 2, year_from: 2024 }) as any;
+  assert.equal(citingAsked, item, "a citekey looks up the library item");
+  assert.deepEqual(citingOpts, { mailto: plugin.settings.openalexMailto, limit: 2, fromYear: 2024 });
+  assert.equal(citing.totalCount, 7);
+  assert.equal(citing.truncated, true);
+  assert.equal(citing.results[0].existingCitekey, "smith2024", "a citing paper already in the library is marked");
+  assert.equal(citing.results[0].retracted, true);
+  assert.equal(citing.results[1].existingCitekey, null);
+  await citingService.callTool("find_citing_papers", { identifier: "PMID:42" });
+  assert.deepEqual(citingAsked, { type: "article-journal", PMID: "42" });
+  await assert.rejects(() => citingService.callTool("find_citing_papers", {}), /exactly one/);
+  await assert.rejects(() => citingService.callTool("find_citing_papers", { citekey: "smith2024", identifier: "PMID:1" }), /exactly one/);
+  await assert.rejects(() => citingService.callTool("find_citing_papers", { identifier: "42" }), /explicit PMID/);
+  await assert.rejects(() => citingService.callTool("find_citing_papers", { citekey: "nope" }), /NOT_FOUND/);
+  const notOnOpenAlex = new McpService(plugin, vault, { citingWorks: async () => null });
+  await assert.rejects(() => notOnOpenAlex.callTool("find_citing_papers", { citekey: "smith2024" }), /not found on OpenAlex/);
 
   const abstractService = new McpService(plugin, vault, {
     fetchPubmedRecord: async () => ({ abstract: "API abstract", descriptors: [], keywords: [], pmc: "PMC123" }),

@@ -140,3 +140,62 @@ export async function fetchTitles(
   }
   return out;
 }
+
+/** A later paper that cites a given work, as OpenAlex reports it. */
+export interface CitingWork {
+  openalexId: string;
+  title: string;
+  year?: number;
+  journal?: string;
+  doi?: string;
+  pmid?: string;
+  /** OpenAlex `is_retracted`. */
+  retracted: boolean;
+  /** OpenAlex work type — "erratum" / "retraction" flag correction notices. */
+  type: string;
+  citedByCount: number;
+}
+
+/** One `/works?filter=cites:` page → total match count + works (pure; tested offline). */
+export function parseCitingPage(json: unknown): { total: number; works: CitingWork[] } {
+  const j = rec(json);
+  const works = arr(j.results).map((w) => {
+    const r = rec(w);
+    const base = toWork(w);
+    const year = num(r.publication_year);
+    const journal = str(rec(rec(r.primary_location).source).display_name);
+    return {
+      openalexId: base.openalexId,
+      title: base.title,
+      year: year || undefined,
+      journal: journal || undefined,
+      doi: base.doi,
+      pmid: base.pmid,
+      retracted: r.is_retracted === true,
+      type: str(r.type),
+      citedByCount: base.citedByCount,
+    };
+  });
+  return { total: num(rec(j.meta).count) || works.length, works };
+}
+
+/** Papers citing `item`, newest first (OpenAlex `cites:` filter). Only citations OpenAlex has
+ *  indexed — a recent paper's references can take weeks to appear. `null` when the work itself
+ *  isn't found on OpenAlex. */
+export async function citingWorks(
+  item: CSLItem,
+  opts: { mailto?: string; limit?: number; fromYear?: number } = {}
+): Promise<{ work: OAWork; total: number; works: CitingWork[] } | null> {
+  const work = await resolveWork(item, opts.mailto ?? "");
+  if (!work?.openalexId) return null;
+  const filter = `cites:${work.openalexId}` + (opts.fromYear ? `,from_publication_date:${opts.fromYear}-01-01` : "");
+  const select = "id,ids,title,display_name,publication_year,primary_location,is_retracted,type,cited_by_count";
+  const res = await requestRetry429(
+    withMailto(
+      `${BASE}/works?filter=${filter}&sort=publication_date:desc&per-page=${opts.limit ?? 25}&select=${select}`,
+      opts.mailto ?? ""
+    )
+  );
+  if (res.status >= 400) throw new Error(`OpenAlex returned ${res.status}`);
+  return { work, ...parseCitingPage(res.json) };
+}

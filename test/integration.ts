@@ -28,6 +28,7 @@ import { RagChat } from "../src/chat/rag";
 import { formatCitation } from "../src/cite/format";
 import { CiteEngine } from "../src/cite/csl";
 import { TFile } from "obsidian";
+import { citingWorks } from "../src/graph/openalex";
 import { CitationGraph } from "../src/graph/citations";
 import { capPerReference, parseRerankOrder, buildRerankUser, coupledCandidates } from "../src/index/rerank";
 import { layoutGraph, topByDegree, LayoutNode, LayoutEdge } from "../src/graph/layout";
@@ -395,6 +396,14 @@ async function main() {
     log(`     lecun1998 → cited by in library: [${citedBy.join(", ") || "—"}]`);
     log(`     lecun2015deep → coupled (≥1 shared): ${coupled.map((c) => `${c.citekey}:${c.shared}`).join(", ") || "—"}`);
     ok(Array.isArray(refsLib) && Array.isArray(citedBy) && Array.isArray(coupled), "graph queries return arrays");
+
+    // Later citing papers from all of OpenAlex (Related pane + MCP find_citing_papers).
+    const citing = await citingWorks(seedMap.get("lecun2015deep")!, { mailto: "test@example.com", limit: 5 });
+    ok(!!citing && citing.total > 1000 && citing.works.length === 5, `citingWorks: ${citing?.total} papers cite lecun2015deep, 5 returned`);
+    const years = (citing?.works ?? []).map((w) => w.year ?? 0);
+    ok(years.every((y, i) => i === 0 || y <= years[i - 1]), `citingWorks: newest first (${years.join(", ")})`);
+    const since = await citingWorks(seedMap.get("lecun2015deep")!, { mailto: "test@example.com", limit: 5, fromYear: 2025 });
+    ok(!!since && since.total < citing!.total && since.works.every((w) => (w.year ?? 0) >= 2025), `citingWorks: fromYear 2025 narrows to ${since?.total}`);
 
     // Incremental maintenance: a note added after the build joins the graph without a rebuild,
     // and a deleted one is pruned — this is what keeps the Related pane from going stale.
