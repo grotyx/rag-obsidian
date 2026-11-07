@@ -11,7 +11,8 @@ interface VaultLike {
   getAbstractFileByPath(path: string): FileLike | null;
   read(file: FileLike): Promise<string>;
   create(path: string, content: string): Promise<FileLike>;
-  modify(file: FileLike, content: string): Promise<void>;
+  /** Atomic read-modify-write: the callback sees the note's current content (editor buffer included). */
+  process(file: FileLike, fn: (data: string) => string): Promise<string>;
   createFolder(path: string): Promise<unknown>;
 }
 
@@ -203,27 +204,35 @@ export class McpVault {
     });
   }
 
-  updateNote(path: string, content: string, expectedHash: string): Promise<NoteMutation> {
+  /** The one hash-guarded write. The hash is checked against what was read, and `process` then
+   *  compares its own fresh copy to that read, so an editor change in between fails instead of
+   *  being overwritten. */
+  editNote(path: string, expectedHash: string, transform: (content: string) => string): Promise<NoteMutation> {
     return this.mutate(async () => {
-      if (content.length > MAX_WRITE_CHARS) throw new Error("CONTENT_TOO_LARGE: note exceeds 2,000,000 characters");
-      const { file } = await this.current(path, expectedHash);
-      await this.app.vault.modify(file, content);
-      return { path: file.path, hash: await contentHash(content), indexQueued: this.isReference(file.path) };
+      const { file, content } = await this.current(path, expectedHash);
+      const next = transform(content);
+      if (next.length > MAX_WRITE_CHARS) throw new Error("CONTENT_TOO_LARGE: note exceeds 2,000,000 characters");
+      await this.app.vault.process(file, (data) => {
+        if (data !== content) throw new Error(`CONTENT_CHANGED: read ${file.path} again before changing it`);
+        return next;
+      });
+      return { path: file.path, hash: await contentHash(next), indexQueued: this.isReference(file.path) };
     });
   }
 
+  updateNote(path: string, content: string, expectedHash: string): Promise<NoteMutation> {
+    if (content.length > MAX_WRITE_CHARS) return Promise.reject(new Error("CONTENT_TOO_LARGE: note exceeds 2,000,000 characters"));
+    return this.editNote(path, expectedHash, () => content);
+  }
+
   replaceInNote(path: string, oldText: string, newText: string, expectedHash: string): Promise<NoteMutation> {
-    return this.mutate(async () => {
-      if (!oldText) throw new Error("INVALID_ARGUMENT: old_text is required");
-      const { file, content } = await this.current(path, expectedHash);
+    if (!oldText) return Promise.reject(new Error("INVALID_ARGUMENT: old_text is required"));
+    return this.editNote(path, expectedHash, (content) => {
       const first = content.indexOf(oldText);
       if (first < 0 || content.indexOf(oldText, first + 1) >= 0) {
         throw new Error("REPLACE_COUNT: old_text must occur exactly once");
       }
-      const next = content.slice(0, first) + newText + content.slice(first + oldText.length);
-      if (next.length > MAX_WRITE_CHARS) throw new Error("CONTENT_TOO_LARGE: note exceeds 2,000,000 characters");
-      await this.app.vault.modify(file, next);
-      return { path: file.path, hash: await contentHash(next), indexQueued: this.isReference(file.path) };
+      return content.slice(0, first) + newText + content.slice(first + oldText.length);
     });
   }
 

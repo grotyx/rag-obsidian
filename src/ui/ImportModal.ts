@@ -8,6 +8,9 @@ import type { CSLItem } from "../types";
 export class ImportModal extends Modal {
   private plugin: ScholarRagPlugin;
   private text = "";
+  /** True from the click until the import ends: a second click would create every note twice. */
+  private busy = false;
+  private importButtons: HTMLButtonElement[] = [];
 
   constructor(app: App, plugin: ScholarRagPlugin) {
     super(app);
@@ -32,9 +35,23 @@ export class ImportModal extends Modal {
     area.placeholder = "@article{smith2020, title={...}, author={Smith, Jane}, year={2020}, ... }";
     area.addEventListener("input", () => (this.text = area.value));
 
-    new Setting(contentEl).addButton((b) =>
-      b.setButtonText("Import").setCta().onClick(() => void this.run())
-    );
+    new Setting(contentEl).addButton((b) => {
+      this.importButtons.push(b.buttonEl);
+      b.setButtonText("Import").setCta().onClick(() => void this.run());
+    });
+  }
+
+  /** Run `job` once at a time; both import buttons stay disabled until it settles. */
+  private async exclusive(job: () => Promise<void>): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    for (const b of this.importButtons) b.disabled = true;
+    try {
+      await job();
+    } finally {
+      this.busy = false;
+      for (const b of this.importButtons) b.disabled = false;
+    }
   }
 
   private zoteroSection(el: HTMLElement): void {
@@ -56,9 +73,10 @@ export class ImportModal extends Modal {
                 for (const c of cols) d.addOption(c.key, c.path);
                 d.onChange((v) => (collection = v || null));
               })
-              .addButton((imp) =>
-                imp.setButtonText("Import from Zotero").setCta().onClick(() => void this.runZotero(collection))
-              );
+              .addButton((imp) => {
+                this.importButtons.push(imp.buttonEl);
+                imp.setButtonText("Import from Zotero").setCta().onClick(() => void this.runZotero(collection));
+              });
             el.insertBefore(dropdownHost.settingEl, el.children[3] ?? null);
           } catch (e) {
             new Notice(e instanceof Error ? e.message : String(e), 10000);
@@ -67,7 +85,11 @@ export class ImportModal extends Modal {
       );
   }
 
-  private async runZotero(collection: string | null): Promise<void> {
+  private runZotero(collection: string | null): Promise<void> {
+    return this.exclusive(() => this.doZotero(collection));
+  }
+
+  private async doZotero(collection: string | null): Promise<void> {
     const notice = new Notice("Reading from Zotero…", 0);
     let items: CSLItem[];
     try {
@@ -93,7 +115,11 @@ export class ImportModal extends Modal {
     }
   }
 
-  private async run(): Promise<void> {
+  private run(): Promise<void> {
+    return this.exclusive(() => this.doRun());
+  }
+
+  private async doRun(): Promise<void> {
     const items = parseLibrary(this.text);
     if (!items.length) {
       new Notice("Could not parse any references (BibTeX / RIS / CSL-JSON).");
@@ -127,6 +153,7 @@ export class ImportModal extends Modal {
   }
 
   onClose(): void {
+    this.importButtons = [];
     this.contentEl.empty();
   }
 }

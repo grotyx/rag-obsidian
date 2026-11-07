@@ -25,6 +25,8 @@ import { paragraphsOf, looksLikeClaim, unsupportedClaims, rankHits, citationInse
 import { OllamaProvider } from "../src/index/providers/ollama";
 import { LLMClient } from "../src/llm/client";
 import { RagChat } from "../src/chat/rag";
+import { OpenAIProvider } from "../src/index/providers/openai";
+import { OllamaProvider } from "../src/index/providers/ollama";
 import { formatCitation } from "../src/cite/format";
 import { CiteEngine } from "../src/cite/csl";
 import { TFile } from "obsidian";
@@ -515,7 +517,7 @@ async function main() {
         .filter((l) => /^[A-Za-z][A-Za-z0-9_-]*:/.test(l))
         .map((l) => l.split(":")[0]);
       const CSL_VARS = new Set([
-        "type", "title", "author", "editor", "container-title", "collection-title", "publisher",
+        "type", "title", "author", "editor", "container-title", "container-title-short", "collection-title", "publisher",
         "publisher-place", "page", "volume", "issue", "number", "issued", "accessed", "DOI",
         "PMID", "PMCID", "ISBN", "ISSN", "URL", "abstract", "keyword", "language", "note",
         "edition", "genre", "medium", "source", "archive", "call-number", "citation-key",
@@ -611,8 +613,8 @@ async function main() {
     );
     const r2 = replaceSummaryBlock("# T\n\n## Notes\n\n## Highlights\n", fresh);
     ok(
-      r2.startsWith("# T\n\n## Notes\n\n## Highlights\n\n## Summary (EN)") && r2.includes("새 요약"),
-      `replaceSummaryBlock appends when absent: ${JSON.stringify(r2)}`
+      r2.startsWith("# T\n\n## Summary (EN)") && r2.includes("새 요약") && r2.endsWith("## Notes\n\n## Highlights\n"),
+      `replaceSummaryBlock inserts above ## Notes when absent: ${JSON.stringify(r2)}`
     );
     const r3 = replaceSummaryBlock("## Summary (EN)\n\nold\n\n## References\n\n- ref\n", fresh);
     ok(
@@ -1009,6 +1011,37 @@ async function main() {
         const nf = await lib4.createReference(nItem);
         const nk4 = lib4.findDuplicate(nItem);
         ok(nk4 !== null && lib4.getFile(nk4) === nf, "id map: unparsed new note matches via registry");
+
+        // A title match yields to a differing DOI / PMID, on the map path and the registry path
+        const gen = "A generic review title that two papers share";
+        mk("titleA", { citekey: "titleA", title: gen, DOI: "10.9/ta", PMID: "7001" });
+        const lib5 = new Library(app2, settings);
+        ok(lib5.findDuplicate({ type: "article-journal", title: gen, DOI: "10.9/tb" }) === null, "title match: map path ignores a note with a different DOI");
+        ok(lib5.findDuplicate({ type: "article-journal", title: gen, PMID: "7002" }) === null, "title match: map path ignores a note with a different PMID");
+        ok(lib5.findDuplicate({ type: "article-journal", title: gen }) === "titleA", "title match: map path still matches a bare title");
+        ok(lib5.findDuplicate({ type: "article-journal", title: gen, DOI: "10.9/ta" }) === "titleA", "title match: map path matches when the DOI agrees");
+        const regItem: CSLItem = { type: "article-journal", title: "Another generic title shared by many papers", DOI: "10.9/r1" };
+        await lib5.createReference(regItem);
+        ok(lib5.findDuplicate({ type: "article-journal", title: regItem.title, DOI: "10.9/r2" }) === null, "title match: registry path ignores a different DOI");
+        ok(lib5.findDuplicate({ type: "article-journal", title: regItem.title }) !== null, "title match: registry path still matches a bare title");
+
+        // Korean titles that share only their ASCII part are different works
+        mk("koA", { citekey: "koA", title: "Biportal endoscopy 의 합병증 연구" });
+        const lib6 = new Library(app2, settings);
+        ok(lib6.findDuplicate({ type: "article-journal", title: "Biportal endoscopy 의 장기 결과 연구" }) === null, "title match: Korean titles differing only in Hangul are not duplicates");
+        ok(lib6.findDuplicate({ type: "article-journal", title: "Biportal endoscopy 의 합병증 연구" }) === "koA", "title match: identical Korean title matches");
+
+        // Two overlapping creates of the same work produce one note
+        const before = files.size;
+        const raceItem: CSLItem = { type: "article-journal", title: "Concurrent add of one work", DOI: "10.9/race" };
+        const lib7 = new Library(app2, settings);
+        const [r1, r2] = await Promise.all([lib7.createReference(raceItem), lib7.createReference({ ...raceItem })]);
+        ok(r1 === r2 && files.size === before + 1, `concurrent createReference of one DOI makes one note (${files.size - before} new)`);
+        const [s1, s2] = await Promise.all([
+          lib7.createReference({ type: "article-journal", title: "Race two first", DOI: "10.9/race2" }),
+          lib7.createReference({ type: "article-journal", title: "Race two second", DOI: "10.9/race3" }),
+        ]);
+        ok(s1 !== s2, "concurrent createReference of different works makes two notes");
       }
     }
 
@@ -1713,7 +1746,7 @@ async function main() {
     const plugin = Object.assign(Object.create(ScholarRagPlugin.prototype), {
       app: {
         secretStorage: {
-          getSecret: (id: string) => secrets.get(id) ?? "",
+          getSecret: (id: string) => secrets.get(id) ?? null, // the real API: null = never set
           setSecret: (id: string, value: string) => secrets.set(id, value),
         },
       },
@@ -1729,12 +1762,28 @@ async function main() {
       "the legacy key is copied to the current keychain id"
     );
     ok(saved === 1, "key migration persists settings once");
+    ok(secrets.get("rag-obsidian-openaiapikey") === "", "the legacy keychain id is blanked after the copy");
+
+    // A key the user cleared (current id stored as "") must not come back from the legacy id.
+    const cleared = new Map<string, string>([
+      ["rag-obsidian-openaiapikey", "old-key"],
+      ["academic-paper-citation-manager-openaiapikey", ""],
+    ]);
+    const clearedPlugin = Object.assign(Object.create(ScholarRagPlugin.prototype), {
+      app: { secretStorage: { getSecret: (id: string) => cleared.get(id) ?? null, setSecret: (id: string, v: string) => cleared.set(id, v) } },
+      manifest: { id: "academic-paper-citation-manager" },
+      loadData: async () => ({}),
+      saveSettings: async () => undefined,
+    }) as ScholarRagPlugin;
+    await clearedPlugin.loadSettings();
+    ok(clearedPlugin.settings.openaiApiKey === "", "a key cleared at the current id stays cleared across a reload");
+    ok(cleared.get("academic-paper-citation-manager-openaiapikey") === "", "…and the current id is not refilled from the legacy id");
 
     let plaintextSaved = 0;
     const plaintext = Object.assign(Object.create(ScholarRagPlugin.prototype), {
       app: {
         secretStorage: {
-          getSecret: (id: string) => id.endsWith("-openaiapikey") ? "same-key" : "",
+          getSecret: (id: string) => id.endsWith("-openaiapikey") ? "same-key" : null,
           setSecret: () => undefined,
         },
       },
@@ -1764,13 +1813,29 @@ async function main() {
   log("\n[24] IndexManager (path-safe removal, provider cache key, model switch)");
   {
     const embedCalls: { auth: string; model: string }[] = [];
+    const embUrls: string[] = [];
+    let embBroken = false; // answer 400 (not retried), to prove nothing is re-embedded
     const embSrv = http.createServer((req, res) => {
       let body = "";
       req.on("data", (d) => (body += d));
       req.on("end", () => {
         const b = JSON.parse(body || "{}") as { model: string; input: string[] };
         embedCalls.push({ auth: String(req.headers.authorization ?? ""), model: b.model });
+        embUrls.push(req.url ?? "");
         res.setHeader("content-type", "application/json");
+        if (embBroken) {
+          res.statusCode = 400;
+          res.end("{}");
+          return;
+        }
+        if (req.url?.includes("rerank")) {
+          res.end("{}"); // a rerank call; the reranker falls back to retrieval order
+          return;
+        }
+        if (req.url === "/api/embed") {
+          res.end(JSON.stringify({ embeddings: b.input.map((t) => hashEmbed(t, 16)) }));
+          return;
+        }
         res.end(JSON.stringify({ data: b.input.map((t, index) => ({ index, embedding: hashEmbed(t, 16) })) }));
       });
     });
@@ -1778,6 +1843,7 @@ async function main() {
     const embPort = (embSrv.address() as { port: number }).port;
 
     const disk = new Map<string, string | ArrayBuffer>();
+    let readGate: Promise<void> | null = null;
     let appends = 0;
     const adapter = {
       exists: async (p: string) => disk.has(p) || [...disk.keys()].some((k) => k.startsWith(`${p}/`)),
@@ -1785,7 +1851,10 @@ async function main() {
       read: async (p: string) => String(disk.get(p)),
       write: async (p: string, d: string) => void disk.set(p, d),
       append: async (p: string, d: string) => void disk.set(p, String(disk.get(p) ?? "") + d),
-      readBinary: async (p: string) => disk.get(p) as ArrayBuffer,
+      readBinary: async (p: string) => {
+        if (readGate) await readGate; // a slow disk, for the restore-ordering test
+        return disk.get(p) as ArrayBuffer;
+      },
       writeBinary: async (p: string, d: ArrayBuffer) => void disk.set(p, d),
       appendBinary: async (p: string, d: ArrayBuffer) => {
         appends++;
@@ -2117,6 +2186,149 @@ async function main() {
         `NodeFileIO.appendBinary appends and list names the files: ${listed}`
       );
       fs.rmSync(tmp, { recursive: true });
+    }
+
+    // ---- 26. rename keeps the note, restore is queued, embedding retry, hosted-rerank privacy ----
+    log("\n[26] Rename / restore ordering / embed retry / rerank privacy");
+    const settle = async (m: unknown) => {
+      await new Promise((r) => setTimeout(r, 1800)); // the debounced flush
+      await (m as { chain: Promise<unknown> }).chain;
+    };
+    notes.clear();
+    notes.set("References/a.md", { fm: { citekey: "smith2024", title: "Alpha", abstract: "alpha alpha study" }, body: "alpha body" });
+    notes.set("References/b.md", { fm: { citekey: "jones2023", title: "Beta", abstract: "beta beta study" }, body: "beta body" });
+    mset.embeddingModel = "model-a";
+    mset.openaiApiKey = "key-one";
+    mset.openaiBaseUrl = `http://127.0.0.1:${embPort}`;
+    await mgr.rebuild();
+    const built26 = mgr.count;
+    await settle(mgr);
+
+    // rename: the provider is down, the note must stay searchable under its new path, with no embed call
+    notes.set("References/a2.md", notes.get("References/a.md")!);
+    notes.delete("References/a.md");
+    embBroken = true;
+    embedCalls.length = 0;
+    await mgr.renamePath("References/a.md", "References/a2.md");
+    priv.reindexQueue.add("References/a2.md"); // what main.ts's enqueue does
+    await priv.flushReindex();
+    embBroken = false;
+    ok(
+      mgr.count === built26 && embedCalls.length === 0 && priv.store.citekeyForPath("References/a2.md") === "smith2024" && !priv.store.citekeyForPath("References/a.md"),
+      `rename moves the tracked path without re-embedding (${mgr.count}/${built26} chunks, ${embedCalls.length} embed calls)`
+    );
+    ok((await mgr.search("alpha", {}, 5, { translate: false })).some((h) => h.citekey === "smith2024"), "...and the renamed note is still found");
+    await mgr.renamePath("References/a2.md", "Elsewhere/a2.md");
+    ok(mgr.count < built26, "moving a note out of the library folder drops it, like a delete");
+    await settle(mgr);
+
+    // restore is queued: a rebuild requested during a slow restore is not clobbered by it
+    notes.set("References/c.md", { fm: { citekey: "extrac", title: "C", abstract: "gamma gamma paper" }, body: "gamma body" });
+    notes.set("References/a.md", { fm: { citekey: "smith2024", title: "Alpha", abstract: "alpha alpha study" }, body: "alpha body" });
+    notes.delete("References/a2.md");
+    await mgr.rebuild(); // disk now holds a, b, c
+    const diskCount = mgr.count;
+    await settle(mgr);
+    notes.set("References/d.md", { fm: { citekey: "extrad", title: "D", abstract: "delta delta paper" }, body: "delta body" });
+    const slow = fresh();
+    let release: () => void = () => undefined;
+    readGate = new Promise<void>((r) => (release = r));
+    const restoring = slow.restore();
+    const rebuilding = slow.rebuild(); // d is new: a finished rebuild has more chunks than the disk copy
+    await new Promise((r) => setTimeout(r, 200));
+    ok(!slow.ready && slow.count === 0, "nothing runs ahead of a slow restore");
+    release();
+    readGate = null;
+    await Promise.all([restoring, rebuilding]);
+    ok(slow.ready && slow.count > diskCount && slow.restoreError === null, `the rebuild queued behind the restore wins (${slow.count} chunks > ${diskCount} on disk)`);
+    await settle(slow);
+    notes.set("References/e.md", { fm: { citekey: "extrae", title: "E", abstract: "epsilon epsilon paper" }, body: "epsilon body" });
+    const late = fresh(); // an index is on disk; a path enqueued while it loads must still be reindexed
+    readGate = new Promise<void>((r) => (release = r));
+    const lateRestore = late.restore();
+    late.enqueue(new TFile("References/e.md"));
+    await new Promise((r) => setTimeout(r, 1800)); // the debounced flush fires while the restore is stuck
+    release();
+    readGate = null;
+    await lateRestore;
+    await settle(late);
+    ok((await late.search("epsilon", {}, 5, { translate: false })).some((h) => h.citekey === "extrae"), "a path enqueued during the restore is reindexed after it");
+    // no index at all: queued paths are kept for the next restore/rebuild instead of dropped
+    const none = fresh();
+    for (const k of [...disk.keys()]) if (k.startsWith("plugin/index/")) disk.delete(k);
+    none.enqueue(new TFile("References/e.md"));
+    await (none as unknown as { flushReindex(): Promise<void> }).flushReindex();
+    ok((none as unknown as { reindexQueue: Set<string> }).reindexQueue.has("References/e.md"), "with no index yet, queued paths are kept");
+
+    // embedding requests retry transient failures
+    {
+      const hits: Record<string, number> = {};
+      const flaky = http.createServer((req, res) => {
+        let body = "";
+        req.on("data", (d) => (body += d));
+        req.on("end", () => {
+          const url = req.url ?? "";
+          hits[url] = (hits[url] ?? 0) + 1;
+          const b = JSON.parse(body || "{}") as { input: string[] };
+          res.setHeader("content-type", "application/json");
+          if (hits[url] <= 2) {
+            res.statusCode = url === "/embeddings" ? 429 : 503;
+            res.setHeader("retry-after", "0");
+            res.end("{}");
+            return;
+          }
+          res.end(
+            JSON.stringify(
+              url === "/embeddings"
+                ? { data: b.input.map((t, index) => ({ index, embedding: hashEmbed(t, 8) })) }
+                : { embeddings: b.input.map((t) => hashEmbed(t, 8)) }
+            )
+          );
+        });
+      });
+      await new Promise<void>((r) => flaky.listen(0, "127.0.0.1", () => r()));
+      const fport = (flaky.address() as { port: number }).port;
+      const o = await new OpenAIProvider({ ...DEFAULT_SETTINGS, openaiApiKey: "k", openaiBaseUrl: `http://127.0.0.1:${fport}`, embeddingModel: "m" }).embed(["x", "y"]);
+      ok(o.length === 2 && o[0].length === 8 && hits["/embeddings"] === 3, `OpenAI embeddings: two 429s then success (${hits["/embeddings"]} requests)`);
+      const ol = await new OllamaProvider({ ...DEFAULT_SETTINGS, ollamaUrl: `http://127.0.0.1:${fport}`, embeddingModel: "m" }).embed(["x"]);
+      ok(ol.length === 1 && hits["/api/embed"] === 3, `Ollama embeddings: two 503s then success (${hits["/api/embed"]} requests)`);
+      flaky.close();
+    }
+
+    // hosted rerank only when embeddings or chat use a hosted endpoint
+    {
+      const lset: ScholarRagSettings = {
+        ...DEFAULT_SETTINGS,
+        embeddingProvider: "ollama",
+        llmProvider: "ollama",
+        ollamaUrl: `http://127.0.0.1:${embPort}`,
+        embeddingModel: "nomic-embed-text",
+        openaiBaseUrl: `http://127.0.0.1:${embPort}/openrouter.ai`,
+        openaiApiKey: "k",
+        queryExpansion: false,
+        indexLocal: false,
+      };
+      const local = new IndexManager(app as never, { folder: () => "References", getItem: () => undefined } as never, lset, "plugin2");
+      await local.rebuild();
+      embUrls.length = 0;
+      const outcome = { asked: false, ok: false };
+      await local.search("alpha", {}, 5, { translate: false, rerank: true, outcome });
+      ok(!outcome.asked && !embUrls.some((u) => u.includes("rerank")), `both providers on Ollama: no rerank request (${embUrls.join(",")})`);
+      lset.llmProvider = "openai";
+      embUrls.length = 0;
+      await local.search("alpha", {}, 5, { translate: false, rerank: true, outcome });
+      ok(outcome.asked && embUrls.some((u) => u.includes("rerank")), "chat on a hosted endpoint: rerank is allowed");
+      await settle(local);
+      let askedRerank: boolean | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ridx: any = { ready: true, search: async (_q: string, _f: unknown, _k: number, o: { rerank?: boolean }) => ((askedRerank = o.rerank), []) };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rlib: any = { getItem: () => null };
+      const chatSettings = { ...DEFAULT_SETTINGS, hostedRerank: true, openaiApiKey: "k", openaiBaseUrl: "https://openrouter.ai/api/v1" };
+      await new RagChat(ridx, rlib, { ...chatSettings, embeddingProvider: "ollama", llmProvider: "ollama" }).answer("q");
+      const offLocal = askedRerank;
+      await new RagChat(ridx, rlib, { ...chatSettings, embeddingProvider: "ollama", llmProvider: "openai" }).answer("q");
+      ok(offLocal === false && askedRerank === true, `RagChat: hosted rerank off on Ollama-only (${offLocal}), on with a hosted chat model (${askedRerank})`);
     }
 
     embSrv.close();

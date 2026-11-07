@@ -142,6 +142,25 @@ export function cliBinaryAllowed(provider: "codex" | "opencode", bin: string): b
   return name === provider;
 }
 
+/** `cliPath` syncs through `data.json` and a vault can arrive from someone else, so a binary that
+ *  lives inside the vault (even behind a symlink) must not be executed. Pure string check on
+ *  already-resolved paths; `caseInsensitive` is for Windows. */
+export function cliInsideVault(bin: string, vaultRoot: string, caseInsensitive = false): boolean {
+  const norm = (p: string): string => {
+    const q = p.replace(/\\/g, "/").replace(/\/+$/, "");
+    return caseInsensitive ? q.toLowerCase() : q;
+  };
+  const r = norm(vaultRoot);
+  const b = norm(bin);
+  return r !== "" && (b === r || b.startsWith(r + "/"));
+}
+
+let vaultRoot = "";
+/** main.ts hands over the vault's folder so `runCli` can refuse a CLI that lives inside it. */
+export function setCliVaultRoot(root: string): void {
+  vaultRoot = root;
+}
+
 const ENV_EXACT = new Set([
   "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TEMP", "TMP", "LANG",
   // Windows: profile folders, the shell for `.cmd` shims, and the system root Node needs.
@@ -207,6 +226,19 @@ export async function runCli(
     );
   }
 
+  if (vaultRoot) {
+    const resolve = async (p: string): Promise<string> => {
+      try { return await fsp.realpath(p); } catch { return p; }
+    };
+    const insensitive = process.platform === "win32";
+    const root = await resolve(vaultRoot);
+    if (cliInsideVault(bin, root, insensitive) || cliInsideVault(await resolve(bin), root, insensitive)) {
+      throw new Error(
+        `Refusing to run "${bin}": it is inside this vault. Point "CLI executable" (Settings → Refwright) at a ${provider} installed outside the vault.`
+      );
+    }
+  }
+
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "rag-obsidian-cli-"));
   try {
     const lastMsgPath = path.join(tmp, "last.txt");
@@ -252,8 +284,12 @@ export async function runCli(
         child.kill();
         reject(new Error(`${provider} timed out`));
       }, TIMEOUT_MS);
-      child.stdout?.on("data", (d: Buffer) => (out += d.toString()));
-      child.stderr?.on("data", (d: Buffer) => (err += d.toString()));
+      // setEncoding keeps a multibyte character split across two reads intact (Buffer#toString
+      // per chunk would turn each half into U+FFFD).
+      child.stdout?.setEncoding("utf8");
+      child.stderr?.setEncoding("utf8");
+      child.stdout?.on("data", (d: string) => (out += d));
+      child.stderr?.on("data", (d: string) => (err += d));
       child.on("error", (e) => {
         if (settled) return;
         settled = true;

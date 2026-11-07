@@ -68,7 +68,8 @@ export class FilterRow {
     this.chipsEl.empty();
     for (const t of this.tags) {
       const chip = this.chipsEl.createSpan({ cls: "srag-chip", text: t });
-      const x = chip.createSpan({ cls: "srag-chip-x", text: "✕" });
+      const x = chip.createEl("button", { cls: "srag-chip-x", text: "✕" });
+      x.setAttribute("aria-label", `Remove tag ${t}`);
       x.onclick = () => {
         this.tags = this.tags.filter((v) => v !== t);
         this.renderChips();

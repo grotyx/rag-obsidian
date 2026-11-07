@@ -13,7 +13,7 @@ import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
 import { text } from "../util/json";
 import { Finding, findingText, isRestated, parseFindings } from "../data/findings";
-import { hostedRerank } from "../index/rerank";
+import { canHostedRerank, hostedRerank } from "../index/rerank";
 import { citingWorks } from "../graph/openalex";
 
 type JsonSchema = Record<string, unknown>;
@@ -481,7 +481,7 @@ export class McpService {
     const fair: typeof pool = [];
     for (let r = 0; fair.length < pool.length && lists.some((l) => r < l.length); r++) for (const l of lists) if (l[r]) fair.push(l[r]);
     let ranked = fair.map((p, i) => ({ ...p, score: 0, i }));
-    const canRerank = rerank && s.openaiBaseUrl.includes("openrouter.ai") && !!s.openaiApiKey && fair.length > 0;
+    const canRerank = rerank && canHostedRerank(s) && !!s.openaiApiKey && fair.length > 0;
     const docs = (canRerank ? ranked.slice(0, 100) : ranked).map((p) => ({ text: findingText(p.finding), p }));
     if (canRerank) {
       const r = await hostedRerank({ baseUrl: s.openaiBaseUrl, apiKey: s.openaiApiKey, model: s.rerankModel }, query, docs, {
@@ -648,10 +648,9 @@ export class McpService {
       kr: optionalString(args, "korean")?.trim() || undefined,
     };
     const expectedHash = stringArg(args, "expected_hash");
-    const current = await this.vault.readFullNote(file.path);
-    const withMetadata = summaryMetadata(current.content, source, optionalString(args, "summary_model")?.trim() || "external-mcp-client");
-    const next = replaceSummaryBlock(withMetadata, summaryBlock(sections));
-    const result = await this.vault.updateNote(file.path, next, expectedHash);
+    const model = optionalString(args, "summary_model")?.trim() || "external-mcp-client";
+    const result = await this.vault.editNote(file.path, expectedHash, (content) =>
+      replaceSummaryBlock(summaryMetadata(content, source, model), summaryBlock(sections)));
     return { ...result, citekey, summarySource: source };
   }
 

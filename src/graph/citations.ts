@@ -44,7 +44,7 @@ export class CitationGraph {
   private missingCache = new Map<number, Promise<MissingPaper[]>>();
   /** Notes added since the last build, waiting for their one OpenAlex lookup. */
   private addQueue = new Set<string>();
-  private flush: () => void;
+  private flush: { (): void; cancel: () => unknown };
   /** Quiet period before `prune` scans the library (settable so tests need not wait 2 s). */
   pruneDelayMs = 2000;
   private pruneTimer: number | null = null;
@@ -64,6 +64,17 @@ export class CitationGraph {
   ) {
     this.path = normalizePath(`${pluginDir}/index/citations.json`);
     this.flush = debounce(() => void this.flushAdds(), 3000, true);
+  }
+
+  /** Plugin unload: no timer may fire into a dead plugin. A pending prune resolves, doing nothing. */
+  dispose(): void {
+    this.flush.cancel();
+    this.addQueue.clear();
+    if (this.pruneTimer !== null) window.clearTimeout(this.pruneTimer);
+    this.pruneTimer = null;
+    this.pruneWaiters = null;
+    this.pruneDone();
+    this.listeners.clear();
   }
 
   /** Subscribe to graph changes; returns the unsubscribe. */
@@ -184,6 +195,10 @@ export class CitationGraph {
         try {
           const w = await resolveWork(fm as unknown as CSLItem, this.settings.openalexMailto);
           if (!w?.openalexId) continue;
+          // Same work under a changed citekey: drop the old key's node when its note is gone,
+          // so the stale node can't be pruned later (or double-count as a second citing paper).
+          const old = this.data.idToCitekey[w.openalexId];
+          if (old && old !== citekey && !this.library.getFile(old)) delete this.data.byCitekey[old];
           this.data.byCitekey[citekey] = { openalexId: w.openalexId, refs: w.referencedWorks };
           this.data.idToCitekey[w.openalexId] = citekey;
           await this.backfillId(file, w.openalexId);
@@ -225,7 +240,9 @@ export class CitationGraph {
       let changed = false;
       for (const [ck, node] of Object.entries(this.data.byCitekey)) {
         if (live.has(ck)) continue;
-        delete this.data.idToCitekey[node.openalexId];
+        // Only unmap the id while it still points at the node being removed: a renamed note's
+        // new citekey may already own it.
+        if (this.data.idToCitekey[node.openalexId] === ck) delete this.data.idToCitekey[node.openalexId];
         delete this.data.byCitekey[ck];
         changed = true;
       }

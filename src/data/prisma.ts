@@ -42,19 +42,25 @@ export interface PrismaCounts {
 
 /** Count a PRISMA 2020 flow from a scope's records, a duplicate-group list (citekeys, as
  *  `duplicateGroups` from data/library.ts returns them, restricted to this scope), and a
- *  full-text lookup. Duplicates are every record beyond the first (input order) present in each
- *  group — the rest of the counts (excluded/included/awaiting) are over the deduplicated set, so
+ *  full-text lookup. Duplicates are every record but one present in each
+ *  group (the one with a decision stays, include before exclude, else the first in input order) — the rest of the counts (excluded/included/awaiting) are over the deduplicated set, so
  *  a paper counted twice by having two notes doesn't also inflate the screening buckets. */
 export function prismaCounts(
   records: PrismaRecord[],
   dupGroups: string[][],
   hasFullText: (r: PrismaRecord) => boolean
 ): PrismaCounts {
-  const inScope = new Set(records.map((r) => r.citekey));
+  const byKey = new Map(records.map((r) => [r.citekey, r]));
+  const rank = (k: string): number => {
+    const d = byKey.get(k)?.include;
+    return d === "include" ? 2 : d === "exclude" ? 1 : 0;
+  };
   const extraDupes = new Set<string>();
   for (const group of dupGroups) {
-    const present = group.filter((k) => inScope.has(k));
-    for (const k of present.slice(1)) extraDupes.add(k);
+    const present = group.filter((k) => byKey.has(k));
+    // The copy with a decision stays (include > exclude > none); ties keep the first in input order.
+    const keep = present.reduce((best, k) => (rank(k) > rank(best) ? k : best), present[0]);
+    for (const k of present) if (k !== keep) extraDupes.add(k);
   }
   const primary = records.filter((r) => !extraDupes.has(r.citekey));
   const duplicatesRemoved = records.length - primary.length;

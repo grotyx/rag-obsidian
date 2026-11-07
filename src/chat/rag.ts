@@ -1,6 +1,6 @@
 import { IndexManager } from "../index/manager";
 import { SearchFilters, SearchHit } from "../index/store";
-import { rerankHits, coupledCandidates, RERANK_POOL, CoupledLookup } from "../index/rerank";
+import { rerankHits, coupledCandidates, canHostedRerank, RERANK_POOL, CoupledLookup } from "../index/rerank";
 import { Library } from "../data/library";
 import { LLMClient, ChatMessage } from "../llm/client";
 import { formatCitation } from "../cite/format";
@@ -58,7 +58,7 @@ export class RagChat {
     // The hosted cross-encoder (when on) reorders inside search(); the LLM reranker is the fallback path.
     // Hosted only when it can actually run (OpenRouter + key); otherwise the LLM reranker still applies.
     const hosted =
-      this.settings.hostedRerank && this.settings.openaiBaseUrl.includes("openrouter.ai") && !!this.settings.openaiApiKey;
+      this.settings.hostedRerank && canHostedRerank(this.settings) && !!this.settings.openaiApiKey;
     const llmRerank = this.settings.llmRerank && !hosted;
     const pool = await this.index.search(query, filters, llmRerank ? k * RERANK_POOL : k, { rerank: hosted });
     let hits: SearchHit[];

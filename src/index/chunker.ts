@@ -37,9 +37,7 @@ export function stripFrontmatter(content: string): string {
 export function yearFromIssued(issued: unknown): number {
   if (issued && typeof issued === "object") {
     const dp = (issued as Record<string, unknown>)["date-parts"];
-    if (Array.isArray(dp) && Array.isArray(dp[0]) && typeof dp[0][0] === "number") {
-      return dp[0][0];
-    }
+    if (Array.isArray(dp) && Array.isArray(dp[0])) return parseInt(String(dp[0][0]), 10) || 0;
   }
   return 0;
 }
@@ -71,7 +69,7 @@ function splitText(text: string, maxChars: number, overlap = 150): string[] {
     }
     // a single paragraph longer than maxChars: hard-split
     if (p.length > maxChars) {
-      if (cur.trim()) chunks.push(cur);
+      // `cur` is empty or only the overlap tail of a chunk just pushed (the check above flushed it): pushing it would duplicate that text
       cur = "";
       // clamp the step: maxChars <= overlap would otherwise loop forever
       const step = Math.max(1, maxChars - overlap);

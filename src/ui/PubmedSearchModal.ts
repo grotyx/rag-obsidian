@@ -37,6 +37,10 @@ export class PubmedSearchModal extends Modal {
   private footerEl!: HTMLDivElement;
   private addBtn: ButtonComponent | null = null;
   private batch: Batch | null = null;
+  /** A search or an import is running: a new search would clear the rows the import reads. */
+  private searching = false;
+  private importing = false;
+  private searchBtn: ButtonComponent | null = null;
   /** The search the shown results came from — the query box may have been edited since. */
   private searched: SearchRun | null = null;
 
@@ -76,9 +80,10 @@ export class PubmedSearchModal extends Modal {
       .setDesc("Use the configured chat model to write a section summary into each note.")
       .addToggle((tg) => tg.setValue(this.summarize).onChange((v) => (this.summarize = v)));
 
-    new Setting(contentEl).addButton((b) =>
-      b.setButtonText("Search").setCta().onClick(() => void this.runSearch())
-    );
+    new Setting(contentEl).addButton((b) => {
+      this.searchBtn = b;
+      b.setButtonText("Search").setCta().onClick(() => void this.runSearch());
+    });
 
     this.resultsEl = contentEl.createDiv({ cls: "rag-pubmed-results" });
     this.footerEl = contentEl.createDiv();
@@ -86,12 +91,32 @@ export class PubmedSearchModal extends Modal {
     window.setTimeout(() => queryComp?.inputEl.focus(), 0);
   }
 
+  private busy(): boolean {
+    return this.searching || this.importing;
+  }
+
+  private syncSearchBtn(): void {
+    this.searchBtn?.setDisabled(this.busy());
+  }
+
   private async runSearch(): Promise<void> {
+    if (this.busy()) return; // button is disabled; this covers Enter in the query box
     const q = this.query.trim();
     if (!q) {
       new Notice("Enter a search query");
       return;
     }
+    this.searching = true;
+    this.syncSearchBtn();
+    try {
+      await this.doSearch(q);
+    } finally {
+      this.searching = false;
+      this.syncSearchBtn();
+    }
+  }
+
+  private async doSearch(q: string): Promise<void> {
     this.resultsEl.empty();
     this.footerEl.empty();
     this.rows = [];
@@ -158,7 +183,7 @@ export class PubmedSearchModal extends Modal {
           .setCta()
           .onClick(() => {
             if (this.batch) cancelBatch();
-            else
+            else if (!this.importing)
               // A throw here would otherwise leave the status bar stuck on a finished batch.
               this.addSelected().catch((e) => {
                 console.error("[Refwright] add selected failed", e);
@@ -200,6 +225,17 @@ export class PubmedSearchModal extends Modal {
   }
 
   private async addSelected(): Promise<void> {
+    this.importing = true;
+    this.syncSearchBtn();
+    try {
+      await this.doAddSelected();
+    } finally {
+      this.importing = false;
+      this.syncSearchBtn();
+    }
+  }
+
+  private async doAddSelected(): Promise<void> {
     const chosen = this.rows.filter((r) => r.checkbox.checked).map((r) => r.hit);
     if (!chosen.length) {
       new Notice("Select at least one paper");
@@ -319,7 +355,8 @@ export class PubmedSearchModal extends Modal {
       this.endBatch(summary);
     }
     new Notice(summary);
-    this.close();
+    // Close only while the modal still shows this batch's results.
+    if (this.searched === searched) this.close();
     if (lastFile) await this.app.workspace.getLeaf(true).openFile(lastFile);
   }
 }

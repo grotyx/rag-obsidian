@@ -14,6 +14,7 @@ import {
 import { ScholarRagSettings, DEFAULT_SETTINGS, SECRET_FIELDS, SecretField } from "./src/types";
 import { ScholarRagSettingTab } from "./src/settings";
 import { LLMClient } from "./src/llm/client";
+import { setCliVaultRoot } from "./src/llm/cli";
 import { Library } from "./src/data/library";
 import { IndexManager } from "./src/index/manager";
 import { AddReferenceModal } from "./src/ui/AddReferenceModal";
@@ -88,6 +89,7 @@ export default class ScholarRagPlugin extends Plugin {
     this.citeEngine = new CiteEngine(this.app, pluginDir);
     if (Platform.isDesktopApp && this.app.vault.adapter instanceof FileSystemAdapter) {
       const vaultPath = this.app.vault.adapter.getBasePath();
+      setCliVaultRoot(vaultPath);
       const mcpVault = new McpVault(
         this.app,
         (path) => path.startsWith(this.library.folder() + "/"),
@@ -473,11 +475,15 @@ export default class ScholarRagPlugin extends Plugin {
         void this.citationGraph.prune();
         this.citeCache.delete(file.path);
         this.library.invalidateKeyCache();
+        if (file.path.startsWith(this.library.folder() + "/")) {
+          this.citeCache.clear(); // a deleted reference leaves stale manuscript labels
+          this.pokeEditors();
+        }
       })
     );
     this.registerEvent(
       this.app.vault.on("rename", (file: TAbstractFile, oldPath: string) => {
-        void this.indexManager.removeFile(oldPath);
+        void this.indexManager.renamePath(oldPath, file.path); // same text: no re-embed
         this.citeCache.delete(oldPath); // labels were cached under the old path
         this.library.invalidateKeyCache();
         void this.citationGraph.prune();
@@ -488,6 +494,8 @@ export default class ScholarRagPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.citationGraph?.dispose();
+    this.pokeEditors.cancel();
     void this.mcpServer?.stop();
     void this.indexManager?.flushPending();
   }
@@ -580,7 +588,11 @@ export default class ScholarRagPlugin extends Plugin {
       const fromData = Boolean(this.settings[field]);
       const currentId = this.secretId(field);
       const current = store.getSecret(currentId);
-      const stored = current || store.getSecret(`${LEGACY_PLUGIN_ID}-${field.toLowerCase()}`);
+      // The legacy id is a migration source only while the current id was never set (null). A key
+      // the user cleared is stored as "" and must stay cleared, not come back from the old id.
+      const legacyId = `${LEGACY_PLUGIN_ID}-${field.toLowerCase()}`;
+      const legacy = current == null ? store.getSecret(legacyId) : null;
+      const stored = current || legacy;
       if (stored && !this.settings[field]) {
         // Empty string means "never set / blanked" — don't let it shadow a key in data.json.
         this.settings[field] = stored;
@@ -588,10 +600,12 @@ export default class ScholarRagPlugin extends Plugin {
       if (this.settings[field] && (fromData || current !== this.settings[field])) {
         // Plaintext key in data.json: first run (migrate) — or, after migration, one pasted or
         // synced in from another device, which is newer than the keychain copy. The legacy id
-        // also lands here after the 0.6 plugin-id change; keep the old copy for safe rollback.
+        // also lands here after the 0.6 plugin-id change.
         try {
           store.setSecret(currentId, this.settings[field]);
           migrated = true;
+          // Copied: blank the old id so a key cleared later cannot be resurrected from it.
+          if (legacy) store.setSecret(legacyId, "");
         } catch (e) {
           console.warn(`${this.manifest.id}: secretStorage write failed for ${field}; key stays in data.json`, e);
         }
@@ -774,7 +788,8 @@ export default class ScholarRagPlugin extends Plugin {
 
   /** "Save latest chat answer as note" — the chat pane owns the history, so open it if needed. */
   private async saveChatAnswer(): Promise<void> {
-    if (!this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT).length) await this.activateView(VIEW_TYPE_CHAT);
+    // Always activate: a deferred leaf exists but its view is not a ChatView until it loads.
+    await this.activateView(VIEW_TYPE_CHAT);
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT)[0]?.view;
     if (view instanceof ChatView) await view.saveLastAnswer();
     else new Notice("Open the chat pane first");

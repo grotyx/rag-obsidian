@@ -3,7 +3,7 @@ import { ScholarRagSettings, effective } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
 import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA, VECTOR_SLICE_BYTES } from "./store";
-import { capPerReference, hostedRerank, mmr } from "./rerank";
+import { canHostedRerank, capPerReference, hostedRerank, mmr } from "./rerank";
 import { buildExpander, expandedTerm, Expander, Expansion, isForeignQuery, parseVocabulary } from "./expand";
 import { MeshThesaurus, MeshAddOptions } from "./thesaurus";
 import { mapPool } from "../util/pool";
@@ -166,8 +166,13 @@ export class IndexManager {
   /** Set when the last `restore()` failed — main.ts surfaces it instead of staying silent. */
   restoreError: string | null = null;
 
-  /** On load: restore the index if it exists AND matches the current model. */
-  async restore(): Promise<void> {
+  /** On load: restore the index if it exists AND matches the current model. Serialized like every
+   *  other mutation, so a rebuild or reindex requested meanwhile waits for it instead of being clobbered. */
+  restore(): Promise<void> {
+    return this.serialized(() => this.restoreNow());
+  }
+
+  private async restoreNow(): Promise<void> {
     this.restoreError = null;
     try {
       await this.ensureLocation();
@@ -202,6 +207,8 @@ export class IndexManager {
       console.error("[Refwright] failed to restore index", e);
       this.restoreError = e instanceof Error ? e.message : String(e);
     }
+    // Edits that arrived while there was no index to put them in (see `flushReindex`).
+    if (this.reindexQueue.size) this.flush();
   }
 
   private files(): TFile[] {
@@ -304,7 +311,7 @@ export class IndexManager {
       }
     } catch (e) {
       this.store.reset();
-      await this.restore(); // back to the last persisted index (it never throws)
+      await this.restoreNow(); // back to the last persisted index (it never throws); we are inside the queue, so not restore()
       throw e;
     } finally {
       this.rebuilding = false;
@@ -316,6 +323,7 @@ export class IndexManager {
       return 0;
     }
     await this.persist();
+    if (this.reindexQueue.size) this.flush();
     return total;
   }
 
@@ -382,6 +390,17 @@ export class IndexManager {
     });
   }
 
+  /** A note was renamed or moved: carry its tracked path over, without re-embedding (the text is the
+   *  same). Moving it out of the library folder drops it, like a delete. */
+  renamePath(oldPath: string, newPath: string): Promise<void> {
+    if (!newPath.startsWith(this.library.folder() + "/")) return this.removeFile(oldPath);
+    return this.serialized(async () => {
+      if (!this.store.movePath(oldPath, newPath)) return;
+      this.dirty = true;
+      this.flush();
+    });
+  }
+
   /** Plugin unload: run what the debounce has not yet (a reindex burst, a delete burst's persist). */
   flushPending(): Promise<void> {
     return this.reindexQueue.size || this.dirty ? this.flushReindex() : Promise.resolve();
@@ -397,6 +416,9 @@ export class IndexManager {
 
   private flushReindex(): Promise<void> {
     return this.serialized(async () => {
+      // No index yet (restore not run, or nothing built): keep the paths; `restoreNow` and a finished
+      // rebuild flush again. Dropping them lost every edit made while the index was loading.
+      if (!this.store.ready) return;
       const paths = [...this.reindexQueue];
       this.reindexQueue.clear();
       let changed = false;
@@ -443,10 +465,14 @@ export class IndexManager {
       ? expandedTerm(english, await this.expand(english === query ? query : `${query} ${english}`))
       : english;
     // The rerank endpoint is OpenRouter's; any other host would 404 (and get the key posted to it).
-    const rerank = !!opts.rerank && this.settings.openaiBaseUrl.includes("openrouter.ai");
+    // And only when the user sends embeddings or chat to a hosted endpoint: with both on Ollama, no text leaves.
+    const rerank = !!opts.rerank && canHostedRerank(this.settings);
     const want = rerank ? Math.round(k * this.rerankPool) : k;
     // Over-fetch, then cap per reference: a paper whose stashed PDF text splits into dozens of
     // chunks would otherwise fill the whole result set on its own.
+    // The translation and embedding awaits above can span a rebuild starting or the store being reset.
+    if (this.rebuilding) throw new Error("The search index is being rebuilt — search again when it finishes.");
+    if (!this.store.ready) throw new Error("Index not built yet — run “Rebuild index”.");
     let hits = await this.store.search(vec, term, want * OVERFETCH, filters);
     if (opts.eligible) {
       const ok = new Map<string, boolean>();

@@ -22,7 +22,7 @@ export function paragraphsOf(markdown: string): Paragraph[] {
   let bufStart = 0;
   let bufEnd = 0;
   let offset = 0;
-  let fenced = false;
+  let fence: string | null = null; // the opening fence run while inside a code block
   let comment: RegExp | null = null; // the closer of the comment block we are inside
   let inFrontmatter = /^---\s*$/.test(lines[0] ?? "");
 
@@ -43,12 +43,17 @@ export function paragraphsOf(markdown: string): Paragraph[] {
       if (i > 0 && /^(---|\.\.\.)\s*$/.test(line)) inFrontmatter = false;
       continue;
     }
-    if (/^\s*```/.test(line)) {
+    const fm = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+    if (fence === null && fm && !(fm[1][0] === "`" && fm[2].includes("`"))) {
       flush();
-      fenced = !fenced;
+      fence = fm[1];
       continue;
     }
-    if (fenced) continue;
+    if (fence !== null) {
+      // closes on the same character, at least as long, nothing after it (same rule as codeRanges)
+      if (fm && fm[1][0] === fence[0] && fm[1].length >= fence.length && !fm[2].trim()) fence = null;
+      continue;
+    }
     if (comment) {
       if (comment.test(line)) comment = null;
       continue;

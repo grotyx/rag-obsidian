@@ -67,10 +67,10 @@ export class Library {
   // adds of the same work would slip past the cache scan in findDuplicate.
   // Entries whose note is gone (deleted this session) are ignored, so a re-add after a
   // delete is not reported as a duplicate of a note that no longer exists.
-  private createdIds = new Map<string, { citekey: string; path: string }>();
+  private createdIds = new Map<string, { citekey: string; path: string; item: CSLItem }>();
 
   private rememberIds(item: CSLItem, citekey: string, path: string): void {
-    const hit = { citekey, path };
+    const hit = { citekey, path, item };
     const doi = normDoi(item.DOI);
     if (doi) this.createdIds.set(`doi:${doi}`, hit);
     for (const k of matchKeys(item)) this.createdIds.set(k, hit);
@@ -150,7 +150,13 @@ export class Library {
 
   private async createReferenceNow(item: CSLItem, opts: BuildNoteOpts): Promise<TFile> {
     await this.ensureFolder();
-    const citekey = this.uniqueCitekey(generateCitekey(item, this.settings), await this.unparsedCitekeys());
+    const unparsed = await this.unparsedCitekeys();
+    // The caller's own findDuplicate ran before it waited for earlier creates in the chain; one of
+    // them may have added this very work since. Hand back that note instead of a second copy.
+    const dup = this.findDuplicate(item);
+    const existing = dup ? this.getFile(dup) : null;
+    if (existing) return existing;
+    const citekey = this.uniqueCitekey(generateCitekey(item, this.settings), unparsed);
     const filename = this.uniqueFilename(generateFilename(item));
     const path = normalizePath(`${this.folder()}/${filename}.md`);
     this.createdCitekeys.set(citekey, { path, item });
@@ -201,22 +207,28 @@ export class Library {
 
   /** The note the scan would have returned (earliest in scan order across `keys`), checked against
    *  its current frontmatter; a stale entry drops the map and retries once on a fresh one. */
-  private mapDuplicate(keys: string[]): string | null {
+  private mapDuplicate(keys: string[], item: CSLItem): string | null {
     for (let attempt = 0; attempt < 2; attempt++) {
       const map = (this.idMap ??= this.buildIdMap());
-      let best: { citekey: string; path: string; order: number } | undefined;
-      let bestKey = "";
-      for (const k of keys) {
+      const hits = keys.flatMap((k) => {
         const h = map.get(k);
-        if (h && (!best || h.order < best.order)) {
-          best = h;
-          bestKey = k;
+        return h ? [{ k, h }] : [];
+      });
+      hits.sort((a, b) => a.h.order - b.h.order);
+      let stale = false;
+      for (const { k, h } of hits) {
+        const file = this.app.vault.getAbstractFileByPath(h.path);
+        const fm = file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
+        if (!fm || !fm.citekey || String(fm.citekey) !== h.citekey || !matchKeys(fm).includes(k)) {
+          stale = true;
+          break;
         }
+        // A title alone never outweighs a differing DOI / PMID.
+        // ponytail: the map keeps one note per title, so a compatible second note behind a conflicting first one is missed.
+        if (k.startsWith("title:") && idsConflict(item, fm)) continue;
+        return h.citekey;
       }
-      if (!best) return null;
-      const file = this.app.vault.getAbstractFileByPath(best.path);
-      const fm = file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
-      if (fm && fm.citekey && String(fm.citekey) === best.citekey && matchKeys(fm).includes(bestKey)) return best.citekey;
+      if (!stale) return null;
       this.idMap = null;
     }
     return null;
@@ -270,9 +282,11 @@ export class Library {
     for (const k of keys) {
       const hit = this.createdIds.get(k);
       const live = hit && this.liveCreated(hit.path, (fm) => !!fm.citekey && matchKeys(fm).includes(k));
-      if (hit && live) return live.fm ? String(live.fm.citekey) : hit.citekey;
+      if (!hit || !live) continue;
+      if (k.startsWith("title:") && idsConflict(item, live.fm ?? hit.item)) continue;
+      return live.fm ? String(live.fm.citekey) : hit.citekey;
     }
-    return this.mapDuplicate(keys);
+    return this.mapDuplicate(keys, item);
   }
 
   /** Same scan as `entries()`, without the parsed CSL item. */
@@ -329,6 +343,17 @@ export function matchKeys(item: { DOI?: unknown; PMID?: unknown; title?: unknown
   return keys;
 }
 
+/** Two works that each carry a DOI (or a PMID) and the values differ are different works,
+ *  whatever their titles say. Only a title match consults this; a shared identifier still wins. */
+export function idsConflict(a: { DOI?: unknown; PMID?: unknown }, b: { DOI?: unknown; PMID?: unknown }): boolean {
+  const da = normDoi(a.DOI);
+  const db = normDoi(b.DOI);
+  if (da && db && da !== db) return true;
+  const pa = text(a.PMID);
+  const pb = text(b.PMID);
+  return !!pa && !!pb && pa !== pb;
+}
+
 /** Group notes that are the same work. Two notes belong together when they share **any**
  *  identifier — the rule `findDuplicate` applies on add. Comparing one signature per note
  *  instead (DOI else PMID else title) missed the ordinary case: the same paper added once by
@@ -344,14 +369,31 @@ export function duplicateGroups<
     const rb = find(b);
     if (ra !== rb) parent[ra] = rb;
   };
-  const seen = new Map<string, number>();
+  const members = new Map<number, number[]>(); // root → its entries, for the title check
+  const membersOf = (r: number): number[] => members.get(r) ?? [r];
+  const seen = new Map<string, number[]>();
   const identified = new Set<number>();
   entries.forEach((e, i) => {
     for (const k of matchKeys(e.item)) {
       identified.add(i);
-      const prev = seen.get(k);
-      if (prev === undefined) seen.set(k, i);
-      else union(prev, i);
+      const prevs = seen.get(k);
+      if (!prevs) {
+        seen.set(k, [i]);
+        continue;
+      }
+      prevs.push(i);
+      for (const prev of prevs.slice(0, -1)) {
+        const ra = find(prev);
+        const rb = find(i);
+        if (ra === rb) continue;
+        // A shared title joins two groups only when no member of one conflicts with a member of
+        // the other (differing DOI / PMID), so a generic title cannot chain different works.
+        const ma = membersOf(ra);
+        const mb = membersOf(rb);
+        if (k.startsWith("title:") && ma.some((x) => mb.some((y) => idsConflict(entries[x].item, entries[y].item)))) continue;
+        union(prev, i);
+        members.set(find(i), [...ma, ...mb]);
+      }
     }
   });
   const byRoot = new Map<number, T[]>();
@@ -414,7 +456,7 @@ export function normOpenAlex(v: unknown): string {
 export function normTitle(t: unknown): string {
   return text(t || "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 }
 

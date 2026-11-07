@@ -53,8 +53,11 @@ export async function updateBibliography(plugin: ScholarRagPlugin): Promise<void
     bib = buildBibliography(keys, plugin.library, plugin.settings.citeStyle);
   }
   const section = `## References\n\n${bib}\n`;
-  const { base, tail } = splitAtReferences(content);
-  await plugin.app.vault.modify(file, `${base ? base + "\n\n" : ""}${section}${tail}`);
+  // The style load above can take seconds; apply to the text as it is now, not as it was read.
+  await plugin.app.vault.process(file, (current) => {
+    const { base, tail } = splitAtReferences(current);
+    return `${base ? base + "\n\n" : ""}${section}${tail}`;
+  });
   new Notice(`Bibliography updated: ${keys.length} reference(s)`);
 }
 
@@ -72,7 +75,7 @@ export async function compileManuscript(plugin: ScholarRagPlugin): Promise<void>
       styleId: plugin.styleForNote(file),
       citeStyle: plugin.settings.citeStyle,
       getItem: (key) => plugin.library.getItem(key),
-      renderStyle: (style, keys, getItem) => plugin.citeEngine.renderNote(style, keys, getItem),
+      renderStyle: (style, keys, getItem, clusters) => plugin.citeEngine.renderNote(style, keys, getItem, clusters),
     });
   } catch (error) {
     new Notice(error instanceof Error ? error.message.replace(/^NO_CITATIONS:\s*/, "") : String(error));
@@ -109,19 +112,23 @@ export async function exportManuscriptDocx(plugin: ScholarRagPlugin): Promise<vo
       styleId: plugin.styleForNote(file),
       citeStyle: plugin.settings.citeStyle,
       getItem: (key) => plugin.library.getItem(key),
-      renderStyle: (style, keys, getItem) => plugin.citeEngine.renderNote(style, keys, getItem),
+      renderStyle: (style, keys, getItem, clusters) => plugin.citeEngine.renderNote(style, keys, getItem, clusters),
     });
   } catch (error) {
     new Notice(error instanceof Error ? error.message.replace(/^NO_CITATIONS:\s*/, "") : String(error));
     return;
   }
-  const outRelPath = normalizePath(file.path.replace(/\.md$/i, "") + ".docx");
+  // Never overwrite an earlier export: <note>.docx, then <note> (2).docx, (3)…
+  const stem = file.path.replace(/\.md$/i, "");
+  let outRelPath = normalizePath(stem + ".docx");
+  for (let n = 2; await adapter.exists(outRelPath); n++) outRelPath = normalizePath(`${stem} (${n}).docx`);
   const outAbsPath = adapter.getFullPath(outRelPath);
   const notice = new Notice("Exporting to Word…", 0);
   try {
     const noteDir = adapter.getFullPath(file.parent?.path ?? "");
     await exportDocx(stripFrontmatter(rendered.content), outAbsPath, pandocPath, noteDir);
-    new Notice(`Exported → ${outRelPath}`);
+    const renamed = outRelPath !== normalizePath(stem + ".docx");
+    new Notice(`Exported → ${outRelPath}` + (renamed ? " (the earlier .docx was kept)" : ""));
   } catch (e) {
     new Notice(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
@@ -181,7 +188,9 @@ export async function annotatedBibliography(plugin: ScholarRagPlugin): Promise<v
     let ordered: { key: string; cite: string }[] = [];
     if (styleId) {
       try {
-        const r = await plugin.citeEngine.renderNote(styleId, keys, (x) => plugin.library.getItem(x));
+        // Bibliography only: renderNote also runs an in-text cluster per key, which froze the UI
+        // on a big library.
+        const r = await plugin.citeEngine.renderBibliographyOnly(styleId, keys, (x) => plugin.library.getItem(x));
         ordered = r.entryIds.map((key, i) => ({ key, cite: r.bibliography[i] }));
       } catch (e) {
         new Notice(`Style "${styleId}" failed; using ${plugin.settings.citeStyle}. ${e instanceof Error ? e.message : ""}`);
@@ -226,7 +235,27 @@ export async function suggestCitations(plugin: ScholarRagPlugin, editor: Editor)
     }
     text = para.text;
   }
-  await suggestFor(plugin, text, (key) => insertCitation(plugin, editor, off, key));
+  // Where the citation goes, as "this much into this text": the search below is async, so the
+  // offset is re-found by text afterwards, as insertAtParagraph does.
+  let anchor: { text: string; delta: number; paragraph: boolean } = { text: selected, delta: selected.length, paragraph: false };
+  const own = paras.find((p) => off >= p.start && off <= p.end);
+  if (own) anchor = { text: own.text, delta: off - own.start, paragraph: true };
+  await suggestFor(plugin, text, (key) => {
+    const content = editor.getValue();
+    let at = -1;
+    if (anchor.paragraph) {
+      const now = paragraphsOf(content).find((p) => p.text === anchor.text);
+      if (now) at = now.start + anchor.delta;
+    } else {
+      const i = anchor.text ? content.indexOf(anchor.text) : -1;
+      if (i >= 0) at = i + anchor.delta;
+    }
+    if (at < 0) {
+      new Notice("Paragraph has changed — citation not inserted");
+      return;
+    }
+    insertCitation(plugin, editor, at, key);
+  });
 }
 
 /** List the paragraphs that assert something and cite nothing; "Suggest" cites one. */

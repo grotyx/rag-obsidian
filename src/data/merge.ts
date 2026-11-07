@@ -238,24 +238,55 @@ export function joinNote(fm: Record<string, unknown>, body: string): string {
   return Object.keys(fm).length ? `---\n${stringifyYaml(fm).trimEnd()}\n---\n${body}` : body;
 }
 
-/** `## Merged from <citekey>` holding the other note's non-empty `## Notes` / `## Highlights`
- *  as `### Notes` / `### Highlights` subsections; "" when both are empty (nothing to merge in). */
+/** `## Merged from <citekey>` holding everything of the other note's body that the merge does not
+ *  already carry elsewhere: text the user wrote under the H1, `## Notes` / `## Highlights` as
+ *  `### Notes` / `### Highlights`, and every other `## X` section as `### X` (an H2 inside Notes
+ *  starts its own section and is carried the same way). Left out: the H1 and generated
+ *  `> **Summary source**` line, the Summary block, the Evidence section (merged by `mergeEvidence`)
+ *  and the full-text stash. Sections this note itself received from an earlier merge ride along
+ *  unchanged. "" when nothing is left. */
 function mergedFromSection(citekey: string, body: string): string {
-  const notes = extractSection(body, "## Notes").trim();
-  const highlights = extractSection(body, "## Highlights").trim();
-  // Sections this loser itself received from an earlier merge ride along unchanged.
-  const earlier = [...body.matchAll(/(^|\n)(## Merged from [^\n]*\n[\s\S]*?)(?=\n## |\n# |$)/g)]
-    .map((m) => m[2].trim())
-    .filter((s) => !s.startsWith(STASH_MARKER));
-  if (!notes && !highlights && !earlier.length) return "";
+  // The stash runs marker -> EOF, except `## Merged from ...` blocks an earlier merge left after it.
+  let content = body;
+  const at = body.indexOf(STASH_MARKER);
+  if (at >= 0) {
+    const after = body.slice(at + STASH_MARKER.length);
+    const m = after.search(/(^|\n)## Merged from /);
+    content = `${body.slice(0, at)}\n${m >= 0 ? after.slice(m).replace(/^\n/, "") : ""}`;
+  }
+  const heads = [...content.matchAll(/(^|\n)## ([^\n]*)/g)];
+  const first = heads.length ? heads[0].index : content.length;
+  const pre = content
+    .slice(0, first)
+    .replace(/^# .*$/m, "")
+    .replace(/^> \*\*Summary source\*\*:.*$/m, "")
+    .trim();
+  let notes = "";
+  let highlights = "";
+  const extras: string[] = [];
+  const earlier: string[] = [];
+  heads.forEach((h, n) => {
+    const start = (h.index ?? 0) + (h[1] ? 1 : 0);
+    const end = n + 1 < heads.length ? (heads[n + 1].index ?? content.length) : content.length;
+    const name = h[2].trim();
+    const section = content.slice(start, end);
+    const inner = section.slice(section.indexOf("\n") + 1).trim();
+    if (name === "Notes") notes = inner;
+    else if (name === "Highlights") highlights = inner;
+    else if (/^(Summary(\s*\([^)]*\))?|요약 \(KR\))$/.test(name) || name === "Evidence (extracted)") return;
+    else if (name.startsWith("Merged from ")) earlier.push(section.trim());
+    else extras.push(`### ${name}${inner ? `\n\n${inner}` : ""}`);
+  });
   const parts: string[] = [];
-  if (notes || highlights) {
+  if (pre || notes || highlights || extras.length) {
     parts.push(`## Merged from ${citekey}`);
+    if (pre) parts.push("", pre);
     if (notes) parts.push("", "### Notes", "", notes);
     if (highlights) parts.push("", "### Highlights", "", highlights);
+    for (const e of extras) parts.push("", e);
   }
   for (const e of earlier) parts.push(...(parts.length ? [""] : []), e);
-  return `${parts.join("\n")}\n`;
+  return parts.length ? `${parts.join("\n")}\n` : "";
 }
 
 /** A moved-in stash is `marker → EOF` (cheap: `appendStash` always writes it last) — except an
@@ -264,17 +295,6 @@ function mergedFromSection(citekey: string, body: string): string {
 function stripTrailingMergedBlocks(stash: string): string {
   const idx = stash.search(/(^|\n)## Merged from /);
   return idx < 0 ? stash : stash.slice(0, idx).replace(/\s*$/, "");
-}
-
-/** Text under a `## <heading>` line, up to the next `#`/`##` heading or end of body — so a
- *  `### Key points` inside the user's notes stays with them. */
-function extractSection(body: string, heading: string): string {
-  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const m = body.match(new RegExp(`(^|\\n)${escaped}[ \\t]*(\\n|$)`));
-  if (!m || m.index === undefined) return "";
-  const rest = body.slice(m.index + m[0].length);
-  const next = rest.search(/\n#{1,2}[ \t]/);
-  return next >= 0 ? rest.slice(0, next) : rest;
 }
 
 export interface MergeSourceNote {

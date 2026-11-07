@@ -147,6 +147,11 @@ export function summaryBlock(s: SummarySections): string[] {
   return lines;
 }
 
+/** Keys buildNote owns itself (or that name the note, not the work): never copied from the item. */
+const NOT_COPIED = new Set([
+  "id", "citekey", "status", "added", "tags", "mesh_terms", "summary_source", "summary_model",
+]);
+
 /** Build the full markdown note: CSL-JSON frontmatter + note scaffold (+ optional summary). */
 export function buildNote(item: CSLItem, citekey: string, opts: BuildNoteOpts = {}): string {
   const fm: Record<string, unknown> = {
@@ -168,6 +173,13 @@ export function buildNote(item: CSLItem, citekey: string, opts: BuildNoteOpts = 
   if (item.publisher) fm.publisher = item.publisher;
   if (item.keyword && item.keyword.length) fm.keyword = item.keyword;
   if (item.abstract) fm.abstract = item.abstract;
+  // Every other non-empty key rides along (container-title-short, editor, ISBN, openalex_id, …);
+  // the note's own fields below are never taken from the item.
+  for (const [k, v] of Object.entries(item)) {
+    if (k in fm || NOT_COPIED.has(k) || v === undefined || v === null || v === "") continue;
+    if (Array.isArray(v) && !v.length) continue;
+    fm[k] = v;
+  }
 
   // plugin-managed fields
   fm.status = "unread";

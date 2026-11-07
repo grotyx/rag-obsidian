@@ -4,6 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import http from "node:http";
+import crypto from "node:crypto";
 import * as yaml from "yaml";
 import { handleProtocol, McpTool } from "../src/mcp/protocol";
 import { bridgeSource } from "../src/mcp/bridge";
@@ -135,7 +137,11 @@ function fakeApp(initial: Record<string, string> = {}): {
       read: async (file: FakeFile) => files.get(file.path)?.content ?? "",
       cachedRead: async (file: FakeFile) => files.get(file.path)?.content ?? "",
       create: async (path: string, content: string) => put(path, content),
-      modify: async (file: FakeFile, content: string) => { put(file.path, content); },
+      process: async (file: FakeFile, fn: (data: string) => string) => {
+        const next = fn(files.get(file.path)?.content ?? "");
+        put(file.path, next);
+        return next;
+      },
       createFolder: async (path: string) => { folders.add(path); },
     },
     fileManager: {
@@ -172,6 +178,29 @@ async function vaultChecks(): Promise<void> {
   assert.equal(validateMarkdownPath("Manuscripts//paper.md"), "Manuscripts/paper.md");
   assert.equal(await contentHash("same"), await contentHash("same"));
   assert.notEqual(await contentHash("same"), await contentHash("different"));
+
+  // The note changes in the editor after the tool read it but before the write lands: the
+  // comparison inside vault.process must fail with CONTENT_CHANGED and write nothing.
+  {
+    const racy = fakeApp({ "Notes/r.md": "one two" });
+    const rv = new McpVault(racy.app);
+    const hash = await contentHash("one two");
+    const realRead = racy.app.vault.read;
+    racy.app.vault.read = async (f: FakeFile) => {
+      const c = await realRead(f);
+      const entry = racy.files.get(f.path);
+      if (entry) entry.content = "one two (edited in the editor)";
+      return c;
+    };
+    await assert.rejects(rv.updateNote("Notes/r.md", "replaced", hash), /CONTENT_CHANGED/);
+    assert.equal(racy.files.get("Notes/r.md")?.content, "one two (edited in the editor)", "update_note wrote nothing");
+    await assert.rejects(rv.replaceInNote("Notes/r.md", "one", "1", hash), /CONTENT_CHANGED/);
+    assert.equal(racy.files.get("Notes/r.md")?.content, "one two (edited in the editor)", "replace_in_note wrote nothing");
+    racy.app.vault.read = realRead;
+    const ok = await rv.updateNote("Notes/r.md", "fine", await contentHash("one two (edited in the editor)"));
+    assert.equal(racy.files.get("Notes/r.md")?.content, "fine");
+    assert.equal(ok.hash, await contentHash("fine"));
+  }
 
   const fake = fakeApp({
     "Notes/a.md": "alpha beta alpha",
@@ -472,6 +501,31 @@ async function serviceChecks(): Promise<void> {
   }), /CONTENT_CHANGED/);
   const storedReference = fake.files.get("References/ref.md");
   if (storedReference) storedReference.content = "x".repeat(60_000);
+  {
+    // save_reference_summary: an editor change between the read and the write is CONTENT_CHANGED.
+    const before = "---\ncitekey: smith2024\n---\nBody.";
+    const stash = fake.files.get("References/ref.md");
+    if (stash) stash.content = before;
+    const raceHash = await contentHash(before);
+    const realRead = plugin.app.vault.read;
+    plugin.app.vault.read = async (f: FakeFile) => {
+      const c = await realRead(f);
+      const entry = fake.files.get(f.path);
+      if (entry) entry.content = before + " edited";
+      return c;
+    };
+    try {
+      await assert.rejects(service.callTool("save_reference_summary", {
+        citekey: "smith2024", expected_hash: raceHash, source_type: "pmc-fulltext",
+        background: "B", methods: "M", results: "R", conclusions: "C",
+      }), /CONTENT_CHANGED/);
+    } finally {
+      plugin.app.vault.read = realRead;
+    }
+    assert.equal(fake.files.get("References/ref.md")?.content, before + " edited", "save_reference_summary wrote nothing");
+    const entry = fake.files.get("References/ref.md");
+    if (entry) entry.content = "x".repeat(60_000);
+  }
   const truncatedRef = await service.callTool("get_reference", { citekey: "smith2024" }) as any;
   assert.equal(truncatedRef.content.length, 50_000);
   assert.equal(truncatedRef.contentTruncated, true);
@@ -997,6 +1051,14 @@ async function httpChecks(): Promise<void> {
   await assertVaultPath(vaultPath, "inside.md", false);
   if (symlinksWork) await assert.rejects(() => assertVaultPath(vaultPath, "linked.md", false), /outside vault/i);
   await assertVaultPath(vaultPath, "new/future.md", true);
+  // A dangling symlink: realpath says ENOENT for it too, but a create would write through it.
+  if (symlinksWork) {
+    fs.symlinkSync(path.join(root, "not-yet-outside.md"), path.join(vaultPath, "dangling.md"));
+    await assert.rejects(() => assertVaultPath(vaultPath, "dangling.md", true), /outside vault/i);
+    fs.symlinkSync(path.join(root, "not-yet-dir"), path.join(vaultPath, "danglingdir"));
+    await assert.rejects(() => assertVaultPath(vaultPath, "danglingdir/x.md", true), /outside vault/i);
+    await assertVaultPath(vaultPath, "still-missing/deeper/note.md", true);
+  }
   const setup = mcpSetupSnippets("/Vault With Space", "/Plugin Path/mcp-bridge.cjs");
   assert.match(setup.claudeCode, /'\/Plugin Path\/mcp-bridge\.cjs'/);
   assert.match(setup.codex, /args = \["\/Plugin Path\/mcp-bridge\.cjs", "--vault", "\/Vault With Space"\]/);
@@ -1004,12 +1066,19 @@ async function httpChecks(): Promise<void> {
   assert.match(setup.agy, /^agy mcp add rag-obsidian node /);
   assert.match(setup.agy, /'\/Plugin Path\/mcp-bridge\.cjs'/);
 
+  const echoTool = { name: "echo", description: "Echo.", inputSchema: { type: "object" as const, properties: {} } };
+  let noteToolsOn = true;
   const server = new McpHttpServer({
     vaultPath,
     pluginPath,
     version: "0.5.0",
-    tools: [{ name: "echo", description: "Echo.", inputSchema: { type: "object", properties: {} } }],
-    callTool: async (_name, args) => args,
+    tools: () => noteToolsOn
+      ? [echoTool, { name: "read_note", description: "Read.", inputSchema: { type: "object", properties: {} } }]
+      : [echoTool],
+    callTool: async (name, args) => {
+      if (name === "read_note" && !noteToolsOn) throw new Error(`UNKNOWN_TOOL: Unknown tool: ${name}`);
+      return args;
+    },
   });
   const info = await server.start();
   try {
@@ -1073,10 +1142,30 @@ async function httpChecks(): Promise<void> {
     assert.equal(blockedResult.id, 12);
     assert.equal(blockedResult.result.isError, true);
 
+    // A hidden note tool answers UNKNOWN_TOOL even for a path that does not exist, and the
+    // message carries no path (a path check first would say which files exist).
+    noteToolsOn = false;
+    const hidden = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${info.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 13, method: "tools/call", params: { name: "read_note", arguments: { path: "no-such-dir/secret-name.md" } } }),
+    });
+    const hiddenText = (await hidden.json() as any).result.content[0].text as string;
+    assert.equal(hiddenText, "UNKNOWN_TOOL: Unknown tool: read_note");
+    noteToolsOn = true;
+
+    // 1.5 MB (a large note write) passes; the cap is 8 MB.
+    const big = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${info.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 14, method: "ping", pad: "한".repeat(500_000) }),
+    });
+    assert.equal(big.status, 200);
+    assert.equal((await big.json() as any).id, 14);
     const oversized = await fetch(`http://127.0.0.1:${info.port}/mcp`, {
       method: "POST",
       headers: { authorization: `Bearer ${info.token}`, "content-type": "application/json" },
-      body: "x".repeat(1_000_001),
+      body: "x".repeat(8_000_001),
     });
     assert.equal(oversized.status, 413);
 
@@ -1103,6 +1192,88 @@ async function httpChecks(): Promise<void> {
   } finally {
     await server.stop();
     assert.equal(fs.existsSync(info.discoveryPath), false);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+/** Spawns the real emitted bridge, sends one request and collects the whole stdout line as bytes
+ *  (decoded once, so this helper cannot itself mangle a split character). */
+function bridgeCall(bridgePath: string, vaultArg: string, request: unknown): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [bridgePath, "--vault", vaultArg], { stdio: ["pipe", "pipe", "pipe"] });
+    const parts: Buffer[] = [];
+    let stderr = "";
+    const timer = setTimeout(() => { child.kill(); reject(new Error(`bridge timeout: ${stderr}`)); }, 15_000);
+    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+    child.stdout.on("data", (chunk: Buffer) => {
+      parts.push(chunk);
+      const all = Buffer.concat(parts);
+      if (all.indexOf(10) < 0) return;
+      clearTimeout(timer);
+      child.kill();
+      resolve(JSON.parse(all.toString("utf8").trim()));
+    });
+    child.stdin.end(JSON.stringify(request) + "\n");
+  });
+}
+
+/** The generated bridge against a hand-made server: a multibyte character split across TCP
+ *  chunks must survive, and the discovery file is only trusted when it is a private regular file. */
+async function bridgeRobustnessChecks(): Promise<void> {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rag-obsidian-mcp-bridge-"));
+  const vaultPath = path.join(root, "vault");
+  fs.mkdirSync(vaultPath);
+  const bridgePath = path.join(root, "bridge.cjs");
+  fs.writeFileSync(bridgePath, bridgeSource());
+  const key = crypto.createHash("sha256").update(fs.realpathSync.native(vaultPath).normalize("NFC")).digest("hex").slice(0, 24);
+  const discovery = path.join(os.tmpdir(), `rag-obsidian-mcp-${key}.json`);
+
+  const text = "한국어 노트 본문입니다. ".repeat(10_000);
+  const body = Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { text } }));
+  assert.ok(body.length >= 120_000, "test setup: body is large");
+  const cut = 4099; // not a multiple of 3, so cuts land inside 3-byte characters
+  let midCharacter = 0;
+  for (let at = cut; at < body.length; at += cut) if ((body[at] & 0xc0) === 0x80) midCharacter++;
+  assert.ok(midCharacter > 0, "test setup: some chunk boundaries fall inside a character");
+
+  const server = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", async () => {
+      res.writeHead(200, { "content-type": "application/json" });
+      for (let at = 0; at < body.length; at += cut) {
+        await new Promise<void>((done) => res.write(body.subarray(at, at + cut), () => setTimeout(done, 2)));
+      }
+      res.end();
+    });
+  });
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", () => done()));
+  const port = (server.address() as { port: number }).port;
+  const plant = (): void => {
+    fs.rmSync(discovery, { force: true });
+    fs.writeFileSync(discovery, JSON.stringify({ port, token: "t" }), { mode: 0o600 });
+  };
+  try {
+    plant();
+    const reply = await bridgeCall(bridgePath, vaultPath, { jsonrpc: "2.0", id: 1, method: "ping" });
+    assert.equal(reply.result?.text, text, "Korean body split across chunks arrives intact");
+    assert.ok(!JSON.stringify(reply).includes("\uFFFD"), "no replacement character");
+
+    if (process.platform === "win32") {
+      console.log("  (skipping discovery-file mode/symlink checks on Windows)");
+    } else {
+      fs.chmodSync(discovery, 0o644);
+      let unavailable = await bridgeCall(bridgePath, vaultPath, { jsonrpc: "2.0", id: 2, method: "ping" });
+      assert.match(unavailable.error?.message ?? "", /unavailable/, "a group/world-readable discovery file is not trusted");
+      plant();
+      const real = path.join(root, "real-discovery.json");
+      fs.renameSync(discovery, real);
+      fs.symlinkSync(real, discovery);
+      unavailable = await bridgeCall(bridgePath, vaultPath, { jsonrpc: "2.0", id: 3, method: "ping" });
+      assert.match(unavailable.error?.message ?? "", /unavailable/, "a symlinked discovery file is not followed");
+    }
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
+    fs.rmSync(discovery, { force: true });
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
@@ -1250,6 +1421,7 @@ async function main(): Promise<void> {
   await screeningFieldChecks();
   await manuscriptChecks();
   await httpChecks();
+  await bridgeRobustnessChecks();
   await unicodeVaultPathChecks();
   await discoveryPrePlantChecks();
   await staleDiscoveryCleanupChecks();

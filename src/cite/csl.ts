@@ -1,5 +1,6 @@
 import { App, requestUrl, normalizePath } from "obsidian";
 import { CSLItem } from "../types";
+import type { CiteItem } from "./bibliography";
 import * as CSL from "citeproc";
 
 /** citeproc-js ships no types (`src/citeproc.d.ts` declares the module as untyped) — describe
@@ -7,7 +8,7 @@ import * as CSL from "citeproc";
 interface CiteprocEngine {
   updateItems(ids: string[]): void;
   processCitationCluster(
-    citation: { citationID: string; citationItems: { id: string }[]; properties: { noteIndex: number } },
+    citation: { citationID: string; citationItems: CiteItem[]; properties: { noteIndex: number } },
     pre: [string, number][],
     post: unknown[]
   ): [unknown, [number, string, string][]];
@@ -37,6 +38,50 @@ export const BUNDLED_STYLES: Record<string, string> = {
   "american-medical-association": "AMA 11th (≈ Global Spine J)",
   apa: "APA 7th edition",
 };
+
+/** Frontmatter keys the plugin manages. They share the note with the CSL-JSON fields, and
+ *  citeproc would render some of them: CSL defines `status` ("in press"), so a note's
+ *  `status: unread` printed "Unread." into every bibliography entry. */
+export const PLUGIN_FIELDS = new Set([
+  "citekey",
+  "status",
+  "added",
+  "tags",
+  "pdf",
+  "summary_source",
+  "mesh_terms",
+  "summary_model",
+  "oa_url",
+  "oa_pdf",
+  "oa_version",
+  "retracted",
+  "cited_by_count",
+  "openalex_id",
+  "kq",
+  "include",
+  "level",
+  "design",
+  "screening_note",
+  "guideline",
+  "study_id",
+  "rob_tool",
+  "rob_overall",
+  "rob_note",
+  "search_chunk",
+  "sweep_category",
+  "imported_from",
+  "csl",
+  "citation-style",
+  "aliases",
+  "position", // Obsidian's own frontmatter cache marker
+]);
+
+/** A note's CSL fields only: the plugin-managed frontmatter keys removed. */
+export function cslFields<T extends object>(item: T): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [field, value] of Object.entries(item)) if (!PLUGIN_FIELDS.has(field)) out[field] = value;
+  return out;
+}
 
 /** citeproc-js wrapper: resolves CSL styles (bundled → cached → CSL repo) and renders bibliographies. */
 export class CiteEngine {
@@ -118,92 +163,95 @@ export class CiteEngine {
     }
   }
 
-  /** Frontmatter keys the plugin manages. They share the note with the CSL-JSON fields, and
-   *  citeproc would render some of them: CSL defines `status` ("in press"), so a note's
-   *  `status: unread` printed "Unread." into every bibliography entry. */
-  private static readonly PLUGIN_FIELDS = new Set([
-    "citekey",
-    "status",
-    "added",
-    "tags",
-    "pdf",
-    "summary_source",
-    "mesh_terms",
-    "summary_model",
-    "oa_url",
-    "oa_pdf",
-    "oa_version",
-    "retracted",
-    "cited_by_count",
-    "openalex_id",
-    "kq",
-    "include",
-    "level",
-    "design",
-    "screening_note",
-    "guideline",
-    "study_id",
-    "rob_tool",
-    "rob_overall",
-    "rob_note",
-    "search_chunk",
-    "sweep_category",
-    "imported_from",
-    "csl",
-    "citation-style",
-    "aliases",
-    "position", // Obsidian's own frontmatter cache marker
-  ]);
+  private static readonly PLUGIN_FIELDS = PLUGIN_FIELDS;
 
-  /** Render the styled reference list (markdown) and per-citekey in-text labels (HTML),
-   *  processed in one pass so numeric in-text markers match the bibliography numbering. */
-  async renderNote(
+  /** A citeproc engine over `keys` with every item registered, or null when none resolves. */
+  private async open(
     styleId: string,
     keys: string[],
     getItem: (key: string) => CSLItem | null
-  ): Promise<{ bibliography: string[]; inText: Record<string, string>; entryIds: string[] }> {
-    const items = keys
-      .map((k) => {
-        const it = getItem(k);
-        if (!it) return null;
-        const csl: Record<string, unknown> = { id: k };
-        for (const [field, value] of Object.entries(it as Record<string, unknown>)) {
-          if (!CiteEngine.PLUGIN_FIELDS.has(field)) csl[field] = value;
-        }
-        return csl as unknown as CSLItem & { id: string };
-      })
-      .filter((x): x is CSLItem & { id: string } => !!x);
-    if (!items.length) return { bibliography: [], inText: {}, entryIds: [] };
-
+  ): Promise<{ engine: CiteprocEngine; ids: string[] } | null> {
+    const byId = new Map<string, unknown>();
+    for (const k of keys) {
+      const it = getItem(k);
+      if (it) byId.set(k, { id: k, ...cslFields(it) });
+    }
+    const ids = [...byId.keys()]; // Map keeps document order even for numeric-looking citekeys
+    if (!ids.length) return null;
     const styleXml = await this.style(styleId);
     const localeXml = await this.locales();
-    const byId: Record<string, unknown> = {};
-    for (const it of items) byId[it.id] = it;
-    const sys = { retrieveLocale: () => localeXml, retrieveItem: (id: string) => byId[id] };
+    const sys = { retrieveLocale: () => localeXml, retrieveItem: (id: string) => byId.get(id) };
     const engine = new Citeproc.Engine(sys, styleXml);
-    engine.updateItems(items.map((i) => i.id));
+    engine.updateItems(ids);
+    return { engine, ids };
+  }
 
-    // In-text: process each citation as a cluster in document order so numbering increments.
-    const inText: Record<string, string> = {};
-    const pre: [string, number][] = [];
-    items.forEach((it, i) => {
-      const cid = `cit${i}`;
-      const res = engine.processCitationCluster(
-        { citationID: cid, citationItems: [{ id: it.id }], properties: { noteIndex: 0 } },
-        pre.slice(),
-        []
-      );
-      for (const u of res[1]) if (u[2] === cid) inText[it.id] = u[1];
-      pre.push([cid, 0]);
-    });
-
+  private bibliographyOf(engine: CiteprocEngine): { bibliography: string[]; entryIds: string[] } {
     const bibRes = engine.makeBibliography();
     const ids: string[] = (bibRes?.[0]?.entry_ids ?? []).map((a) => a[0]);
     const entries = (bibRes?.[1] ?? [])
       .map((h, i) => ({ id: ids[i] ?? "", text: htmlToMarkdown(h) }))
       .filter((e) => e.text);
     // `bibliography[i]` is the entry for citekey `entryIds[i]` (style's own order).
-    return { bibliography: entries.map((e) => e.text), inText, entryIds: entries.map((e) => e.id) };
+    return { bibliography: entries.map((e) => e.text), entryIds: entries.map((e) => e.id) };
+  }
+
+  /** Render the styled reference list (markdown) and per-citekey in-text labels (HTML),
+   *  processed in one pass so numeric in-text markers match the bibliography numbering.
+   *
+   *  With `clusters` (one array of Pandoc citation items per `[...]` bracket, in document order),
+   *  each bracket is processed as ONE citeproc cluster instead, and `clusterText[i]` is bracket
+   *  i's HTML: locators, prefixes, suppress-author and merged numeric output ("¹˒²", "(A, 2020;
+   *  B, 2020)") all come from the style. `inText` is then empty — the caller wanted brackets. */
+  async renderNote(
+    styleId: string,
+    keys: string[],
+    getItem: (key: string) => CSLItem | null,
+    clusters?: CiteItem[][]
+  ): Promise<{ bibliography: string[]; inText: Record<string, string>; entryIds: string[]; clusterText?: string[] }> {
+    const opened = await this.open(styleId, keys, getItem);
+    if (!opened) return { bibliography: [], inText: {}, entryIds: [], clusterText: clusters ? [] : undefined };
+    const { engine, ids } = opened;
+
+    // Process each citation in document order so numbering increments. A later cluster can
+    // change an earlier label (same author and year → 2020a / 2020b), so EVERY update citeproc
+    // returns is applied, not just the one for the cluster just processed.
+    const inText: Record<string, string> = {};
+    const clusterText: string[] = [];
+    const slot = new Map<string, number>(); // citationID → index into clusters / ids
+    const pre: [string, number][] = [];
+    const feed = (citationItems: CiteItem[], i: number) => {
+      const cid = `cit${i}`;
+      slot.set(cid, i);
+      const res = engine.processCitationCluster(
+        { citationID: cid, citationItems, properties: { noteIndex: 0 } },
+        pre.slice(),
+        []
+      );
+      for (const u of res[1]) {
+        const at = slot.get(u[2]);
+        if (at === undefined) continue;
+        if (clusters) clusterText[at] = u[1];
+        else inText[ids[at]] = u[1];
+      }
+      pre.push([cid, 0]);
+    };
+    if (clusters) clusters.forEach((c, i) => feed(c, i));
+    else ids.forEach((id, i) => feed([{ id }], i));
+
+    return { ...this.bibliographyOf(engine), inText, clusterText: clusters ? clusterText : undefined };
+  }
+
+  /** The styled reference list only: `updateItems` + `makeBibliography`, no per-citation
+   *  pass. For callers that never show in-text labels (the annotated bibliography), where the
+   *  cluster pass is pure waste on a big library. Numeric styles number entries in `keys` order. */
+  async renderBibliographyOnly(
+    styleId: string,
+    keys: string[],
+    getItem: (key: string) => CSLItem | null
+  ): Promise<{ bibliography: string[]; entryIds: string[] }> {
+    const opened = await this.open(styleId, keys, getItem);
+    return opened ? this.bibliographyOf(opened.engine) : { bibliography: [], entryIds: [] };
   }
 }
 
@@ -214,6 +262,7 @@ function htmlToMarkdown(html: string): string {
     .replace(/<b>([\s\S]*?)<\/b>/gi, "**$1**")
     .replace(/<sup>([\s\S]*?)<\/sup>/gi, "$1")
     .replace(/<sub>([\s\S]*?)<\/sub>/gi, "$1")
+    .replace(/<\/div>/gi, " ") // "[1]" / "1." and the entry arrive as sibling divs; keep a gap
     .replace(/<[^>]+>/g, "")
     .replace(/&#x([0-9a-fA-F]+);/g, (_m: string, h: string) => cp(parseInt(h, 16)))
     .replace(/&#(\d+);/g, (_m: string, n: string) => cp(parseInt(n, 10)))

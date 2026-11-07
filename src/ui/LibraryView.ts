@@ -5,7 +5,7 @@ import { filterAndSort, QuickFilters, SortKey, SORT_OPTIONS } from "./libraryFil
 import { AddReferenceModal } from "./AddReferenceModal";
 import { VIEW_TYPE_SEARCH } from "./SearchView";
 import { VIEW_TYPE_CHAT } from "./ChatView";
-import { VIEW_TYPE_RELATED } from "./RelatedView";
+import { VIEW_TYPE_RELATED, activatable } from "./RelatedView";
 import { ImportPdfModal } from "./ImportPdfModal";
 
 export const VIEW_TYPE_LIBRARY = "rag-obsidian-library";
@@ -109,6 +109,7 @@ export class LibraryView extends ItemView {
     for (const def of CHIP_DEFS) {
       const btn = chipsRow.createEl("button", { cls: "srag-quick-chip", text: def.label });
       btn.toggleClass("is-active", !!this.chips[def.key]);
+      btn.setAttribute("aria-pressed", String(!!this.chips[def.key]));
       btn.onclick = () => {
         this.chips[def.key] = !this.chips[def.key];
         if (def.key === "hasPdf" && this.chips.hasPdf) this.chips.noPdf = false;
@@ -142,7 +143,7 @@ export class LibraryView extends ItemView {
         text: [e.authors, e.year, e.journal].filter(Boolean).join(" · "),
       });
       this.renderBadges(row, e);
-      row.onclick = () => void this.app.workspace.getLeaf(false).openFile(e.file);
+      activatable(row, () => void this.app.workspace.getLeaf(false).openFile(e.file));
     }
 
     if (matched.length > shown) {

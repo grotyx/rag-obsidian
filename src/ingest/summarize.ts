@@ -43,7 +43,7 @@ ${krRules}${langLine}Output EXACTLY this layout with these markers, nothing befo
 ===CONCLUSIONS===
 <Authors' conclusions plus any noted limitations>
 ${krMarker}===MESH===
-<5-10 indexing terms for this paper, comma-separated. Use official NLM MeSH Descriptor headings where one applies (e.g. "Diskectomy", "Lumbar Vertebrae", "Intervertebral Disc Displacement", "Endoscopy"); otherwise a precise topical noun phrase. Terms only, no explanations.>`;
+<5-10 indexing terms for this paper, ONE PER LINE (never comma-separated: NLM headings contain commas). Use official NLM MeSH Descriptor headings where one applies, in NLM's inverted form exactly as published (e.g. "Diskectomy", "Lumbar Vertebrae", "Decompression, Surgical", "Endoscopy"); otherwise a precise topical noun phrase. Terms only, no explanations.>`;
 }
 
 const KEY_MAP: Record<string, keyof SummarySections> = {

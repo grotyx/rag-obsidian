@@ -62,6 +62,9 @@ const TEXT_LIMIT = 2000;
 /** Size (chars) of one piece of the streamed docs.json. */
 const PART_CHARS = 4_000_000;
 
+/** Bank size (bytes) above which it grows by 5% steps instead of ×1.5. */
+const BIG_BANK_BYTES = 64 * 1024 * 1024;
+
 /** Largest packed slice of the vector bank handed to the writer at once (bytes). */
 export const VECTOR_SLICE_BYTES = 64 * 1024 * 1024;
 
@@ -81,7 +84,7 @@ export class VectorStore {
   /** Size of the vector arm's top slice (500; tests shrink it). */
   vectorArm = 500;
   private ti: TextIndex | null = null;
-  /** Row-major, L2-normalized (dot = cosine). Capacity grows ×1.5. */
+  /** Row-major, L2-normalized (dot = cosine). Capacity grows ×1.5, or 5% once past 64 MB. */
   private bank = new Float32Array(0);
   private rowOf = new Map<string, number>();
   private idAt: (string | null)[] = [];
@@ -99,6 +102,11 @@ export class VectorStore {
 
   get ready(): boolean {
     return this.ti !== null;
+  }
+
+  /** Floats the vector bank can hold (tests watch it to see that an edit did not reallocate it). */
+  get bankCapacity(): number {
+    return this.bank.length;
   }
 
   /** Drop everything; store becomes not-ready until the next init/load. */
@@ -133,11 +141,18 @@ export class VectorStore {
     if (row === undefined) {
       this.syncFree();
       row = this.free.pop();
+      // The bank is full (a restored one is sized exactly): rather than copy ~1 GB into a bigger
+      // one, take back a row freed a moment ago. Its vector slot is free at once; only its stale
+      // text postings are not, and `TextIndex.add` compacts them away on the row's re-add.
+      if (row === undefined && (this.idAt.length + 1) * this.dim > this.bank.length) row = this.pending.pop();
       if (row === undefined) {
         row = this.idAt.length;
         this.idAt.push(null);
         if ((row + 1) * this.dim > this.bank.length) {
-          const grown = new Float32Array(Math.max((row + 1) * this.dim, Math.ceil(this.bank.length * 1.5)));
+          const have = this.bank.length;
+          // Past ~64 MB, ×1.5 would be a 600 MB step on a 1.3 GB bank: grow by 5% (min 1024 rows).
+          const next = have * 4 > BIG_BANK_BYTES ? have + Math.max(1024 * this.dim, Math.ceil(have * 0.05)) : Math.ceil(have * 1.5);
+          const grown = new Float32Array(Math.max((row + 1) * this.dim, next));
           grown.set(this.bank);
           this.bank = grown;
         }
@@ -224,6 +239,17 @@ export class VectorStore {
   setPath(path: string, citekey: string, hash?: string): void {
     this.paths[path] = citekey;
     if (hash) this.hashes[path] = hash;
+  }
+
+  /** Re-key a tracked note path (rename/move) with its hash; false when `from` owns no chunks. */
+  movePath(from: string, to: string): boolean {
+    const ck = this.paths[from];
+    if (!ck) return false;
+    delete this.paths[from];
+    this.paths[to] = ck;
+    if (this.hashes[from]) this.hashes[to] = this.hashes[from];
+    delete this.hashes[from];
+    return true;
   }
 
   citekeyForPath(path: string): string | undefined {
@@ -414,13 +440,14 @@ export class VectorStore {
     }
     this.init(meta.dim, meta.modelId);
     const ti = this.ti as TextIndex;
+    // The loaded buffer is the bank (normalized in place): a second 1.3 GB array would double the peak.
     const view = new Float32Array(vectors);
-    this.bank = new Float32Array(docs.length * meta.dim);
+    this.bank = view;
     for (let i = 0; i < docs.length; i++) {
       const d = docs[i] as TextDoc;
       docs[i] = undefined; // let the parsed document go as soon as it is indexed
       const o = i * meta.dim;
-      unit(view.subarray(o, o + meta.dim), this.bank, o);
+      unit(view.subarray(o, o + meta.dim), view, o);
       this.rowOf.set(d.id, i);
       this.idAt.push(d.id);
       ti.add(i, d);

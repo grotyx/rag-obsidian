@@ -80,7 +80,7 @@ export class MergeDuplicatesModal extends Modal {
       const list = box.createDiv();
       const radioName = `srag-keeper-${this.groups.indexOf(group)}`;
       group.entries.forEach((e, i) => {
-        const row = list.createDiv({ cls: "setting-item-description" });
+        const row = list.createEl("label", { cls: "setting-item-description srag-keeper" });
         const radio = row.createEl("input", { type: "radio", attr: { name: radioName } });
         radio.checked = i === group.keeperIdx;
         radio.onchange = () => (group.keeperIdx = i);

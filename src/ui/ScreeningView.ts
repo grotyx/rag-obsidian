@@ -52,6 +52,10 @@ export class ScreeningView extends ItemView {
   private working: { kq: Set<string>; level?: Level; design?: string; note: string } = { kq: new Set(), note: "" };
   private loadedMtime: number | null = null;
   private writing = false;
+  /** Bumped per `showCurrent`: a render that lost the race must not append its controls, or the
+   *  pane shows two records and a decision lands on the one the user is not looking at. */
+  private renderGen = 0;
+  private rendering = false;
   /** The in-flight risk-of-bias save: a click on Include blurs the note field first, so commit waits for it. */
   private robSave: Promise<void> = Promise.resolve();
 
@@ -155,6 +159,16 @@ export class ScreeningView extends ItemView {
   }
 
   private async showCurrent(): Promise<void> {
+    const gen = ++this.renderGen;
+    this.rendering = true;
+    try {
+      await this.renderCurrent(gen);
+    } finally {
+      if (gen === this.renderGen) this.rendering = false;
+    }
+  }
+
+  private async renderCurrent(gen: number): Promise<void> {
     this.errorEl.setText("");
     this.bodyEl.empty();
     const entry = this.currentEntry();
@@ -196,7 +210,9 @@ export class ScreeningView extends ItemView {
     }
 
     const abstractEl = this.bodyEl.createEl("p", { text: "Loading…", cls: "srag-snippet" });
-    abstractEl.setText(await this.currentAbstract(entry));
+    const abstract = await this.currentAbstract(entry);
+    if (gen !== this.renderGen) return; // a newer render owns the pane now
+    abstractEl.setText(abstract);
 
     this.renderControls(entry);
   }
@@ -226,7 +242,10 @@ export class ScreeningView extends ItemView {
     const kqRow = controls.createDiv({ cls: "srag-quick-chips" });
     for (const id of KQ_IDS) {
       const chip = kqRow.createEl("button", { text: id, cls: "srag-quick-chip" });
-      const sync = () => chip.toggleClass("is-active", this.working.kq.has(id));
+      const sync = () => {
+        chip.toggleClass("is-active", this.working.kq.has(id));
+        chip.setAttribute("aria-pressed", String(this.working.kq.has(id)));
+      };
       sync();
       chip.onclick = () => {
         if (this.working.kq.has(id)) this.working.kq.delete(id);
@@ -241,6 +260,7 @@ export class ScreeningView extends ItemView {
     for (const lvl of LEVELS) {
       const chip = levelRow.createEl("button", { text: lvl, cls: "srag-quick-chip" });
       chip.toggleClass("is-active", this.working.level === lvl);
+      chip.setAttribute("aria-pressed", String(this.working.level === lvl));
       chip.onclick = () => this.setLevel(lvl);
       this.levelChips.push({ lvl, el: chip });
     }
@@ -375,7 +395,7 @@ export class ScreeningView extends ItemView {
 
   private async commit(include: IncludeValue): Promise<void> {
     await this.robSave;
-    if (this.writing) return;
+    if (this.writing || this.rendering) return;
     const item = this.queue[this.index];
     if (!item) return;
     const note = this.working.note.trim();
@@ -422,11 +442,11 @@ export class ScreeningView extends ItemView {
       case "m": case "M": evt.preventDefault(); void this.commit("pending"); break;
       case "j": case "J": case "ArrowRight":
         evt.preventDefault();
-        if (this.index < this.queue.length - 1) { this.index++; void this.showCurrent(); }
+        if (!this.writing && !this.rendering && this.index < this.queue.length - 1) { this.index++; void this.showCurrent(); }
         break;
       case "k": case "K": case "ArrowLeft":
         evt.preventDefault();
-        if (this.index > 0) { this.index--; void this.showCurrent(); }
+        if (!this.writing && !this.rendering && this.index > 0) { this.index--; void this.showCurrent(); }
         break;
       case "1": case "2": case "3": case "4": case "5":
         evt.preventDefault();
@@ -437,6 +457,9 @@ export class ScreeningView extends ItemView {
 
   private setLevel(lvl: Level): void {
     this.working.level = lvl;
-    for (const { lvl: l, el } of this.levelChips) el.toggleClass("is-active", l === lvl);
+    for (const { lvl: l, el } of this.levelChips) {
+      el.toggleClass("is-active", l === lvl);
+      el.setAttribute("aria-pressed", String(l === lvl));
+    }
   }
 }

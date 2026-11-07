@@ -93,7 +93,7 @@ export async function fetchPubmedRecord(pmid: string, apiKey?: string, email?: s
       Array.from(doc.querySelectorAll(sel))
         .map((n) => (n.textContent || "").replace(/\s+/g, " ").trim())
         .filter(Boolean);
-    const abstract = Array.from(doc.querySelectorAll("AbstractText"))
+    const abstract = Array.from(doc.querySelectorAll("Abstract > AbstractText"))
       .map((n) => {
         const label = n.getAttribute("Label");
         const t = (n.textContent || "").replace(/\s+/g, " ").trim();
@@ -194,9 +194,18 @@ async function canonicalizeMeshTerms(
     // does not carry, so let the database decide each piece rather than assuming either shape.
     if (opts.splitFallback && term.includes(",")) {
       let matched = false;
-      for (const piece of term.split(",").map((p) => p.trim())) {
-        if (!piece) continue;
-        const pieceHit = await lookup(piece);
+      const pieces = term.split(",").map((p) => p.trim()).filter(Boolean);
+      for (let i = 0; i < pieces.length; i++) {
+        // "A, B" first: an inverted heading ("Decompression, Surgical") splits into two pieces,
+        // and "Surgical" alone is a heading too, so taking singles first would mis-split it.
+        const pairHit = i + 1 < pieces.length ? await lookup(`${pieces[i]}, ${pieces[i + 1]}`) : null;
+        if (pairHit) {
+          out.push(pairHit);
+          matched = true;
+          i++;
+          continue;
+        }
+        const pieceHit = await lookup(pieces[i]);
         if (pieceHit) {
           out.push(pieceHit);
           matched = true;

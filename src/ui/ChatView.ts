@@ -3,7 +3,9 @@ import type ScholarRagPlugin from "../../main";
 import { RagChat, RagAnswer, AnswerSource, ChatTurn } from "../chat/rag";
 import { anchorsToCitekeys } from "../cite/bibliography";
 import { describeFilters } from "../index/store";
+import { suffixedPath } from "../data/searchLog";
 import { FilterRow } from "./FilterRow";
+import { activatable } from "./RelatedView";
 import { formatCitation } from "../cite/format";
 import { rec, arr } from "../util/json";
 
@@ -231,7 +233,7 @@ export class ChatView extends ItemView {
         const row = src.createDiv({ cls: "srag-source" });
         row.createSpan({ cls: "srag-source-n", text: `[${s.n}]` });
         row.createSpan({ cls: "srag-source-text", text: ` ${s.formatted}` });
-        row.onclick = () => void this.openCitekey(s.citekey);
+        activatable(row, () => void this.openCitekey(s.citekey));
       }
     }
     const save = wrap.createEl("button", { cls: "srag-save-answer", text: "Save as note" });
@@ -250,7 +252,11 @@ export class ChatView extends ItemView {
     const date = new Date().toISOString().slice(0, 10);
     const stem = question.replace(/\s+/g, " ").trim().slice(0, 40).trim() || "answer";
     const out = `## Question\n\n${question}\n\n## Answer\n\n${anchorsToCitekeys(text, citekeys)}\n`;
-    await this.plugin.writeAndOpen(`${folder}/${date} ${stem}.md`, out);
+    // Never overwrite an earlier answer to the same question: -2, -3 … until the name is free.
+    const path = `${folder}/${date} ${stem}.md`;
+    let n = 1;
+    while (this.app.vault.getAbstractFileByPath(normalizePath(suffixedPath(path, n)))) n++;
+    await this.plugin.writeAndOpen(suffixedPath(path, n), out);
   }
 
   /** Command entry point: save the most recent answer in this pane. */

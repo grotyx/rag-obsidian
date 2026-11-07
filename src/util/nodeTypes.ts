@@ -44,6 +44,7 @@ declare global {
     toString(encoding?: string): string;
   }
   interface BufferConstructor {
+    concat(list: Buffer[]): Buffer;
     from(data: ArrayBuffer | Uint8Array | string, encodingOrOffset?: string | number): Buffer;
     byteLength(input: string | Buffer): number;
   }
@@ -56,6 +57,12 @@ export interface StatsLike {
   uid: number;
   isFile(): boolean;
   isSymbolicLink(): boolean;
+  size: number;
+}
+
+export interface FileHandleLike {
+  read(buffer: Uint8Array, offset: number, length: number, position: number): Promise<{ bytesRead: number }>;
+  close(): Promise<void>;
 }
 
 export interface FsPromisesLike {
@@ -76,6 +83,7 @@ export interface FsPromisesLike {
   access(path: string): Promise<void>;
   realpath(path: string): Promise<string>;
   unlink(path: string): Promise<void>;
+  open(path: string, flags: string): Promise<FileHandleLike>;
   chmod(path: string, mode: number): Promise<void>;
 }
 
@@ -83,7 +91,11 @@ export interface FsSyncLike {
   existsSync(path: string): boolean;
   realpathSync: ((path: string) => string) & { native(path: string): string };
   statSync(path: string): { uid: number };
-  readFileSync(path: string, encoding: string): string;
+  constants: { O_RDONLY: number; O_NOFOLLOW?: number };
+  openSync(path: string, flags: number): number;
+  fstatSync(fd: number): { uid: number; mode: number; isFile(): boolean };
+  closeSync(fd: number): void;
+  readFileSync(path: string | number, encoding: string): string;
 }
 
 // -- os / path --------------------------------------------------------------------------------
@@ -119,7 +131,8 @@ export interface CryptoModuleLike {
 // -- child_process --------------------------------------------------------------------------
 
 export interface ReadableStreamLike {
-  on(event: "data", listener: (chunk: Buffer) => void): void;
+  setEncoding(encoding: string): void;
+  on(event: "data", listener: (chunk: string) => void): void;
 }
 
 export interface WritableStreamLike {

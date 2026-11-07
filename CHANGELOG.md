@@ -6,6 +6,43 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.11.3] — 2026-11-07
+
+Fixes from a full code review (all of `src/` and `main.ts`).
+
+### Fixed — writing and citations
+- **Compiled manuscripts and Word exports keep locators and prefixes**: `[see @a, p. 23; @b]` becomes "(see A, 2020, p. 23; B, 2020)" instead of dropping "see" and "p. 23", `[-@a]` suppresses the author, and with superscript styles `[@a; @b]` becomes one superscript instead of two.
+- In-text citations now match the bibliography when two works by the same author and year need "2020a / 2020b".
+- Vancouver / AMA bibliography numbers are separated from the entry; "Copy citation" strips them correctly.
+- Citations inside `~~~` code blocks and 4-backtick fences are no longer rewritten by merges or compiles, and a `## References` line inside a code block is no longer taken for the bibliography.
+- "Update bibliography", "Suggest citations" and MCP note edits no longer overwrite text typed while they run; Word export no longer overwrites an existing `.docx` (it writes `… (2).docx`).
+- BibTeX export no longer fails on a string `keyword` and escapes `& % $ # _` and stray braces; CSL-JSON export no longer includes plugin fields (which printed "Unread." in Pandoc).
+- "Annotated bibliography" of a large library no longer freezes Obsidian.
+
+### Fixed — library data
+- **"Re-summarize references made by an older model" asks which model's summaries to redo** (with counts) and never touches summaries made from PDF full text; it shows progress, can be cancelled and asks before starting. Previously it treated every summary written over Claude Code / Codex as outdated.
+- New notes keep every CSL field — notably the journal abbreviation (`container-title-short`, needed for "Spine J" in AMA / Spine styles), editors, ISBN and the OpenAlex id.
+- Duplicate detection compares Korean and other non-Latin titles in full, and two papers with different DOIs or PMIDs are never duplicates by title alone. Adding the same paper twice at the same moment makes one note.
+- Merging duplicates keeps every section and note of the removed copies, not only Notes and Highlights. PRISMA keeps the screened copy of a duplicate.
+- Summaries are inserted above the extracted PDF text instead of inside it.
+- Crossref titles lose `<i>` markup and line breaks; translated abstracts (PubMed `OtherAbstract`) are no longer appended; MeSH headings with a comma ("Decompression, Surgical") are no longer split into wrong tags.
+- Imports: BibTeX LaTeX accents (`M{\"u}ller` → Müller), corporate authors and DOI prefixes; MEDLINE `.nbib` records without full author names; wrapped RIS lines. Unpaywall records the version of the PDF actually downloaded.
+
+### Fixed — search index
+- Editing a note right after Obsidian starts no longer allocates a second ~2 GB copy of the vector index; restoring uses less memory and works past 2 GB.
+- Renaming or moving a reference no longer re-embeds it (or drops it from search when offline).
+- Embedding requests retry on rate limits and server errors, so a large rebuild is not lost to one failed request.
+- Changes made while the index is loading are no longer lost, and a rebuild started during loading is no longer mixed with the old index.
+- References with a year written as text are no longer excluded by year filters; a duplicate passage is no longer created after a short paragraph.
+- With both embeddings and chat on Ollama, nothing is sent to the hosted reranker.
+
+### Fixed — security and reliability
+- **Korean and other non-ASCII text could be corrupted** in Claude Code / Codex replies longer than one network packet (and in long OpenCode CLI answers); with `update_note` the corruption could be saved into a note.
+- A dangling symlink can no longer be used to write outside the vault over MCP; the CLI executable may not live inside the vault; the MCP bridge reads its discovery file without following links.
+- A cleared API key no longer comes back from the pre-0.6 keychain entry after a restart.
+- Screening pane: navigating quickly can no longer show two records and save a decision to the wrong one. Import and PubMed windows ignore double clicks and a second search during an import. Chat "Save as note" no longer overwrites an earlier note.
+- Library, search and chat result rows, and tag-filter chips, can be used with the keyboard; selected chips are announced to screen readers.
+
 ## [0.11.2] — 2026-11-04
 
 Fixes from an independent Codex review of 0.8.9–0.11.1.

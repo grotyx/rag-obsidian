@@ -1,5 +1,6 @@
 import { CSLItem, CSLName } from "../types";
 import { rec } from "../util/json";
+import { splitName } from "./metadata";
 
 /** Parse a Zotero/EndNote/Mendeley export (CSL-JSON, BibTeX, or RIS) into CSL items. */
 export function parseLibrary(text: string): CSLItem[] {
@@ -73,19 +74,19 @@ function parseBibtex(text: string): CSLItem[] {
     if (comma < 0) continue;
     const fields = parseBibFields(inner.slice(comma + 1));
     const type = BIB_TYPE[kind] || "article-journal";
-    const it: CSLItem = { type, title: stripBraces(fields.title) };
-    if (fields.author) it.author = fields.author.split(/\s+and\s+/i).map(parseBibName);
+    const it: CSLItem = { type, title: prose(fields.title) };
+    if (fields.author) it.author = splitAnd(fields.author.replace(/^[{"]|[}"]$/g, "")).map(parseBibName);
     const year = (fields.year || fields.date || "").match(/\d{4}/);
     if (year) it.issued = { "date-parts": [[parseInt(year[0], 10)]] };
     if (fields.journal || fields.journaltitle || fields.booktitle)
-      it["container-title"] = stripBraces(fields.journal || fields.journaltitle || fields.booktitle);
+      it["container-title"] = prose(fields.journal || fields.journaltitle || fields.booktitle);
     if (fields.volume) it.volume = stripBraces(fields.volume);
     if (fields.number || fields.issue) it.issue = stripBraces(fields.number || fields.issue);
     if (fields.pages) it.page = stripBraces(fields.pages).replace(/--/g, "-");
-    if (fields.doi) it.DOI = stripBraces(fields.doi).replace(/^https?:\/\/doi\.org\//, "");
+    if (fields.doi) it.DOI = bareDoi(stripBraces(fields.doi));
     if (fields.url) it.URL = stripBraces(fields.url);
-    if (fields.publisher) it.publisher = stripBraces(fields.publisher);
-    if (fields.abstract) it.abstract = stripBraces(fields.abstract);
+    if (fields.publisher) it.publisher = prose(fields.publisher);
+    if (fields.abstract) it.abstract = prose(fields.abstract);
     if (fields.keywords) it.keyword = stripBraces(fields.keywords).split(/[;,]/).map((s) => s.trim()).filter(Boolean);
     items.push(it);
   }
@@ -125,12 +126,64 @@ function parseBibFields(body: string): Record<string, string> {
   return out;
 }
 
+/** "https://dx.doi.org/10.x", "http(s)://doi.org/10.x" and "doi:10.x" → "10.x". */
+function bareDoi(s: string): string {
+  return s.trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i, "");
+}
+
+const TEX_ACCENT: Record<string, string> = {
+  '"': "̈", "'": "́", "`": "̀", "^": "̂", "~": "̃", c: "̧", v: "̌",
+};
+
+/** Common LaTeX accents and escapes → Unicode: {\"u} → ü, {\'\i} → í, \c{c} → ç, \& → &. */
+function texDecode(s: string): string {
+  const letter = (l: string) => (l === "\\i" ? "i" : l === "\\j" ? "j" : l);
+  return s
+    .replace(/\\(["'`^~])\s*(?:\{\s*(\\[ij]|[A-Za-z])\s*\}|(\\[ij]|[A-Za-z]))/g, (_, a: string, l1?: string, l2?: string) =>
+      (letter(l1 || l2 || "") + TEX_ACCENT[a]).normalize("NFC")
+    )
+    .replace(/\\([cv])(?:\s*\{\s*([A-Za-z])\s*\}|\s+([A-Za-z]))/g, (_, a: string, l1?: string, l2?: string) =>
+      ((l1 || l2 || "") + TEX_ACCENT[a]).normalize("NFC")
+    )
+    .replace(/\\([ij])(?![A-Za-z])/g, "$1")
+    .replace(/\\([&%$#_])/g, "$1");
+}
+
 function stripBraces(s?: string): string {
   if (!s) return "";
-  return s.replace(/^[{"]+|[}"]+$/g, "").replace(/[{}]/g, "").replace(/\s+/g, " ").trim();
+  return texDecode(s.replace(/^[{"]+|[}"]+$/g, "")).replace(/[{}]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** stripBraces for running text: `--` / `---` become en / em dashes (pages and ids keep `--`). */
+function prose(s?: string): string {
+  return stripBraces(s).replace(/---/g, "—").replace(/--/g, "–");
+}
+
+/** Split a BibTeX author list on " and " at brace depth 0, so {Food and Drug Administration} stays one. */
+function splitAnd(s: string): string[] {
+  const out: string[] = [];
+  const sep = /^\s+and\s+/i;
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "{") depth++;
+    else if (s[i] === "}") depth--;
+    else if (depth === 0) {
+      const hit = s.slice(i).match(sep);
+      if (hit) {
+        out.push(s.slice(start, i));
+        i += hit[0].length - 1;
+        start = i + 1;
+      }
+    }
+  }
+  out.push(s.slice(start));
+  return out.filter((a) => a.trim());
 }
 
 function parseBibName(raw: string): CSLName {
+  const braced = raw.trim().match(/^\{([^{}]*)\}$/); // a whole-name brace group is a corporate author
+  if (braced && !braced[1].includes(",")) return { literal: braced[1].trim() };
   const s = stripBraces(raw);
   if (s.includes(",")) {
     const [family, given] = s.split(",");
@@ -159,15 +212,23 @@ function parseRis(text: string): CSLItem[] {
     if (Object.keys(cur).length) items.push(risToItem(cur));
     cur = {};
   };
+  let last = "";
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^([A-Z0-9]{2})\s+-\s?(.*)$/);
-    if (!m) continue;
+    if (!m) {
+      // continuation of the previous value (wrapped abstract / title), as parseNbib does
+      const more = line.trim();
+      if (more && last && cur[last]) cur[last][cur[last].length - 1] += " " + more;
+      continue;
+    }
     const [, tag, val] = m;
     if (tag === "ER") {
       push();
+      last = "";
       continue;
     }
     (cur[tag] = cur[tag] || []).push(val.trim());
+    last = tag;
   }
   push();
   return items;
@@ -201,7 +262,7 @@ function nbibToItem(rec: { tag: string; value: string }[]): CSLItem {
   const first = (t: string) => (by[t] && by[t][0]) || "";
 
   const it: CSLItem = { type: "article-journal", title: (by.TI || []).join(" ").trim() };
-  const authors = (by.FAU || by.AU || []).map(parseBibName);
+  const authors = by.FAU ? by.FAU.map(parseBibName) : (by.AU || []).map(splitName); // AU is "Family Initials"
   if (authors.length) it.author = authors;
   const year = first("DP").match(/\d{4}/);
   if (year) it.issued = { "date-parts": [[parseInt(year[0], 10)]] };
@@ -242,7 +303,7 @@ function risToItem(r: Record<string, string[]>): CSLItem {
   const sp = first("SP");
   const ep = first("EP");
   if (sp) it.page = ep ? `${sp}-${ep}` : sp;
-  if (first("DO")) it.DOI = first("DO").replace(/^https?:\/\/doi\.org\//, "");
+  if (first("DO")) it.DOI = bareDoi(first("DO"));
   if (first("UR")) it.URL = first("UR");
   if (first("AB") || first("N2")) it.abstract = first("AB") || first("N2");
   const kw = r.KW || [];

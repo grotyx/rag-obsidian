@@ -35,7 +35,8 @@ export async function findOpenAccess(doi: string, email: string): Promise<OAResu
     isOA: !!j.is_oa,
     pdfUrl: str(withPdf?.url_for_pdf) || undefined,
     landingUrl: str(best.url_for_landing_page) || str(best.url) || undefined,
-    license: str(best.license) || undefined,
-    version: str(best.version) || str(withPdf?.version) || undefined,
+    // license and version describe the copy the PDF comes from, not the best location's
+    license: str((withPdf ?? best).license) || undefined,
+    version: str((withPdf ?? best).version) || undefined,
   };
 }

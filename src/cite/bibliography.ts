@@ -1,6 +1,7 @@
 import { Library } from "../data/library";
 import { formatCitation } from "./format";
 import { CiteStyle, CSLItem } from "../types";
+import { STASH_MARKER } from "../ingest/pdfStash";
 
 const CITE_RE = /\[([^\]]*@[^\]]*)\]/g; // [@key]  ·  [-@key]  ·  [@a; @b]  ·  [@key, p. 23]
 const KEY_RE = /-?@([A-Za-z0-9_][A-Za-z0-9_:.#$%&+?<>~/-]*)/g; // Pandoc citekey (locators ignored)
@@ -19,9 +20,54 @@ export function keysInCite(body: string): string[] {
   return keys;
 }
 
-// Fenced blocks and inline code, as one alternation: `split` with this capturing group
-// yields [prose, code, prose, code, …], so code chunks sit at the odd indices.
-const CODE_RE = /(```[\s\S]*?```|`[^`\n]*`)/g;
+/** Document offsets `[from, to)` of fenced blocks and inline code. A fence is ``` or ~~~ (any
+ *  length >= 3) and closes on the same character at least as long, so a four-backtick block may
+ *  hold ``` lines. The one scanner every citation path uses (reading view, compile, rename, the
+ *  editor), so they agree on what is code. An unclosed fence runs to the end of the text.
+ *  ponytail: line-based scan over the whole note per call; fine for notes, not megabyte files. */
+export function codeRanges(text: string): [number, number][] {
+  const code: [number, number][] = [];
+  let fence: string | null = null;
+  let fenceStart = 0;
+  let pos = 0;
+  for (const line of text.split("\n")) {
+    const m = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
+    if (fence === null && m && !(m[1][0] === "`" && m[2].includes("`"))) {
+      fence = m[1];
+      fenceStart = pos;
+    } else if (fence !== null) {
+      if (m && m[1][0] === fence[0] && m[1].length >= fence.length && !m[2].trim()) {
+        code.push([fenceStart, pos + line.length]);
+        fence = null;
+      }
+    } else {
+      for (const c of line.matchAll(/`[^`]*`/g)) code.push([pos + (c.index ?? 0), pos + (c.index ?? 0) + c[0].length]);
+    }
+    pos += line.length + 1;
+  }
+  if (fence !== null) code.push([fenceStart, text.length]);
+  return code;
+}
+
+/** Replace every `re` match that does not touch code; `fn` returns the replacement, or null to
+ *  keep the match as written. */
+function replaceOutsideCode(text: string, re: RegExp, fn: (m: RegExpExecArray) => string | null): string {
+  const code = codeRanges(text);
+  let out = "";
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const from = m.index;
+    const to = from + m[0].length;
+    if (!m[0]) re.lastIndex++;
+    if (code.some(([a, b]) => from < b && to > a)) continue;
+    const r = fn(m);
+    if (r === null) continue;
+    out += text.slice(last, from) + r;
+    last = to;
+  }
+  return out + text.slice(last);
+}
 
 /** Rewrite `[…@key…]` citations that are NOT inside code. `render` gets one bracket's keys
  *  and its raw text, and returns the replacement — or null to leave the bracket as written
@@ -30,14 +76,77 @@ export function replaceCitations(
   text: string,
   render: (keys: string[], raw: string) => string | null
 ): string {
-  return text
-    .split(CODE_RE)
-    .map((part, i) =>
-      i % 2 === 1
-        ? part
-        : part.replace(citePattern(), (raw, body) => render(keysInCite(String(body)), raw) ?? raw)
-    )
-    .join("");
+  return replaceOutsideCode(text, citePattern(), (m) => render(keysInCite(m[1]), m[0]));
+}
+
+/** One Pandoc citation item, in citeproc's `citationItems` shape. */
+export interface CiteItem {
+  id: string;
+  prefix?: string;
+  suffix?: string;
+  locator?: string;
+  label?: string;
+  "suppress-author"?: boolean;
+}
+
+const LOCATOR_LABELS: Record<string, string> = {
+  p: "page", pp: "page", page: "page", pages: "page",
+  chap: "chapter", chaps: "chapter", ch: "chapter", chapter: "chapter",
+  sec: "section", secs: "section", sect: "section", section: "section", "§": "section",
+  fig: "figure", figs: "figure", figure: "figure",
+  vol: "volume", vols: "volume", volume: "volume",
+  para: "paragraph", paras: "paragraph", "¶": "paragraph", paragraph: "paragraph",
+  col: "column", cols: "column", column: "column",
+  pt: "part", part: "part", bk: "book", book: "book",
+};
+const LOCATOR_VALUE = String.raw`(\d[\d\-–]*(?:\s*[,&]\s*\d[\d\-–]*)*|[ivxlcdm]+(?![A-Za-z]))`;
+
+/** Split the text after a citekey into locator (with label) and suffix, Pandoc style:
+ *  `, p. 23, emphasis added` / ` chap. 3` / `, 23`. A bare number is a page; anything else
+ *  is all suffix. */
+function parseTrail(trail: string): { locator?: string; label?: string; suffix?: string } {
+  const t = trail.replace(/^\s*,?\s*/, "");
+  if (!t) return {};
+  const labelled = t.match(new RegExp(String.raw`^([A-Za-z]+|§|¶)\.?\s*${LOCATOR_VALUE}(?![\w])(.*)$`));
+  let label: string | undefined;
+  let locator: string | undefined;
+  let rest: string;
+  if (labelled && LOCATOR_LABELS[labelled[1].toLowerCase()]) {
+    label = LOCATOR_LABELS[labelled[1].toLowerCase()];
+    locator = labelled[2].trim();
+    rest = labelled[3];
+  } else {
+    const bare = t.match(new RegExp(String.raw`^(\d[\d\-–]*(?:\s*[,&]\s*\d[\d\-–]*)*)(?![\w])(.*)$`));
+    if (!bare) return { suffix: trail.trim().startsWith(",") ? trail.trim() : ` ${t}` };
+    label = "page";
+    locator = bare[1].trim();
+    rest = bare[2];
+  }
+  const suffix = rest.trim();
+  return { locator, label, suffix: suffix ? (suffix.startsWith(",") ? suffix : ` ${suffix}`) : undefined };
+}
+
+/** Parse one bracket body (`see @a, p. 23; -@b`) into Pandoc citation items: prefix, key,
+ *  locator with label, suffix, suppress-author. Segments without a key are dropped. */
+export function parseCiteItems(body: string): CiteItem[] {
+  const out: CiteItem[] = [];
+  for (const seg of body.split(";")) {
+    const re = new RegExp(KEY_RE.source, "g");
+    const m = re.exec(seg);
+    if (!m) continue;
+    const item: CiteItem = { id: m[1] };
+    const prefix = seg.slice(0, m.index).trim();
+    if (prefix) item.prefix = `${prefix} `;
+    if (m[0].startsWith("-")) item["suppress-author"] = true;
+    const { locator, label, suffix } = parseTrail(seg.slice(m.index + m[0].length));
+    if (locator) {
+      item.locator = locator;
+      item.label = label;
+    }
+    if (suffix) item.suffix = suffix;
+    out.push(item);
+  }
+  return out;
 }
 
 /** Resolve one bracket's citekeys, or null if ANY of them is unknown — the caller then leaves
@@ -61,20 +170,10 @@ export function resolveCluster<T>(keys: string[], lookup: (key: string) => T | n
  *  unknown number is left exactly as written (same all-or-nothing rule as `resolveCluster`), and
  *  anchors inside code are skipped, like `replaceCitations`. */
 export function anchorsToCitekeys(text: string, citekeys: string[]): string {
-  return text
-    .split(CODE_RE)
-    .map((part, i) =>
-      i % 2 === 1
-        ? part
-        : part.replace(/(?:\[\d+\])+/g, (run) => {
-            const keys = resolveCluster(
-              run.match(/\d+/g) ?? [],
-              (d) => citekeys[parseInt(d, 10) - 1] ?? null
-            );
-            return keys ? `[${keys.map((k) => `@${k}`).join("; ")}]` : run;
-          })
-    )
-    .join("");
+  return replaceOutsideCode(text, /(?:\[\d+\])+/g, (m) => {
+    const keys = resolveCluster(m[0].match(/\d+/g) ?? [], (d) => citekeys[parseInt(d, 10) - 1] ?? null);
+    return keys ? `[${keys.map((k) => `@${k}`).join("; ")}]` : null;
+  });
 }
 
 /** Rewrite `[@key]` citations under a citekey rename map (merge-duplicates' loser → keeper).
@@ -99,12 +198,10 @@ export function renameCiteKeys(text: string, map: Record<string, string>): strin
 /** Pull unique citekeys (in first-seen order) out of `[@citekey]` Pandoc citations. */
 export function extractCitekeys(text: string): string[] {
   const keys: string[] = [];
-  const clean = text.replace(CODE_RE, " "); // skip code
-  let m: RegExpExecArray | null;
-  CITE_RE.lastIndex = 0;
-  while ((m = CITE_RE.exec(clean)) !== null) {
-    for (const k of keysInCite(m[1])) if (!keys.includes(k)) keys.push(k);
-  }
+  replaceCitations(text, (ks) => {
+    for (const k of ks) if (!keys.includes(k)) keys.push(k);
+    return null;
+  });
   return keys;
 }
 
@@ -122,13 +219,19 @@ export function buildBibliography(citekeys: string[], library: Library, style: C
  *  `base` is everything before the heading (trailing whitespace trimmed), `tail` is any
  *  later section (e.g. "## Appendix", "### Notes") to reattach after the bibliography. */
 export function splitAtReferences(content: string): { base: string; tail: string } {
-  const m = content.match(/(^|\n)#{1,6}\s+References[ \t]*(\n|$)/i);
-  if (!m || m.index === undefined) return { base: content.replace(/\s+$/, ""), tail: "" };
-  const rest = content.slice(m.index + m[0].length);
-  const next = rest.search(/\n#{1,6}[ \t]/);
+  const code = codeRanges(content);
+  const inCode = (i: number) => code.some(([a, b]) => i >= a && i < b);
+  const heading = /(^|\n)#{1,6}\s+References[ \t]*(\n|$)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = heading.exec(content)) !== null && inCode(m.index + m[1].length)) heading.lastIndex = m.index + 1;
+  if (!m) return { base: content.replace(/\s+$/, ""), tail: "" };
+  const nextRe = /\n#{1,6}[ \t]/g;
+  nextRe.lastIndex = m.index + m[0].length;
+  let next: RegExpExecArray | null;
+  while ((next = nextRe.exec(content)) !== null && inCode(next.index + 1)) nextRe.lastIndex = next.index + 1;
   return {
     base: content.slice(0, m.index).replace(/\s+$/, ""),
-    tail: next >= 0 ? rest.slice(next) : "",
+    tail: next ? content.slice(next.index) : "",
   };
 }
 
@@ -191,7 +294,19 @@ function summaryBlockRange(content: string): { start: number; end: number } | nu
 export function replaceSummaryBlock(content: string, newBlockLines: string[]): string {
   const block = newBlockLines.join("\n").replace(/\s*$/, "");
   const range = summaryBlockRange(content);
-  if (!range) return `${content.replace(/\s*$/, "")}\n\n${block}\n`;
+  if (!range) {
+    // A new block goes above `## Notes` / the extracted full-text stash (whichever comes
+    // first), never inside the stash, which is a few hundred KB of PDF text.
+    const at = [/(^|\n)##[ \t]+Notes[ \t]*(\n|$)/, new RegExp(`(^|\\n)${STASH_MARKER.replace(/[()]/g, "\\$&")}`)]
+      .map((re) => {
+        const m = content.match(re);
+        return m?.index === undefined ? -1 : m.index + m[1].length;
+      })
+      .filter((i) => i >= 0)
+      .sort((a, b) => a - b)[0];
+    if (at === undefined) return `${content.replace(/\s*$/, "")}\n\n${block}\n`;
+    return `${content.slice(0, at).replace(/\s*$/, "")}\n\n${block}\n\n${content.slice(at)}`;
+  }
   const { start, end } = range;
   if (end >= content.length) return `${content.slice(0, start)}${block}\n`;
   return `${content.slice(0, start)}${block}\n\n${content.slice(end)}`;

@@ -18,7 +18,9 @@ type Server = ServerLike;
 type IncomingMessage = IncomingMessageLike;
 type ServerResponse = ServerResponseLike;
 
-const MAX_REQUEST_BYTES = 1_000_000;
+// Writes allow 2M characters (vault.ts MAX_WRITE_CHARS); 2M CJK characters are 6 MB of UTF-8,
+// and JSON escaping adds more.
+const MAX_REQUEST_BYTES = 8_000_000;
 
 export interface McpConnectionInfo {
   running: true;
@@ -92,6 +94,10 @@ export async function assertVaultPath(vaultPath: string, relativePath: string, a
   } catch (error) {
     const code = (error as { code?: string }).code;
     if (!allowMissing || code !== "ENOENT") throw error;
+    // realpath also reports ENOENT for a dangling symlink, whose target may lie outside the
+    // vault: the parent walk below would pass and a create would write through the link.
+    // Whatever lstat finds at the target or a missing ancestor is therefore rejected.
+    const missing = [target];
     let parent = pathApi.dirname(target);
     while (true) {
       try {
@@ -99,16 +105,27 @@ export async function assertVaultPath(vaultPath: string, relativePath: string, a
         break;
       } catch (parentError) {
         if ((parentError as { code?: string }).code !== "ENOENT" || parent === root) throw parentError;
+        missing.push(parent);
         parent = pathApi.dirname(parent);
       }
+    }
+    for (const p of missing) {
+      const found = await fs.lstat(p).then(() => true, (lstatError: unknown) => {
+        if ((lstatError as { code?: string }).code === "ENOENT") return false;
+        throw lstatError;
+      });
+      if (found) throw new Error(`INVALID_PATH: path resolves outside vault: ${relativePath}`);
     }
   }
   if (!inside(root, resolved, pathApi)) throw new Error(`INVALID_PATH: path resolves outside vault: ${relativePath}`);
 }
 
-async function guardToolPaths(vaultPath: string, request: McpRequest): Promise<void> {
+async function guardToolPaths(vaultPath: string, request: McpRequest, visible: Set<string>): Promise<void> {
   if (request.method !== "tools/call") return;
   const name = request.params?.name;
+  // A hidden tool must answer UNKNOWN_TOOL (from the service) whatever the path is; checking the
+  // path first would tell a caller which files exist.
+  if (typeof name !== "string" || !visible.has(name)) return;
   const args = request.params?.arguments;
   if (!args || typeof args !== "object" || Array.isArray(args)) return;
   const values = args as Record<string, unknown>;
@@ -313,8 +330,10 @@ export class McpHttpServer {
         return;
       }
       requestId = request.id ?? null;
-      const response = await handleProtocol(request, typeof this.options.tools === "function" ? this.options.tools() : this.options.tools, async (name, args) => {
-        await guardToolPaths(this.options.vaultPath, { ...request, params: { name, arguments: args } });
+      const tools = typeof this.options.tools === "function" ? this.options.tools() : this.options.tools;
+      const visible = new Set(tools.map((tool) => tool.name));
+      const response = await handleProtocol(request, tools, async (name, args) => {
+        await guardToolPaths(this.options.vaultPath, { ...request, params: { name, arguments: args } }, visible);
         return this.options.callTool(name, args);
       }, this.options.version);
       if (!response) res.writeHead(204).end();

@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { SearchHit } from "../index/store";
 import { FilterRow } from "./FilterRow";
+import { activatable } from "./RelatedView";
 
 export const VIEW_TYPE_SEARCH = "rag-obsidian-search";
 
@@ -78,17 +79,23 @@ export class SearchView extends ItemView {
     this.updateStatus();
   }
 
+  /** Bumped per search: an older query that resolves late must not overwrite newer results. */
+  private searchGen = 0;
+
   private async doSearch(): Promise<void> {
     if (!this.query) return;
+    const gen = ++this.searchGen;
     this.resultsEl.empty();
     const loading = this.resultsEl.createDiv({ cls: "srag-count", text: "Searching…" });
     try {
       const hits = await this.plugin.indexManager.search(this.query, this.filterRow.filters(), undefined, {
         rerank: this.plugin.settings.hostedRerank,
       });
+      if (gen !== this.searchGen) return;
       loading.remove();
       this.renderHits(hits);
     } catch (e) {
+      if (gen !== this.searchGen) return;
       loading.remove();
       new Notice(`Search failed: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -116,7 +123,7 @@ export class SearchView extends ItemView {
         cls: "srag-snippet",
         text: h.text.length > 320 ? h.text.slice(0, 320) + "…" : h.text,
       });
-      row.onclick = () => void this.openCitekey(h.citekey);
+      activatable(row, () => void this.openCitekey(h.citekey));
     }
   }
 

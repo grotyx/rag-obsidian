@@ -37,10 +37,17 @@ function loadNode(): {
   };
 }
 
+/** `fs.readFile` ceiling is 2 GiB; stay under it, and read bigger files in pieces of this size. */
+const READ_FILE_LIMIT = 1.9e9;
+const READ_PIECE = 256 * 1024 * 1024;
+
 /** `FileIO` over `fs.promises`, absolute paths — the index-outside-the-vault location.
  *  Construct only behind `Platform.isDesktopApp`. */
 export class NodeFileIO implements FileIO {
   private fs = loadNode().fs;
+  /** Files above this many bytes are read in pieces (a field so a test can shrink it). */
+  readLimit = READ_FILE_LIMIT;
+  readPiece = READ_PIECE;
 
   async exists(path: string): Promise<boolean> {
     try {
@@ -63,7 +70,25 @@ export class NodeFileIO implements FileIO {
     await this.fs.writeFile(path, data, { flag: "a" });
   }
   async readBinary(path: string): Promise<ArrayBuffer> {
+    // readFile fails past 2 GiB (a 212k x 1536 vector file is 1.3 GB and growing): read in pieces.
+    const size = (await this.fs.stat(path)).size;
+    if (size > this.readLimit) {
+      const out = new Uint8Array(size);
+      const fh = await this.fs.open(path, "r");
+      try {
+        for (let at = 0; at < size; ) {
+          const { bytesRead } = await fh.read(out, at, Math.min(this.readPiece, size - at), at);
+          if (bytesRead <= 0) throw new Error(`${path} ended early (${at} of ${size} bytes)`);
+          at += bytesRead;
+        }
+      } finally {
+        await fh.close();
+      }
+      return out.buffer;
+    }
     const buf = await this.fs.readFile(path);
+    // A Buffer that owns its whole ArrayBuffer hands it over; copying would hold the file twice.
+    if (buf.byteOffset === 0 && buf.byteLength === buf.buffer.byteLength) return buf.buffer;
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
   async writeBinary(path: string, data: ArrayBuffer): Promise<void> {

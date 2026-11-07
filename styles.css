@@ -127,6 +127,14 @@
 .srag-chip-x {
   cursor: pointer;
   opacity: 0.6;
+  /* a real button for keyboards, drawn like the bare glyph it replaced */
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  height: auto;
+  font: inherit;
+  color: inherit;
 }
 .srag-chip-x:hover {
   opacity: 1;
@@ -439,4 +447,10 @@
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--background-modifier-border);
+}
+
+/* keeper radios sit in a <label> (bigger click target); stay one row each like the div they replaced */
+.srag-keeper {
+  display: block;
+  cursor: pointer;
 }

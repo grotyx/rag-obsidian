@@ -4,9 +4,11 @@ import type ScholarRagPlugin from "../../main";
 import { normalizePath, type TFile } from "obsidian";
 import { formatCitation } from "../cite/format";
 import {
+  type CiteItem,
   decodeEntities,
   extractCitekeys,
   inTextLabel,
+  parseCiteItems,
   replaceCitations,
   resolveCluster,
   splitAtReferences,
@@ -23,11 +25,15 @@ export interface CompileInput {
   styleId: string;
   citeStyle: CiteStyle;
   getItem: (citekey: string) => CSLItem | null;
+  /** `clusters` is one array of Pandoc citation items per bracket, in document order. A renderer
+   *  that honours it returns `clusterText[i]` (HTML) for bracket i; one that does not (older
+   *  mocks) returns only `inText`, and compile falls back to per-key labels. */
   renderStyle: (
     styleId: string,
     citekeys: string[],
-    getItem: (citekey: string) => CSLItem | null
-  ) => Promise<{ bibliography: string[]; inText: Record<string, string> }>;
+    getItem: (citekey: string) => CSLItem | null,
+    clusters?: CiteItem[][]
+  ) => Promise<{ bibliography: string[]; inText: Record<string, string>; clusterText?: string[] }>;
 }
 
 function plainText(html: string): string {
@@ -40,8 +46,12 @@ const SUP_MARK = "\u0000";
 /** A CSL in-text label as Markdown: superscript styles keep `<sup>` (Obsidian renders it; the
  *  Word export turns it into Pandoc `^…^`), everything else becomes plain text. */
 function markdownLabel(html: string): string {
-  const sup = html.match(/^\s*<sup>([\s\S]*?)<\/sup>\s*$/i);
-  return sup ? `${SUP_MARK}<sup>${plainText(sup[1])}</sup>` : plainText(html);
+  // a style may emit "1" and "," as separate <sup> runs; merge them into one superscript
+  if (/^\s*(<sup>[\s\S]*?<\/sup>\s*)+$/i.test(html)) {
+    const inner = [...html.matchAll(/<sup>([\s\S]*?)<\/sup>/gi)].map((m) => m[1]).join("");
+    return `${SUP_MARK}<sup>${plainText(inner)}</sup>`;
+  }
+  return plainText(html);
 }
 
 function lightweightBibliography(keys: string[], getItem: (citekey: string) => CSLItem | null, style: CiteStyle): string {
@@ -66,9 +76,27 @@ export async function renderCompiledManuscript(input: CompileInput): Promise<Com
 
   if (input.styleId) {
     try {
-      const rendered = await input.renderStyle(input.styleId, keys, input.getItem);
-      body = replace(input.content, (key) => rendered.inText[key] ? markdownLabel(rendered.inText[key]) : null)
-        .replace(new RegExp(`[ \\t]*${SUP_MARK}`, "g"), "");
+      // One citeproc cluster per bracket (all keys known), in document order, so locators,
+      // prefixes and `-@` survive and numeric styles merge `[@a; @b]` into one superscript.
+      const clusters: CiteItem[][] = [];
+      replaceCitations(input.content, (ks, raw) => {
+        const items = parseCiteItems(raw.slice(1, -1));
+        if (items.length && ks.every((k) => input.getItem(k))) clusters.push(items);
+        return null;
+      });
+      const rendered = await input.renderStyle(input.styleId, keys, input.getItem, clusters);
+      const texts = rendered.clusterText;
+      if (texts) {
+        let n = 0;
+        body = replaceCitations(input.content, (ks, raw) => {
+          if (!parseCiteItems(raw.slice(1, -1)).length || !ks.every((k) => input.getItem(k))) return null;
+          const html = texts[n++];
+          return html ? markdownLabel(html) : null;
+        });
+      } else {
+        body = replace(input.content, (key) => (rendered.inText[key] ? markdownLabel(rendered.inText[key]) : null));
+      }
+      body = body.replace(new RegExp(`[ \\t]*${SUP_MARK}`, "g"), "");
       references = rendered.bibliography.join("\n\n");
     } catch {
       // A style failure uses the same lightweight fallback as the Obsidian command.
@@ -115,7 +143,7 @@ export async function compileMcpManuscript(
     styleId: plugin.styleForNote(source),
     citeStyle: plugin.settings.citeStyle,
     getItem: (key) => plugin.library.getItem(key),
-    renderStyle: (style, keys, getItem) => plugin.citeEngine.renderNote(style, keys, getItem),
+    renderStyle: (style, keys, getItem, clusters) => plugin.citeEngine.renderNote(style, keys, getItem, clusters),
   });
   const existing = plugin.app.vault.getAbstractFileByPath(target);
   let mutation;

@@ -78,11 +78,23 @@ function bridgeMain(): void {
       // the file's owner to match this process's own user closes that off; POSIX-only, since
       // Windows temp directories aren't shared across users the same way and Node exposes no
       // uid there.
-      if (process.platform !== "win32" && typeof process.getuid === "function") {
-        const owner = fs.statSync(discovery).uid;
-        if (owner !== process.getuid()) throw new Error("discovery file is not ours");
+      // Open once with O_NOFOLLOW and check the same descriptor we read from: a stat-then-read
+      // pair leaves a window to swap in a symlink or another user's file in between. Windows has
+      // no O_NOFOLLOW and no uid, so there it is a plain open + read.
+      const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0);
+      const fd = fs.openSync(discovery, flags);
+      let raw: string;
+      try {
+        if (process.platform !== "win32" && typeof process.getuid === "function") {
+          const st = fs.fstatSync(fd);
+          if (st.uid !== process.getuid()) throw new Error("discovery file is not ours");
+          if (!st.isFile() || (st.mode & 0o077) !== 0) throw new Error("discovery file is not private");
+        }
+        raw = fs.readFileSync(fd, "utf8");
+      } finally {
+        fs.closeSync(fd);
       }
-      info = JSON.parse(fs.readFileSync(discovery, "utf8")) as { port: number; token: string };
+      info = JSON.parse(raw) as { port: number; token: string };
       if (!Number.isInteger(info.port) || typeof info.token !== "string") throw new Error("invalid discovery file");
     } catch {
       if (request.id !== undefined) {
@@ -104,14 +116,19 @@ function bridgeMain(): void {
           },
           timeout: 30_000,
         }, (res: { statusCode?: number; on: (event: string, fn: (value?: Buffer) => void) => void }) => {
-          let out = "";
+          // Collect raw Buffers and decode once: a multibyte character split across two TCP
+          // chunks would otherwise become U+FFFD, and update_note could save that permanently.
+          const parts: Buffer[] = [];
+          let size = 0;
           res.on("data", (chunk?: Buffer) => {
-            out += String(chunk ?? "");
-            if (out.length > 10_000_000) req.destroy(new Error("Obsidian MCP response is too large"));
+            if (!chunk) return;
+            parts.push(chunk);
+            size += chunk.length;
+            if (size > 10_000_000) req.destroy(new Error("Obsidian MCP response is too large"));
           });
           res.on("end", () => {
             if (res.statusCode === 204) resolve("");
-            else if (res.statusCode === 200) resolve(out);
+            else if (res.statusCode === 200) resolve(Buffer.concat(parts).toString("utf8"));
             else reject(new Error(`Obsidian MCP returned HTTP ${res.statusCode ?? 0}`));
           });
         });

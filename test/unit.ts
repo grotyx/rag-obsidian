@@ -8,32 +8,42 @@
  * Run: esbuild bundles this with `obsidian` aliased to ./obsidian-shim.ts.
  */
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import nodeFs from "node:fs";
+import nodeOs from "node:os";
+import nodePath from "node:path";
 import { VectorStore } from "../src/index/store";
 import { TextIndex, tokenize } from "../src/index/textIndex";
 import { create, insertMultiple, search, MODE_HYBRID_SEARCH, AnyOrama, SearchParams } from "@orama/orama";
 
 import { parseLibrary } from "../src/ingest/import";
 import { parseCollections, parseCslPage } from "../src/ingest/zotero";
-import { cleanDoi, detectId, splitName, parsePubDate, esummaryToItem } from "../src/ingest/metadata";
+import "./dom-shim"; // globalThis.DOMParser for fetchPubmedRecord's XML path
+import { cleanDoi, detectId, splitName, parsePubDate, esummaryToItem, extractAbstractXml, fetchMetadata } from "../src/ingest/metadata";
 import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
 import { findIdentifier, titleInHead, isPdfMagic, extractPdfHighlights, setPdfjsLoader } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, stashedText, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
 import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summarize";
-import { buildTags, MIN_TAGS } from "../src/ingest/pubmedSearch";
+import { buildTags, MIN_TAGS, fetchPubmedRecord } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
 import { CitationGraph } from "../src/graph/citations";
 import { itemMemo } from "../src/cite/itemMemo";
 import { inTextLabel } from "../src/cite/bibliography";
 import { parseCitingPage, titlesMatch, resolveWork } from "../src/graph/openalex";
-import { rerankHttpReason, mmr, parseRerankResponse } from "../src/index/rerank";
+import { rerankHttpReason, mmr, parseRerankResponse, canHostedRerank } from "../src/index/rerank";
 import { requestWithRetry } from "../src/llm/client";
 import { mergeDuplicateGroups } from "../src/commands/merge";
+import { isStaleSummary, staleModelGroups } from "../src/commands/summaries";
 import { TFile, parseYaml } from "obsidian";
 import {
   buildCliArgs,
   cliCandidates,
   cliBinaryAllowed,
+  cliInsideVault,
+  runCli,
+  setCliVaultRoot,
   buildCliEnv,
   parseOpencodeOutput,
   promptFromMessages,
@@ -42,9 +52,9 @@ import {
   winQuote,
 } from "../src/llm/cli";
 import { windowsCliShimChecks } from "./windows";
-import { cacheRoot, legacyCacheRoot } from "../src/index/localFiles";
+import { cacheRoot, legacyCacheRoot, NodeFileIO } from "../src/index/localFiles";
 import { pandocCandidates, pandocSuperscripts } from "../src/write/pandoc";
-import { stripFrontmatter, chunkReference } from "../src/index/chunker";
+import { stripFrontmatter, chunkReference, yearFromIssued } from "../src/index/chunker";
 import { parseFindings, findingText, isRestated, Finding } from "../src/data/findings";
 import { evidenceCsv, collectEvidenceRows } from "../src/commands/evidenceExport";
 import { referenceProblems, refcheckReport, problemSeverity, PROBLEM_UNCHECKED, PROBLEM_THIN, PROBLEM_PREPRINT } from "../src/write/refcheck";
@@ -72,7 +82,21 @@ import {
   MergeNote,
   MergeSourceNote,
 } from "../src/data/merge";
-import { extractSummaryBlock, renameCiteKeys } from "../src/cite/bibliography";
+import {
+  extractSummaryBlock,
+  renameCiteKeys,
+  replaceCitations,
+  extractCitekeys,
+  anchorsToCitekeys,
+  splitAtReferences,
+  replaceSummaryBlock,
+  parseCiteItems,
+} from "../src/cite/bibliography";
+import { CiteEngine, PLUGIN_FIELDS } from "../src/cite/csl";
+import { exportRefs } from "../src/cite/export";
+import { renderCompiledManuscript } from "../src/write/manuscript";
+import { paragraphsOf } from "../src/write/evidence";
+import { readFileSync } from "node:fs";
 import { isForeignQuery, buildExpander, expandedTerm, parseVocabulary } from "../src/index/expand";
 import { citeTooltip } from "../src/cite/format";
 import { citeClusters } from "../src/cite/clusters";
@@ -106,6 +130,32 @@ function check(cond: boolean, label: string): void {
 }
 
 async function main(): Promise<void> {
+// ---------- commands/summaries.ts: isStaleSummary ----------
+{
+  const M = "deepseek/deepseek-v4-flash-0731";
+  const st = (summary_source: string | undefined, summary_model?: string) => isStaleSummary({ summary_source, summary_model }, M);
+  check(st("pubmed-abstract", "deepseek/old-model"), "stale: plugin abstract summary from another model");
+  check(st("pmc-fulltext"), "stale: no summary_model recorded (predates the field)");
+  check(!st("pubmed-abstract", M), "stale: current model is not stale");
+  check(!st("pdf-fulltext", "deepseek/old-model"), "stale: pdf-fulltext summaries are never redone from the abstract");
+  check(!st("stored-abstract", "x"), "stale: MCP-only source is skipped");
+  check(!st(undefined, "x"), "stale: no summary at all is not stale");
+  // Which model to redo is the user's pick, so every other model is a candidate group.
+  const ents = [
+    { item: { summary_source: "pubmed-abstract", summary_model: "opencode-go/muse" } },
+    { item: { summary_source: "pmc-fulltext", summary_model: "opencode-go/muse" } },
+    { item: { summary_source: "pubmed-abstract", summary_model: "codex:gpt-6-luna" } },
+    { item: { summary_source: "pdf-fulltext", summary_model: "codex:gpt-6-luna" } },
+    { item: { summary_source: "pubmed-abstract", summary_model: M } },
+    { item: { summary_source: "pmc-fulltext" } },
+  ];
+  const g = staleModelGroups(ents, M);
+  check(
+    g.map((x) => `${x.model}:${x.entries.length}`).join(",") === "opencode-go/muse:2,codex:gpt-6-luna:1,:1",
+    `staleModelGroups: grouped per model, most first, pdf-fulltext and the current model left out (${g.map((x) => `${x.model}:${x.entries.length}`).join(",")})`
+  );
+}
+
 // ---------- write/refcheck.ts + cite/styleIndex.ts ----------
 {
   const good = { type: "article-journal", title: "T", author: [{ family: "A" }], issued: { "date-parts": [[2020]] },
@@ -221,6 +271,72 @@ AID - 10.1000/xyz123 [doi]
   check(nbib.length === 1 && nbib[0].PMID === "12345678", "parseLibrary: NBIB PMID");
   check(nbib[0].DOI === "10.1000/xyz123", "parseLibrary: NBIB DOI from AID");
   check(nbib[0].issued?.["date-parts"]?.[0]?.[0] === 2020, "parseLibrary: NBIB year");
+
+  // nbib without FAU: AU is "Family Initials", not a "Given Family" name
+  const au = parseLibrary(`PMID- 1\nTI  - T\nAU  - Smith JA\nAU  - van der Berg KL\n`);
+  check(
+    au[0].author?.[0].family === "Smith" && au[0].author?.[0].given === "JA" && au[0].author?.[1].family === "van der Berg",
+    `parseLibrary: NBIB AU is Family Initials (${JSON.stringify(au[0].author)})`
+  );
+
+  // RIS: wrapped lines continue the previous value
+  const risWrap = parseLibrary(`TY  - JOUR\nTI  - A long title that\n  wraps here\nAB  - First line of the abstract\nsecond line.\nDO  - https://dx.doi.org/10.1000/abc\nER  -\n`);
+  check(risWrap[0].title === "A long title that wraps here", `parseLibrary: RIS title continuation (${risWrap[0].title})`);
+  check(risWrap[0].abstract === "First line of the abstract second line.", "parseLibrary: RIS abstract continuation");
+  check(risWrap[0].DOI === "10.1000/abc", "parseLibrary: RIS strips dx.doi.org prefix");
+  check(parseLibrary(`TY  - JOUR\nTI  - T\nDO  - doi:10.1000/q\nER  -\n`)[0].DOI === "10.1000/q", "parseLibrary: RIS strips doi: prefix");
+
+  // BibTeX: LaTeX accents, escapes, dashes, brace-aware author split, DOI prefixes
+  const tex = parseLibrary(`@article{k,
+  title = {M{\\"u}ller, Garc{\\'\\i}a and Fran\\c{c}ois: caf{\\'e} \\& co \\% 50--60 and 1---2 \\v{S}koda \\\`a \\^o \\~n},
+  author = {M{\\"u}ller, Hans and {Food and Drug Administration} and Garc{\\'{\\i}}a, Jos{\\'e}},
+  doi = {https://dx.doi.org/10.1000/tex},
+  pages = {10--20},
+  year = {2020}
+}`);
+  check(
+    tex[0].title === "Müller, García and François: café & co % 50–60 and 1—2 Škoda à ô ñ",
+    `parseLibrary: BibTeX accents/escapes/dashes (${tex[0].title})`
+  );
+  check(tex[0].author?.length === 3, `parseLibrary: BibTeX authors split at brace depth 0 (${tex[0].author?.length})`);
+  check(tex[0].author?.[0].family === "Müller", "parseLibrary: BibTeX author accent decoded");
+  check(tex[0].author?.[1].literal === "Food and Drug Administration", "parseLibrary: braced 'and' stays one corporate author");
+  check(tex[0].author?.[2].family === "García" && tex[0].author?.[2].given === "José", "parseLibrary: BibTeX {\\'{\\i}} → í");
+  check(tex[0].DOI === "10.1000/tex", "parseLibrary: BibTeX strips dx.doi.org prefix");
+  check(tex[0].page === "10-20", "parseLibrary: BibTeX pages keep a plain hyphen");
+  for (const [raw, want] of [["http://doi.org/10.1/a", "10.1/a"], ["https://doi.org/10.1/a", "10.1/a"], ["doi:10.1/a", "10.1/a"]]) {
+    check(parseLibrary(`@article{k, title={T}, doi={${raw}}}`)[0].DOI === want, `parseLibrary: BibTeX DOI prefix ${raw}`);
+  }
+}
+
+// ---------- ingest/metadata.ts: Crossref title cleanup, OtherAbstract ----------
+{
+  const realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ message: { title: ["Effects of <i>Bacillus subtilis</i>\n   on gut\nflora"], type: "journal-article", DOI: "10.1101/522219" } }),
+        { status: 200 }
+      )) as typeof fetch;
+    const it = await fetchMetadata({ kind: "doi", value: "10.1101/522219" });
+    check(it.title === "Effects of Bacillus subtilis on gut flora", `fetchMetadata: Crossref title stripped of markup/newlines (${it.title})`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  const xml =
+    `<PubmedArticle><Abstract><AbstractText Label="BACKGROUND">English bg.</AbstractText><AbstractText>English rest.</AbstractText></Abstract>` +
+    `<OtherAbstract Type="Publisher" Language="spa"><AbstractText>Resumen en espanol.</AbstractText></OtherAbstract></PubmedArticle>`;
+  check(extractAbstractXml(xml) === "BACKGROUND: English bg. English rest.", `extractAbstractXml: OtherAbstract excluded (${extractAbstractXml(xml)})`);
+
+  try {
+    globalThis.fetch = (async () => new Response(xml, { status: 200 })) as typeof fetch;
+    resetNcbiGate();
+    const r = await fetchPubmedRecord("42841137");
+    check(!r.abstract.includes("Resumen") && r.abstract.includes("English rest."), `fetchPubmedRecord: OtherAbstract excluded (${r.abstract})`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 }
 
 // ---------- ingest/metadata.ts ----------
@@ -479,6 +595,34 @@ AID - 10.1000/xyz123 [doi]
   check(!tags.includes("humans"), "buildTags: generic MeSH dropped via keywordsToTags");
   const kw = await buildTags({ descriptors: [], keywords: ["diskectomy"] });
   check(kw.includes("diskectomy"), "buildTags: author keywords pass through without network");
+
+  // Comma-joined suggestions: the split fallback tries "A, B" as a heading before the pieces.
+  const headings = ["Decompression, Surgical", "Surgical", "Lumbar Vertebrae", "Spinal Fusion", "Endoscopy"];
+  const realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const u = new URL(String(input));
+      if (u.pathname.endsWith("esearch.fcgi")) {
+        const term = (u.searchParams.get("term") || "").replace(/\[MeSH Terms\]$/, "");
+        const i = headings.indexOf(term);
+        return new Response(JSON.stringify({ esearchresult: { idlist: i >= 0 ? [String(i + 1)] : [] } }), { status: 200 });
+      }
+      const id = u.searchParams.get("id") || "";
+      return new Response(JSON.stringify({ result: { [id]: { ds_meshterms: [headings[Number(id) - 1]] } } }), { status: 200 });
+    }) as typeof fetch;
+    resetNcbiGate();
+    const tags = await buildTags({
+      descriptors: [],
+      keywords: [],
+      meshFromSummary: "Lumbar Vertebrae, Decompression, Surgical, Spinal Fusion, Endoscopy",
+    });
+    check(
+      tags.includes("decompression-surgical") && !tags.includes("surgical") && tags.includes("lumbar-vertebrae") && tags.includes("endoscopy"),
+      `buildTags: inverted heading survives a comma-joined reply (${tags.join(", ")})`
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 }
 
 // ---------- ingest/unpaywall.ts + retraction.ts (offline validation paths) ----------
@@ -491,6 +635,30 @@ AID - 10.1000/xyz123 [doi]
     threw = String(e);
   }
   check(/Contact e-mail/.test(threw), "findOpenAccess: placeholder email throws guidance");
+
+  // version/license come from the same location as the PDF, not from best_oa_location
+  const realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          is_oa: true,
+          best_oa_location: { url_for_landing_page: "https://pub/landing", url_for_pdf: null, version: "publishedVersion", license: "cc-by" },
+          oa_locations: [
+            { url_for_pdf: null, version: "publishedVersion", license: "cc-by" },
+            { url_for_pdf: "https://repo/x.pdf", version: "acceptedVersion", license: null },
+          ],
+        }),
+        { status: 200 }
+      )) as typeof fetch;
+    const oa = await findOpenAccess("10.1/x", "user@uni.edu");
+    check(oa?.pdfUrl === "https://repo/x.pdf", "findOpenAccess: PDF from a non-best location");
+    check(oa?.version === "acceptedVersion", `findOpenAccess: version from the PDF's location (${oa?.version})`);
+    check(oa?.license === undefined, `findOpenAccess: license not borrowed from best location (${oa?.license})`);
+    check(oa?.landingUrl === "https://pub/landing", "findOpenAccess: landing page still from best location");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
   check(await checkRetraction({ type: "article-journal", title: "No ids" }) === null, "checkRetraction: no DOI/PMID → null");
 }
 
@@ -512,6 +680,26 @@ AID - 10.1000/xyz123 [doi]
   check(groups.length === 1 && groups[0].length === 3, "duplicateGroups: transitive DOI→PMID chain is one group");
   const noId: E = { item: { title: "Editorial" } };
   check(duplicateGroups([a, noId]).length === 0, "duplicateGroups: unidentifiable note never groups");
+
+  // Korean titles keep their Hangul: two titles that differ only there are not the same title
+  check(
+    normTitle("Biportal endoscopy 의 합병증") !== normTitle("Biportal endoscopy 의 장기 결과") &&
+      normTitle("Biportal endoscopy 의 합병증") === "biportal endoscopy 의 합병증",
+    "normTitle: Hangul is kept, not collapsed to the ASCII part"
+  );
+  // A shared title does not join works whose DOI / PMID differ
+  const gt = "A generic but sufficiently long shared title";
+  const t1: E = { item: { DOI: "10.1/x", title: gt } };
+  const t2: E = { item: { DOI: "10.1/y", title: gt } };
+  const t3: E = { item: { PMID: "1", title: gt } };
+  const t4: E = { item: { PMID: "2", title: gt } };
+  const t5: E = { item: { title: gt } };
+  check(duplicateGroups([t1, t2]).length === 0, "duplicateGroups: same title, different DOIs → not duplicates");
+  check(duplicateGroups([t3, t4]).length === 0, "duplicateGroups: same title, different PMIDs → not duplicates");
+  check(duplicateGroups([t1, t3]).length === 1, "duplicateGroups: same title, DOI on one and PMID on the other → still a group");
+  check(duplicateGroups([t1, t5]).length === 1, "duplicateGroups: same title, one side without ids → still a group");
+  const chain = duplicateGroups([t1, t5, t2]);
+  check(chain.length === 1 && chain[0].length === 2, "duplicateGroups: a generic title does not chain two different DOIs through a bare note");
 
   const entry = { file: { path: "References/a.md" }, item: { tags: ["#Diskectomy", "spine"] } };
   check(inScope(entry, { kind: "all" }), "inScope: all");
@@ -604,6 +792,23 @@ AID - 10.1000/xyz123 [doi]
   check(note.includes("citekey: park2021efficacy") && note.startsWith("---\n"), "buildNote: frontmatter with citekey");
   check(note.includes("# The efficacy of endoscopic diskectomy"), "buildNote: title heading");
   check(note.includes("## Notes") && note.includes("## Highlights"), "buildNote: scaffold sections");
+  const rich = buildNote(
+    {
+      ...item,
+      "container-title-short": "Spine",
+      editor: [{ family: "Lee", given: "K" }],
+      openalex_id: "W123",
+      ISBN: "",
+      edition: undefined,
+      "collection-title": undefined,
+    },
+    "park2021efficacy"
+  );
+  check(/^container-title-short: Spine$/m.test(rich), "buildNote: container-title-short survives");
+  check(/^editor:/m.test(rich) && /family: Lee/.test(rich), "buildNote: editor survives");
+  check(/^openalex_id: W123$/m.test(rich), "buildNote: openalex_id survives");
+  check(!/^ISBN:/m.test(rich) && !/^edition:/m.test(rich), "buildNote: empty / undefined keys are not written");
+  check(rich.indexOf("DOI:") < rich.indexOf("container-title-short:") && rich.indexOf("container-title-short:") < rich.indexOf("status:"), "buildNote: extra keys sit after the listed ones and before the plugin fields");
   check(/^\d{4}-\d{2}-\d{2}$/.test(localDate()), "localDate: YYYY-MM-DD shape");
 }
 
@@ -806,6 +1011,57 @@ AID - 10.1000/xyz123 [doi]
 
 // ---------- llm/cli.ts: real .cmd shim spawn — win32 only, no-op elsewhere ----------
 await windowsCliShimChecks();
+
+// ---------- llm/cli.ts: cliInsideVault (a CLI that lives in the vault is never run) ----------
+{
+  check(cliInsideVault("/v/ws/codex", "/v/ws"), "cliInsideVault: file under the vault → true");
+  check(cliInsideVault("/v/ws/.bin/x/codex", "/v/ws/"), "cliInsideVault: trailing slash on the root is ignored");
+  check(cliInsideVault("/v/ws", "/v/ws"), "cliInsideVault: the vault folder itself → true");
+  check(!cliInsideVault("/v/ws-other/codex", "/v/ws"), "cliInsideVault: a sibling sharing the name prefix → false");
+  check(!cliInsideVault("/usr/local/bin/codex", "/v/ws"), "cliInsideVault: outside → false");
+  check(!cliInsideVault("/usr/local/bin/codex", ""), "cliInsideVault: no vault root known → false");
+  check(cliInsideVault("C:\\Vault\\bin\\codex.cmd", "c:\\vault", true), "cliInsideVault: Windows paths, case-insensitive");
+  check(!cliInsideVault("C:\\Vault\\bin\\codex.cmd", "c:\\vault", false), "cliInsideVault: case-sensitive by default");
+}
+
+// ---------- llm/cli.ts: runCli keeps multibyte output split across pipe reads, refuses a CLI in the vault ----------
+if (process.platform !== "win32") {
+  const dir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "rag-obsidian-cli-test-"));
+  try {
+    const bin = nodePath.join(dir, "opencode");
+    // Writes one big Korean JSON event line in 7-byte pieces (7 is not a multiple of 3, so most
+    // boundaries fall inside a 3-byte character), with a pause so each piece is its own read.
+    nodeFs.writeFileSync(
+      bin,
+      `#!${process.execPath}
+const line = Buffer.from(JSON.stringify({ type: "text", part: { text: "한국어 문장입니다. ".repeat(12000) } }) + "\\n");
+process.stdin.resume();
+let at = 0;
+(function next() {
+  if (at >= line.length) return;
+  process.stdout.write(line.subarray(at, at + 7001));
+  at += 7001;
+  setTimeout(next, 1);
+})();
+`,
+      { mode: 0o755 }
+    );
+    const settings = { llmProvider: "opencode", llmModel: "", cliPath: bin } as never;
+    setCliVaultRoot("");
+    const got = await runCli(settings, [{ role: "user", content: "hi" }], "sys");
+    check(got === "한국어 문장입니다. ".repeat(12000).trim(), "runCli: Korean answer split mid-character across reads arrives intact (no U+FFFD)");
+    check(!got.includes("\uFFFD"), "runCli: no replacement character in the answer");
+
+    setCliVaultRoot(dir);
+    let refused = "";
+    try { await runCli(settings, [{ role: "user", content: "hi" }], "sys"); } catch (e) { refused = String(e); }
+    check(/inside this vault/.test(refused) && /CLI executable/.test(refused), "runCli: a CLI inside the vault is refused with the setting named");
+    setCliVaultRoot("");
+  } finally {
+    setCliVaultRoot("");
+    nodeFs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 // ---------- index/localFiles.ts: cacheRoot (pure — platform/env/home injected) ----------
 {
@@ -1090,6 +1346,23 @@ check(
   check(stashCount === 1, "mergeBodies: keeper's existing stash is not replaced by a loser's");
   check(keptOwnStash.includes("keeper's own full text."), "mergeBodies: keeper's own stash text survives");
 
+  // Unknown sections, free text under the H1 and an H2 inside Notes survive; generated parts do not
+  const richLoser = [
+    "", "# Loser title", "", "> **Summary source**: abstract", "",
+    "Free text I wrote under the title.", "",
+    "## Summary", "", "**Methods**", "loser summary", "",
+    "## Notes", "", "my note", "", "## Inner heading", "", "inner text", "",
+    "## Critique", "", "weak design.", "",
+    "## Evidence (extracted)", "", "> [!quote]- 0 findings", "",
+    "## Full text (extracted)", "", "stash text",
+  ].join("\n");
+  const richMerged = mergeBodies(keeperBody, [{ citekey: "rich", body: richLoser }]);
+  check(richMerged.includes("## Merged from rich") && richMerged.includes("### Critique") && richMerged.includes("weak design."), "mergeBodies: an unknown ## section of the loser is kept");
+  check(richMerged.includes("Free text I wrote under the title."), "mergeBodies: text under the loser's H1 is kept");
+  check(richMerged.includes("my note") && richMerged.includes("inner text") && richMerged.includes("Inner heading"), "mergeBodies: an H2 inside the loser's Notes is kept");
+  check(!richMerged.includes("Loser title") && !richMerged.includes("Summary source") && !richMerged.includes("loser summary"), "mergeBodies: the loser's H1, summary-source line and Summary block are not carried");
+  check((richMerged.match(/## Full text \(extracted\)/g) ?? []).length === 1 && richMerged.indexOf("stash text") > richMerged.indexOf("### Critique"), "mergeBodies: the stash is moved once, not duplicated into Merged from");
+
   const withHighlights = mergeBodies(keeperBody, [
     { citekey: "loser6", body: "## Notes\n\n\n## Highlights\n\nsome highlight text.\n" },
   ]);
@@ -1352,6 +1625,20 @@ check(
   check(robMarkdown([rr], "x", "2026-11-04").includes("| Reference | Study | Study ID | Overall | Note |"), "robMarkdown: Study ID column for a numeric study_id");
   const num = applyScreening({ study_id: 2019001 }, {});
   check(num.fields.study_id === "2019001", "applyScreening: numeric study_id reported as text");
+  // the duplicate that keeps its place is the one with a decision, not merely the first
+  {
+    const undecided: PrismaRecord = { citekey: "u1", include: null };
+    const inc: PrismaRecord = { citekey: "i1", include: "include" };
+    const exc: PrismaRecord = { citekey: "x1", include: "exclude" };
+    const c1 = prismaCounts([undecided, inc], [["u1", "i1"]], () => true);
+    check(c1.duplicatesRemoved === 1 && c1.reportsIncluded === 1 && c1.awaitingDecision === 0, "prismaCounts: an included copy beats an undecided copy listed first");
+    const c2 = prismaCounts([undecided, exc], [["u1", "x1"]], () => true);
+    check(c2.excludedAtScreening === 1 && c2.awaitingDecision === 0, "prismaCounts: an excluded copy beats an undecided one");
+    const c3 = prismaCounts([exc, inc], [["x1", "i1"]], () => true);
+    check(c3.reportsIncluded === 1 && c3.excludedAtScreening === 0, "prismaCounts: include beats exclude");
+    const c4 = prismaCounts([{ citekey: "p1", include: "pending" }, undecided], [["p1", "u1"]], () => true);
+    check(c4.recordsScreened === 1 && c4.awaitingDecision === 1, "prismaCounts: ties fall back to input order");
+  }
   // kq: "03" and 3 are one key question everywhere
   check(kqKey("03") === "3" && kqKey(3) === "3" && kqKey(" 3 ") === "3" && kqKey("kq-a") === "kq-a", "kqKey: leading zeros and padding collapse");
   check(hasKq(["03"], 3) && hasKq([3], "03") && hasKq(["3"], "03") && !hasKq(["13"], "3") && !hasKq(undefined, "3"), "hasKq: 3 and 03 match each other");
@@ -2031,6 +2318,43 @@ check(
   await g.prune();
   check(scans === 2 && notified === 1, "prune: a later burst scans again; nothing changed, so no second notify");
 }
+
+// ---------- graph/citations.ts: prune keeps the id of a live node; dispose stops timers ----------
+{
+  // `old` and `new` are the same work (W1) after a citekey change; `new` owns the id mapping.
+  const data = {
+    byCitekey: {
+      old: { openalexId: "W1", refs: [] },
+      new: { openalexId: "W1", refs: [] },
+      citer: { openalexId: "W2", refs: ["W1"] },
+      gone: { openalexId: "W3", refs: [] },
+    },
+    idToCitekey: { W1: "new", W2: "citer", W3: "gone" },
+  };
+  let live = ["new", "citer"];
+  let scans = 0;
+  const app = {
+    vault: { adapter: { exists: async () => true, read: async () => JSON.stringify(data), write: async () => {}, mkdir: async () => {} } },
+  };
+  const lib = { entries: () => (scans++, live.map((citekey) => ({ citekey, item: {}, file: {} }))), folder: () => "References" };
+  const g = new CitationGraph(app as never, lib as never, {} as never, "_x");
+  await g.restore();
+  g.pruneDelayMs = 10;
+  await g.prune();
+  check(!g.has("old") && !g.has("gone") && g.has("new"), "prune: dead nodes dropped, live node kept");
+  check(g.referencesInLibrary("citer").join() === "new", `prune: a dead node of the same work must not unmap the live one (got ${g.referencesInLibrary("citer")})`);
+
+  const before = scans;
+  let cancelled = 0;
+  (g as unknown as { flush: { cancel: () => void } }).flush = { cancel: () => void cancelled++ };
+  live = ["citer"];
+  const pending = g.prune();
+  g.dispose();
+  await pending; // resolves, never hangs
+  await new Promise((r) => setTimeout(r, 50));
+  check(scans === before, "dispose: a pending prune never scans after unload");
+  check(cancelled === 1, "dispose: the add-flush debouncer is cancelled");
+}
   // ---------- ingest/pdf.ts: titleInHead ----------
   {
     const own = "Outcomes of Biportal Endoscopic Decompression for Lumbar Stenosis";
@@ -2224,7 +2548,7 @@ check(
     await mergeDuplicateGroups(d.plugin as never, [d.plan]);
     const df = parseFindings(d.files.get(d.keeper.path)!.text);
     check(df.length === 2 && df[0].outcome === "Fusion", "mergeDuplicateGroups: a keeper with no Evidence section gets one from the loser");
-    check(mergeBodies("## Notes\n", [{ citekey: "l", body: "x" }]) === "## Notes\n", "mergeBodies: no loser evidence leaves the body untouched");
+    check(mergeBodies("## Notes\n", [{ citekey: "l", body: "# T\n\n## Notes\n\n## Highlights\n" }]) === "## Notes\n", "mergeBodies: no loser evidence leaves the body untouched");
   }
 
   // ---------- commands/evidenceExport.ts: CSV + row collection ----------
@@ -2305,6 +2629,173 @@ check(
     check(failing.rows.length === 1 && failing.rows[0].title === undefined, "snowball: a failed title lookup keeps the candidate");
     check(snowballMarkdown({ scope: "s", processed: 1, failures: 0, date: "d", limitHit: true }, []).includes("title lookups were used"), "snowballMarkdown: states the lookup limit when hit");
   }
+
+
+// ---------- index: chunker fixes, vector bank reuse, NodeFileIO reads, hosted-rerank gate ----------
+{
+  // splitText: a short paragraph then an oversized one must not emit the overlap tail as its own chunk
+  const A = "A".repeat(300);
+  const B = "B".repeat(1500);
+  const cs = chunkReference({ citekey: "k", title: "T", year: 2020, tags: [], body: `${A}\n\n${B}` }, 1000);
+  check(!cs.some((c) => c.text.trim() === "A".repeat(150)), "splitText: no chunk is only the 150-char overlap tail");
+  check(cs.filter((c) => c.text.includes("A".repeat(150))).length === 1, "splitText: the A paragraph lands in exactly one chunk");
+
+  check(yearFromIssued({ "date-parts": [[2020, 3]] }) === 2020, "yearFromIssued: numeric parts");
+  check(yearFromIssued({ "date-parts": [["2020", 3]] }) === 2020, "yearFromIssued: string parts");
+  check(yearFromIssued({ "date-parts": [[null]] }) === 0 && yearFromIssued({ "date-parts": [["n.d."]] }) === 0 && yearFromIssued(undefined) === 0, "yearFromIssued: junk is 0");
+
+  // the bank: a restored one is exactly sized; re-embedding one note must not grow it
+  const DIM = 4;
+  const mkc = (ck: string, n: number) => Array.from({ length: n }, (_, i) => ({
+    id: `${ck}#${i}`, citekey: ck, title: ck, section: "abstract", year: 2020, tags: [] as string[], authors: [] as string[], text: `word${i} ${ck}`, embedText: "",
+  }));
+  const vecs = (n: number) => Array.from({ length: n }, (_, i) => [1, i + 1, 2, 3]);
+  const s1 = new VectorStore();
+  s1.init(DIM, "m");
+  for (const ck of ["a", "b", "c"]) await s1.addChunks(mkc(ck, 3), vecs(3));
+  const ser = await s1.serialize();
+  const s2 = new VectorStore();
+  await s2.load(ser.docs, ser.vectors, ser.meta);
+  const cap0 = s2.bankCapacity;
+  check(cap0 === 9 * DIM, `store.load: bank sized exactly (${cap0})`);
+  await s2.removeCitekey("b");
+  await s2.addChunks(mkc("b", 3), vecs(3));
+  check(s2.bankCapacity === cap0, `re-embedding one note after load does not grow the bank (${s2.bankCapacity} vs ${cap0})`);
+  const hit = await s2.search([1, 1, 2, 3], "word1 b", 20);
+  check(hit.filter((h) => h.citekey === "b").length === 3 && hit.length === 9, `...and every chunk is still searchable (${hit.length})`);
+  await s2.removeCitekey("b");
+  await s2.addChunks(mkc("b", 4), vecs(4));
+  check(s2.bankCapacity > cap0 && s2.count === 10, "a note that grows still gets rows (the bank grows only then)");
+  // the loaded buffer is normalized in place and used as the bank
+  const raw = new Float32Array([3, 0, 0, 4]).buffer;
+  const s3 = new VectorStore();
+  await s3.load(JSON.stringify([{ id: "x#0", citekey: "x", title: "x", section: "s", year: 1, tags: [], author: [], text: "t" }]), raw, { modelId: "m", dim: 4, chunkIds: { x: ["x#0"] }, count: 1 });
+  const bank3 = new Float32Array(raw);
+  check(Math.abs(bank3[0] - 0.6) < 1e-6 && Math.abs(bank3[3] - 0.8) < 1e-6, "store.load: vectors normalized in place in the loaded buffer");
+
+  // NodeFileIO.readBinary: whole buffer handed over, and the chunked path for big files
+  const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "refwright-rb-"));
+  const nio = new NodeFileIO();
+  const payload = new Uint8Array(1000).map((_, i) => i % 251);
+  fs.writeFileSync(`${tmp}/v.f32`, payload);
+  const whole = new Uint8Array(await nio.readBinary(`${tmp}/v.f32`));
+  check(whole.length === 1000 && whole.every((x, i) => x === payload[i]), "NodeFileIO.readBinary: contents intact");
+  nio.readLimit = 10;
+  nio.readPiece = 64;
+  const nfs = (nio as unknown as { fs: { open: (...a: unknown[]) => Promise<unknown> } }).fs;
+  const realOpen = nfs.open.bind(nfs);
+  let opened = 0;
+  nfs.open = (...a: unknown[]) => ((opened += 1), realOpen(...a));
+  const pieces = await nio.readBinary(`${tmp}/v.f32`);
+  check(opened === 1 && pieces.byteLength === 1000 && new Uint8Array(pieces).every((x, i) => x === payload[i]), "NodeFileIO.readBinary: file above the limit is read in pieces");
+  fs.rmSync(tmp, { recursive: true });
+
+  const hs = { openaiBaseUrl: "https://openrouter.ai/api/v1", embeddingProvider: "ollama" as const, llmProvider: "ollama" as const };
+  check(!canHostedRerank(hs) && canHostedRerank({ ...hs, llmProvider: "openai" }) && canHostedRerank({ ...hs, embeddingProvider: "openai" }) && !canHostedRerank({ ...hs, embeddingProvider: "openai", openaiBaseUrl: "https://api.openai.com/v1" }), "canHostedRerank: OpenRouter and a hosted embedding or chat provider");
+}
+
+// ---------- cite: renderNote clusters, compile, export, fences, summary placement ----------
+{
+  const eng = new CiteEngine(
+    { vault: { adapter: { read: async (p: string) => readFileSync(p, "utf8"), write: async () => undefined } } } as never,
+    "."
+  );
+  const mk = (id: string, family: string, title: string, extra: Record<string, unknown> = {}) => ({
+    id, type: "article-journal", title, author: [{ family, given: "A" }], issued: { "date-parts": [[2020]] },
+    "container-title": "J Test", volume: "1", page: "1-9", status: "unread", citekey: id, ...extra,
+  });
+  const lib: Record<string, ReturnType<typeof mk>> = {
+    zed2020a: mk("zed2020a", "Zed", "First Zed paper"),
+    zed2020b: mk("zed2020b", "Zed", "Second Zed paper"),
+    abe2020: mk("abe2020", "Abe", "An Abe paper"),
+    a: mk("a", "Zed", "Alpha"),
+    b: mk("b", "Abe", "Beta"),
+  };
+  const getItem = (k: string) => (lib[k] ?? null) as never;
+
+  // 1. a later cluster disambiguating an earlier one (2020a / 2020b) updates the earlier label
+  const dis = await eng.renderNote("apa", ["zed2020a", "abe2020", "zed2020b"], getItem);
+  check(/2020a/.test(dis.inText.zed2020a) && /2020b/.test(dis.inText.zed2020b), `renderNote: earlier label gets its year suffix (${dis.inText.zed2020a} / ${dis.inText.zed2020b})`);
+  check(!/2020[ab]/.test(dis.inText.abe2020), "renderNote: an undisambiguated label stays plain");
+  check(dis.bibliography.every((e) => !/Unread/.test(e)), "renderNote: plugin `status` never reaches the bibliography");
+  const disC = await eng.renderNote("apa", ["zed2020a", "abe2020", "zed2020b"], getItem, [[{ id: "zed2020a" }], [{ id: "abe2020" }], [{ id: "zed2020b" }]]);
+  check(/2020a/.test(disC.clusterText![0]) && /2020b/.test(disC.clusterText![2]), `renderNote clusters: earlier bracket updated (${disC.clusterText!.join(" | ")})`);
+
+  // 2. compile keeps locators, prefixes, suppress-author; one cluster per bracket
+  const comp = (content: string, style: string) =>
+    renderCompiledManuscript({
+      content, styleId: style, citeStyle: "apa" as never, getItem,
+      renderStyle: (st, ks, gi, cl) => eng.renderNote(st, ks, gi, cl),
+    });
+  const apa = await comp("Text [see @a, p. 23; @b] and [-@a].\n", "apa");
+  check(apa.content.includes("(Abe, 2020; see Zed, 2020, p. 23)"), `compile APA: one cluster with prefix and locator kept (citeproc sorts the cluster) (${apa.content.split("\n")[0]})`);
+  check(apa.content.includes("and (2020)."), `compile APA: -@a suppresses the author (${apa.content.split("\n")[0]})`);
+  const ama = await comp("One [@a; @b] two [@b] three [@a].\n", "american-medical-association");
+  const amaBody = ama.content.split("\n")[0];
+  check((amaBody.match(/<sup>/g) ?? []).length === 3 && /One<sup>1,2<\/sup> two<sup>2<\/sup> three<sup>1<\/sup>\./.test(amaBody), `compile AMA: merged superscript clusters, numbering kept (${amaBody})`);
+  const ord = await comp("First [@b] then [@a] and [@b; @a].\n", "american-medical-association");
+  check(/First<sup>1<\/sup> then<sup>2<\/sup> and<sup>1,2<\/sup>\./.test(ord.content) && /\n1\. Abe A\. Beta/.test(ord.content), `compile: numbers follow first citation, bibliography agrees (${JSON.stringify(ord.content)})`);
+  const sp = await comp("S [@a; @b].\n", "spine");
+  check((sp.content.split("\n")[0].match(/<sup>/g) ?? []).length === 1, `compile spine: one superscript cluster (${sp.content.split("\n")[0]})`);
+  // an unknown key leaves the whole bracket as written and does not shift later clusters
+  const unk = await comp("X [@a; @nope] Y [@b].\n", "apa");
+  check(unk.content.includes("[@a; @nope]") && unk.content.includes("(Abe, 2020)"), `compile: bracket with an unknown key untouched (${unk.content.split("\n")[0]})`);
+
+  const items = parseCiteItems("see @a, pp. 23-25, emphasis added; -@b chap. 3");
+  check(items[0].prefix === "see " && items[0].locator === "23-25" && items[0].label === "page" && items[0].suffix === ", emphasis added", `parseCiteItems: prefix/locator/suffix (${JSON.stringify(items[0])})`);
+  check(items[1]["suppress-author"] === true && items[1].label === "chapter" && items[1].locator === "3", `parseCiteItems: suppress + chapter (${JSON.stringify(items[1])})`);
+  check(parseCiteItems("@a, 23")[0].label === "page" && parseCiteItems("@a")[0].locator === undefined, "parseCiteItems: bare number is a page; no locator otherwise");
+
+  // 5. number is not glued to the entry
+  for (const st of ["elsevier-vancouver", "american-medical-association"]) {
+    const r = await eng.renderNote(st, ["a", "b"], getItem);
+    check(/^(\[1\]|1\.) \S/.test(r.bibliography[0]), `bibliography: number separated from entry in ${st} (${r.bibliography[0].slice(0, 20)})`);
+  }
+
+  // 9. bibliography only
+  const bo = await eng.renderBibliographyOnly("apa", ["a", "b", "nope"], getItem);
+  check(bo.bibliography.length === 2 && bo.entryIds.includes("a") && bo.entryIds.includes("b"), "renderBibliographyOnly: entries for known keys only");
+  check((await eng.renderBibliographyOnly("apa", ["nope"], getItem)).bibliography.length === 0, "renderBibliographyOnly: nothing known -> empty");
+
+  // 3/4. export
+  const messy = { type: "article-journal", title: "R&D {unbalanced and 50% of A_b #1 $", author: [{ family: "X", given: "Y" }], keyword: "spine; fusion, pain", URL: "http://x.org/a_b?c=1&d=2", status: "unread", citekey: "k" } as never;
+  const bib = exportRefs([{ citekey: "k", item: messy }], "bibtex");
+  check(bib.includes("keywords = {spine, fusion, pain}"), `bibtex: string keyword normalized (${bib})`);
+  check(bib.includes("R\\&D \\{unbalanced and 50\\% of A\\_b \\#1 \\$"), "bibtex: specials and the unbalanced brace escaped");
+  check(bib.includes("url = {http://x.org/a_b?c=1&d=2}"), "bibtex: url stays verbatim");
+  check(exportRefs([{ citekey: "k", item: { ...(messy as object), title: "A {DNA} test" } as never }], "bibtex").includes("{A {DNA} test}"), "bibtex: balanced braces kept");
+  const ris = exportRefs([{ citekey: "k", item: messy }], "ris");
+  check(ris.split("\n").filter((l) => l.startsWith("KW  - ")).join("|") === "KW  - spine|KW  - fusion|KW  - pain", "ris: string keyword is split, not iterated by character");
+  const cj = JSON.parse(exportRefs([{ citekey: "k", item: messy }], "csl-json"))[0];
+  check(cj.id === "k" && cj.status === undefined && cj.citekey === undefined && cj.title, "csl-json: plugin fields (status, citekey) are not exported");
+  check(PLUGIN_FIELDS.has("status"), "PLUGIN_FIELDS exported");
+
+  // 6. summary lands before Notes / the stash, never inside the stash
+  const blk = ["## Summary", "", "new"];
+  const noNotes = replaceSummaryBlock("# T\n\nbody\n\n## Full text (extracted)\n\nPDF TEXT\n", blk);
+  check(noNotes.indexOf("## Summary") < noNotes.indexOf(STASH_MARKER) && noNotes.endsWith("PDF TEXT\n") && noNotes.includes("new\n\n## Full text"), `replaceSummaryBlock: before the stash (${JSON.stringify(noNotes)})`);
+  const withNotes = replaceSummaryBlock("# T\n\n## Notes\n\nmine\n\n## Full text (extracted)\n\nPDF\n", blk);
+  check(withNotes.indexOf("## Summary") < withNotes.indexOf("## Notes") && withNotes.indexOf("## Notes") < withNotes.indexOf(STASH_MARKER), "replaceSummaryBlock: before ## Notes, stash stays last");
+  check(replaceSummaryBlock("# T\n\nbody\n", blk) === "# T\n\nbody\n\n## Summary\n\nnew\n", "replaceSummaryBlock: no Notes, no stash -> end");
+
+  // 7. fences: ~~~ and 4-backtick fences are code on every path
+  const fences = "[@a] ok\n\n~~~\n[@a] [@b]\n~~~\n\n````\n[@a]\n```\n[@a] still code\n````\n\nlast [@b]\n";
+  const ren = renameCiteKeys(fences, { a: "z" });
+  check(ren === fences.replace("[@a] ok", "[@z] ok"), `renameCiteKeys: ~~~ and 4-backtick fences untouched (${JSON.stringify(ren)})`);
+  check(extractCitekeys(fences).join() === "a,b", "extractCitekeys: only prose citations");
+  check(extractCitekeys("~~~\n[@a]\n~~~\n").length === 0, "extractCitekeys: ~~~ block skipped");
+  check(anchorsToCitekeys("~~~\n[1]\n~~~\n[1]\n", ["k"]) === "~~~\n[1]\n~~~\n[@k]\n", "anchorsToCitekeys: ~~~ block skipped");
+  check(replaceCitations("```js\n[@a]\n```\n`[@b]` [@c]", (ks) => `<${ks}>`) === "```js\n[@a]\n```\n`[@b]` <c>", "replaceCitations: ``` and inline code skipped");
+  check(paragraphsOf("~~~\nfake [@a] para\n~~~\n\nReal para.\n").map((x) => x.text).join("|") === "Real para.", "paragraphsOf: ~~~ fence skipped");
+  check(paragraphsOf("````\n```\nfake\n````\n\nReal.\n").map((x) => x.text).join("|") === "Real.", "paragraphsOf: 4-backtick fence with inner ``` skipped");
+  check(citeClusters(fences).length === 2, "citeClusters: same fence rules");
+
+  // 8. splitAtReferences ignores a References heading inside a fence
+  const sr = splitAtReferences("Body\n\n```md\n## References\n```\n\nMore\n\n## References\n\n- old\n\n# Appendix\nkeep\n");
+  check(sr.base.endsWith("More") && sr.tail === "\n# Appendix\nkeep\n", `splitAtReferences: fenced heading skipped (${JSON.stringify(sr)})`);
+  const sr2 = splitAtReferences("## References\n\n- x\n\n~~~\n# not a heading\n~~~\n\n- y\n");
+  check(sr2.tail === "", `splitAtReferences: fenced heading does not end the section (${JSON.stringify(sr2)})`);
+}
 
 console.log(`unit: all ${passed} assertions passed`);
 }

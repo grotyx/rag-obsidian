@@ -4,6 +4,7 @@ import { SummarySections } from "../types";
 import { fetchPubmedRecord, fetchPmcFullText, buildTags, MIN_TAGS } from "../ingest/pubmedSearch";
 import { summarizeSource, suggestMeshTerms } from "../ingest/summarize";
 import { summaryBlock } from "../data/reference";
+import { replaceSummaryBlock } from "../cite/bibliography";
 import { BackfillScope, inScope } from "../data/library";
 import { LLMClient } from "../llm/client";
 import { mapPool, poolWidth } from "../util/pool";
@@ -145,7 +146,13 @@ export async function backfillSummaries(
           fm.summary_source = r.sourceTag;
           fm.summary_model = plugin.settings.llmModel;
         }
-        if (r.tags.length) fm.tags = r.tags;
+        if (r.tags.length) {
+          // Merge into the tags as they are now: r.tags is a snapshot from batch start, and the
+          // user may have edited tags during the (long) network phase.
+          const cur: unknown = fm.tags;
+          const now = Array.isArray(cur) ? cur.map(String) : typeof cur === "string" && cur ? [cur] : [];
+          fm.tags = [...new Set([...now, ...r.tags])];
+        }
         // Only for a note that asked and still came up short. Writing it on a note that
         // reached MIN_TAGS would add a non-CSL key — and a modify event, which re-chunks the
         // note for the search index — for nothing.
@@ -153,11 +160,8 @@ export async function backfillSummaries(
       });
       if (r.tags.length) tagged++;
       if (r.summary) {
-        const body = await plugin.app.vault.read(r.entry.file);
-        await plugin.app.vault.modify(
-          r.entry.file,
-          `${body.replace(/\s*$/, "")}\n\n${summaryBlock(r.summary).join("\n")}\n`
-        );
+        const block = summaryBlock(r.summary);
+        await plugin.app.vault.process(r.entry.file, (c) => replaceSummaryBlock(c, block));
         summarized++;
       }
     }

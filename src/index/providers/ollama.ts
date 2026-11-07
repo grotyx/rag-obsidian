@@ -1,4 +1,4 @@
-import { requestUrl } from "obsidian";
+import { requestWithRetry } from "../../llm/client";
 import { ScholarRagSettings, effective } from "../../types";
 import { EmbeddingProvider } from "../embedding";
 import { rec, arr, isNumberArray } from "../../util/json";
@@ -17,7 +17,7 @@ export class OllamaProvider implements EmbeddingProvider {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    const res = await requestUrl({
+    const res = await requestWithRetry({
       url: `${this.url}/api/embed`,
       method: "POST",
       headers: { "Content-Type": "application/json" },

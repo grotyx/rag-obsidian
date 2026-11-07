@@ -16,6 +16,13 @@ const SNIPPET = 400;
  *  on retrieval order. Measured: ~8s for 40 passages with thinking off, ~50s with it on. */
 const RERANK_TIMEOUT_MS = 30_000;
 
+/** The hosted reranker posts passages to OpenRouter (the only host with `/rerank`). Allow it only when
+ *  the user already sends embeddings or chat to an OpenAI-compatible endpoint: a user who moved both
+ *  to Ollama expects no text to leave the machine, whatever base URL is left in the settings. */
+export function canHostedRerank(s: Pick<ScholarRagSettings, "openaiBaseUrl" | "embeddingProvider" | "llmProvider">): boolean {
+  return s.openaiBaseUrl.includes("openrouter.ai") && (s.embeddingProvider === "openai" || s.llmProvider === "openai");
+}
+
 /**
  * Keep at most `maxPerRef` chunks per reference, then top the list back up to `k` from what was
  * skipped (best score first). Diversity where the library offers it, recall where it doesn't:

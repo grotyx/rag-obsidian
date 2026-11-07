@@ -125,7 +125,7 @@ async function fetchCrossref(doi: string): Promise<CSLItem> {
 
   const item: CSLItem = {
     type: (typeof m.type === "string" ? CROSSREF_TYPE[m.type] : undefined) || "article-journal",
-    title: str(Array.isArray(titleRaw) ? titleRaw[0] : titleRaw),
+    title: stripTags(str(Array.isArray(titleRaw) ? titleRaw[0] : titleRaw)), // <i> markup, newlines
     author: arr(m.author).map((a) => {
       const ar = rec(a);
       return { family: optStr(ar.family), given: optStr(ar.given), literal: optStr(ar.name) };
@@ -240,8 +240,10 @@ async function fetchPubMed(pmid: string, apiKey: string): Promise<CSLItem> {
 
 /** Pull the abstract out of a PubMed efetch XML response: concatenate all
  * <AbstractText> sections, prefixing "LABEL: " when a Label attribute exists. */
-function extractAbstractXml(xml: string): string {
+export function extractAbstractXml(xml: string): string {
   const parts: string[] = [];
+  // a translated <OtherAbstract> has its own <AbstractText>s — not part of the abstract
+  xml = xml.replace(/<OtherAbstract\b[\s\S]*?<\/OtherAbstract>/gi, "");
   const re = /<AbstractText([^>]*)>([\s\S]*?)<\/AbstractText>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(xml))) {

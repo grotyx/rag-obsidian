@@ -1,4 +1,4 @@
-import { requestUrl } from "obsidian";
+import { requestWithRetry } from "../../llm/client";
 import { ScholarRagSettings, effective } from "../../types";
 import { EmbeddingProvider } from "../embedding";
 import { rec, arr, num, isNumberArray } from "../../util/json";
@@ -20,7 +20,7 @@ export class OpenAIProvider implements EmbeddingProvider {
 
   async embed(texts: string[]): Promise<number[][]> {
     if (!this.key) throw new Error("API key not set — Settings → Refwright → API key (OpenRouter or OpenAI)");
-    const res = await requestUrl({
+    const res = await requestWithRetry({
       url: `${this.base}/embeddings`,
       method: "POST",
       headers: {
