@@ -58,6 +58,7 @@ Un guide pas à pas avec captures d'écran, de l'ajout des articles à l'export 
   Conclusions). Le réglage *Summary language* (Settings → Chat) permet de choisir l'anglais, le coréen,
   les deux (par défaut : l'anglais plus un résumé coréen concis), ou toute autre langue désignée par son nom.
 - Utilise le **texte intégral** pour les articles en accès libre (PubMed Central), le résumé (abstract) sinon.
+- **Re-summarize references made by an older model** demande de quel modèle refaire les résumés (avec le nombre par modèle) ; les résumés faits à partir du texte intégral d'un PDF ne sont jamais modifiés.
 
 **🏷️ Organiser**
 - Étiquette automatiquement chaque note avec des **termes thématiques MeSH** → la **vue graphe** d'Obsidian
@@ -104,6 +105,7 @@ Un guide pas à pas avec captures d'écran, de l'ajout des articles à l'export 
   existe une version publiée) et les métadonnées incomplètes ; enfin les articles jamais vérifiés pour
   rétractation ou sans résumé ni texte intégral dans la note.
 - **Compile manuscript** → une copie propre avec les citations résolues → export vers **`.docx`**.
+  Les préfixes de citation et les localisateurs de page (`[see @a, p. 23]`) sont conservés, dans la copie compilée comme dans le fichier Word.
 
 **🔎 Rechercher et dialoguer**
 - **Recherche sémantique** hybride (BM25 + vecteurs) et **chat fondé sur les citations** qui ne répond

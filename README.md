@@ -58,6 +58,7 @@ A step-by-step guide with screenshots, from adding papers to exporting a Word ma
   Conclusions) into each note. *Summary language* (Settings → Chat) picks English, Korean,
   both (default, English + a concise Korean summary), or any other language by name.
 - Uses the **full text** for open-access papers (PubMed Central), the abstract otherwise.
+- **Re-summarize references made by an older model** asks which model's summaries to redo (with a count per model); summaries made from a PDF's full text are never touched.
 
 **🏷️ Organize**
 - Auto-tags every note with **MeSH topic terms** → Obsidian's **graph view** clusters your
@@ -100,6 +101,7 @@ A step-by-step guide with screenshots, from adding papers to exporting a Word ma
   for a published version) and incomplete metadata; then papers never checked for retraction or
   with no summary or full text in the note.
 - **Compile manuscript** → a clean copy with citations resolved → export to **`.docx`**.
+  Citation prefixes and page locators are kept (`[see @a, p. 23]`), in the copy and in the Word file.
 
 **🔎 Search & chat**
 - Hybrid **semantic search** (BM25 + vector) and **citation-grounded chat** that answers

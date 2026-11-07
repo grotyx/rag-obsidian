@@ -178,7 +178,10 @@ données de citation depuis OpenAlex (environ 40 secondes pour 56 articles).
    bibliothèque ; les cercles en pointillés sont des articles que vous ne possédez pas encore. Cliquez sur un cercle en pointillés pour l'ajouter.
 2. **Listes** : articles cités par celui-ci, articles qui le citent, articles qui partagent de nombreuses
    références avec lui, et articles que votre bibliothèque cite souvent mais ne contient pas.
-3. **Articles plus récents qui citent celui-ci (OpenAlex)** : cliquez sur **Find newest citing papers** pour lister
+
+![Volet Articles associés avec les articles les plus récents qui citent celui-ci](img/en/16-citing-papers.png)
+
+1. **Articles plus récents qui citent celui-ci (OpenAlex)** : cliquez sur **Find newest citing papers** pour lister
    les articles les plus récents, où qu'ils soient, qui citent l'article ouvert, avec l'année et la revue. Les
    articles rétractés et les avis de correction sont signalés, et ceux déjà présents dans votre bibliothèque sont
    marqués. Cliquez sur un article pour l'ouvrir, ou pour l'ajouter si vous ne l'avez pas. Utilisez-le avant la
@@ -210,12 +213,24 @@ Toutes les commandes se trouvent dans la palette de commandes (<kbd>Cmd/Ctrl</kb
    **Draft (compiled)**. Les citations sont mises en forme et la liste de références est jointe,
    prête pour la soumission. Pour obtenir un fichier Word, lancez **Export manuscript to Word (.docx)**.
 
+![Rapport de vérification des références, regroupé par gravité](img/en/20-refcheck.png)
+
+1. Le rapport s'ouvre dans une nouvelle note, **nom du manuscrit (reference check)**, à côté du manuscrit. Les problèmes sont regroupés par gravité : d'abord **Retracted**, puis **Needs attention** (absent de la bibliothèque, sans DOI ni PMID, preprint, métadonnées manquantes), enfin **Low severity** (jamais vérifié pour rétractation, ou ni résumé ni texte intégral dans la note). Corrigez les deux premiers groupes avant la soumission.
+
+> **Préfixes et localisateurs de page.** **Compile manuscript** et l'export Word conservent le préfixe et le localisateur de page d'une citation : `[see @lv2024efficacy, p. 23]` est compilé avec « see » et le numéro de page intacts.
+
+> **Anciens résumés.** **Re-summarize references made by an older model** demande, avant de commencer, de quel modèle refaire les résumés (avec le nombre par modèle). Les résumés faits à partir du texte intégral d'un PDF ne sont jamais modifiés.
+
 ## 11. Revues systématiques (facultatif)
 
 Ces outils servent aux revues systématiques et aux méta-analyses. Activez-les dans
 **Settings → Systematic review → Systematic review tools**. Une bibliothèque qui contient déjà des décisions de
 screening les garde activés ; une nouvelle bibliothèque les démarre désactivés. Les désactiver ne fait que masquer
 les commandes ; tout ce qui est déjà enregistré dans vos notes est conservé.
+
+![Réglages, groupe Systematic review, avec l'interrupteur Systematic review tools](img/en/17-settings-review.png)
+
+1. Activez **Systematic review tools**. Les commandes ci-dessous apparaissent alors dans la palette de commandes.
 
 | Commande ou emplacement | Fonction |
 |---|---|
@@ -227,9 +242,23 @@ les commandes ; tout ce qui est déjà enregistré dans vos notes est conservé.
 | Risk-of-bias summary table | Un tableau par outil d'évaluation (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), les effectifs par jugement, et les enregistrements inclus pas encore évalués |
 | Export evidence table (CSV) | Enregistre chaque résultat extrait (la section *Evidence (extracted)* de la note) d'un périmètre dans un seul CSV sous `Exports/`, avec des colonnes de référence et de screening, pour R ou RevMan. Les valeurs sont copiées telles qu'écrites ; le texte coréen s'ouvre correctement dans Excel |
 
+Lancez **Open screening pane** pour faire le screening de la bibliothèque notice par notice.
+
+![Volet de screening avec les boutons de décision, la ligne Risk of bias et le champ Study](img/en/18-screening.png)
+
+1. La décision : **Include (i)**, **Exclude (e)** ou **Maybe / pending (m)** ; les lettres sont des raccourcis clavier. Include exige au moins une question clé.
+2. **Risk of bias** : l'outil d'évaluation, le jugement global et une courte note. **Risk-of-bias summary table** les rassemble.
+3. **Study** : donnez le même identifiant à tous les rapports d'une même étude. Le volet liste alors les autres rapports de cette étude, et le diagramme PRISMA compte séparément rapports et études.
+
+Lancez **Snowball from included records…**, choisissez toutes les notices incluses ou une question clé, et le résultat s'ouvre dans une note.
+
+![Note de candidats du snowballing avec un tableau classé](img/en/19-snowball.png)
+
+1. Le tableau classe les candidats selon **Links**, le nombre de notices incluses qui les citent ou qu'ils citent. **Linked included records** les nomme. Les articles déjà dans votre bibliothèque sont écartés ; la note contient jusqu'à 200 candidats.
+
 Les candidats du snowballing sont à examiner, non à citer directement : ajoutez un article et lisez-le d'abord.
 
 ---
 
-<sub>Captures d'écran : plugin v0.10.1 sur un vault de test de 56 articles. Les réponses du chat sont la sortie brute
+<sub>Captures d'écran : plugin v0.11.3 sur un vault de test de 56 articles. Les réponses du chat sont la sortie brute
 du modèle, sans retouche. Les mainteneurs régénèrent les captures avec `python scripts/manual/capture.py en`.</sub>

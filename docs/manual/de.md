@@ -194,7 +194,10 @@ graph**, um die Zitationsdaten von OpenAlex abzurufen (bei 56 Artikeln etwa 40 S
 2. **Listen**: Artikel, die dieser Artikel zitiert, Artikel, die ihn zitieren, Artikel mit
    vielen gemeinsamen Referenzen und Artikel, die Ihre Bibliothek häufig zitiert, aber nicht
    enthält.
-3. **Later papers citing this (OpenAlex)**: Klicken Sie auf **Find newest citing papers**, um die
+
+![Bereich „Verwandte Artikel“ mit den neuesten Artikeln, die diesen zitieren](img/en/16-citing-papers.png)
+
+1. **Later papers citing this (OpenAlex)**: Klicken Sie auf **Find newest citing papers**, um die
    neuesten Artikel überhaupt aufzulisten, die den geöffneten Artikel zitieren, mit Jahr und
    Zeitschrift. Zurückgezogene Artikel und Korrekturhinweise sind markiert, Artikel, die schon in Ihrer
    Bibliothek sind, ebenfalls. Ein Klick öffnet den Artikel oder fügt ihn hinzu, falls Sie ihn noch nicht
@@ -227,6 +230,14 @@ Alle Befehle finden Sie in der Befehlspalette (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>)
    **Draft (compiled)**. Die Zitate sind formatiert und das Literaturverzeichnis ist angehängt,
    bereit zur Einreichung. Für eine Word-Datei führen Sie **Export manuscript to Word (.docx)** aus.
 
+![Bericht zur Referenzprüfung, nach Schweregrad gruppiert](img/en/20-refcheck.png)
+
+1. Der Bericht öffnet sich als neue Notiz **Manuskriptname (reference check)** neben dem Manuskript. Die Probleme sind nach Schweregrad gruppiert: zuerst **Retracted**, dann **Needs attention** (nicht in der Bibliothek, kein DOI oder PMID, Preprint, fehlende Metadaten), zuletzt **Low severity** (nie auf Retraction geprüft oder weder Zusammenfassung noch Volltext in der Notiz). Beheben Sie die ersten beiden Gruppen vor der Einreichung.
+
+> **Präfixe und Seitenangaben.** **Compile manuscript** und der Word-Export behalten Präfix und Seitenangabe eines Zitats bei, sodass `[see @lv2024efficacy, p. 23]` mit „see“ und Seitenzahl kompiliert wird.
+
+> **Ältere Zusammenfassungen.** **Re-summarize references made by an older model** fragt vor dem Start, von welchem Modell die zu erneuernden Zusammenfassungen stammen (mit Anzahl je Modell). Aus dem PDF-Volltext erstellte Zusammenfassungen bleiben unberührt.
+
 ## 11. Systematische Reviews (optional)
 
 Diese Werkzeuge sind für systematische Reviews und Meta-Analysen gedacht. Schalten Sie sie unter
@@ -234,6 +245,10 @@ Diese Werkzeuge sind für systematische Reviews und Meta-Analysen gedacht. Schal
 Screening-Entscheidungen enthält, behält sie eingeschaltet; eine neue Bibliothek startet mit ausgeschalteten
 Werkzeugen. Das Ausschalten blendet nur die Befehle aus; alles, was bereits in Ihren Notizen gespeichert
 ist, bleibt erhalten.
+
+![Einstellungen, Gruppe Systematic review, mit dem Schalter Systematic review tools](img/en/17-settings-review.png)
+
+1. Schalten Sie **Systematic review tools** ein. Die folgenden Befehle erscheinen dann in der Befehlspalette.
 
 | Befehl oder Ort | Funktion |
 |---|---|
@@ -245,9 +260,23 @@ ist, bleibt erhalten.
 | Risk-of-bias summary table | Eine Tabelle pro Bewertungstool (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), Anzahl je Urteil und die eingeschlossenen Datensätze, die noch nicht bewertet sind |
 | Export evidence table (CSV) | Speichert jeden extrahierten Befund (den Abschnitt *Evidence (extracted)* der Notiz) eines Umfangs als eine CSV-Datei in `Exports/`, mit Referenz- und Screening-Spalten, für R oder RevMan. Werte werden unverändert übernommen; koreanischer Text öffnet sich in Excel korrekt |
 
+Mit **Open screening pane** screenen Sie die Bibliothek Datensatz für Datensatz.
+
+![Screening-Bereich mit den Entscheidungsknöpfen, der Zeile Risk of bias und dem Feld Study](img/en/18-screening.png)
+
+1. Die Entscheidung: **Include (i)**, **Exclude (e)** oder **Maybe / pending (m)**; die Buchstaben sind Tastenkürzel. Include braucht mindestens eine Schlüsselfrage.
+2. **Risk of bias**: das Bewertungsinstrument, das Gesamturteil und eine kurze Notiz. **Risk-of-bias summary table** fasst sie zusammen.
+3. **Study**: Geben Sie allen Berichten einer Studie dieselbe ID. Der Bereich listet dann die übrigen Berichte dieser Studie, und das PRISMA-Diagramm zählt Berichte und Studien getrennt.
+
+Führen Sie **Snowball from included records…** aus, wählen Sie alle eingeschlossenen Datensätze oder eine Schlüsselfrage, und das Ergebnis öffnet sich als Notiz.
+
+![Snowball-Kandidatennotiz mit einer gerankten Tabelle](img/en/19-snowball.png)
+
+1. Die Tabelle ordnet die Kandidaten nach **Links**, der Zahl der eingeschlossenen Datensätze, die sie zitieren oder von ihnen zitiert werden. **Linked included records** nennt diese. Artikel, die schon in Ihrer Bibliothek sind, entfallen; die Notiz enthält bis zu 200 Kandidaten.
+
 Snowball-Kandidaten sind zum Screenen gedacht, nicht zum direkten Zitieren: Fügen Sie einen Artikel hinzu und lesen Sie ihn zuerst.
 
 ---
 
-<sub>Screenshots: Plugin v0.10.1 in einem Test-Vault mit 56 Artikeln. Die Chat-Antworten sind unbearbeitete
+<sub>Screenshots: Plugin v0.11.3 in einem Test-Vault mit 56 Artikeln. Die Chat-Antworten sind unbearbeitete
 Modellausgaben. Maintainer erzeugen die Screenshots mit `python scripts/manual/capture.py en` neu.</sub>

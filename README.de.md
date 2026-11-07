@@ -59,6 +59,7 @@ Eine Schritt-für-Schritt-Anleitung mit Screenshots, vom Hinzufügen der Artikel
   beides (Standard: Englisch + eine knappe koreanische Zusammenfassung) oder eine beliebige andere Sprache
   über ihren Namen.
 - Nutzt bei Open-Access-Artikeln den **Volltext** (PubMed Central), sonst das Abstract.
+- **Re-summarize references made by an older model** fragt, von welchem Modell die zu erneuernden Zusammenfassungen stammen (mit Anzahl je Modell); aus dem PDF-Volltext erstellte Zusammenfassungen bleiben unberührt.
 
 **🏷️ Ordnen**
 - Versieht jede Notiz automatisch mit **MeSH-Themenbegriffen** → die **Graphansicht** von Obsidian gruppiert Ihre
@@ -102,6 +103,7 @@ Eine Schritt-für-Schritt-Anleitung mit Screenshots, vom Hinzufügen der Artikel
   Preprints (auf eine veröffentlichte Version prüfen) und unvollständige Metadaten; dann Artikel, die nie
   auf Retraction geprüft wurden oder in deren Notiz Zusammenfassung bzw. Volltext fehlt.
 - **Compile manuscript** → eine saubere Kopie mit aufgelösten Zitaten → Export nach **`.docx`**.
+  Zitatpräfixe und Seitenangaben (`[see @a, p. 23]`) bleiben erhalten, sowohl in der kompilierten Kopie als auch in der Word-Datei.
 
 **🔎 Suchen & Chatten**
 - Hybride **semantische Suche** (BM25 + Vektor) und **belegbasierter Chat**, der

@@ -144,7 +144,10 @@ Muestra cómo se citan entre sí tus artículos. Haz clic una vez en **Build cit
 
 1. **Mapa de citas**: el punto morado es el artículo abierto. Los círculos sólidos son artículos de tu biblioteca; los círculos discontinuos son artículos que aún no tienes. Haz clic en un círculo discontinuo para añadirlo.
 2. **Listas**: artículos que este cita, artículos que lo citan, artículos que comparten muchas referencias con él, y artículos que tu biblioteca cita a menudo pero que no contiene.
-3. **Artículos posteriores que citan este (OpenAlex)**: haz clic en **Find newest citing papers** para listar los
+
+![Panel de artículos relacionados con los artículos más recientes que citan este](img/es/16-citing-papers.png)
+
+1. **Artículos posteriores que citan este (OpenAlex)**: haz clic en **Find newest citing papers** para listar los
    artículos más recientes, de cualquier procedencia, que citan el artículo abierto, con año y revista. Los artículos retractados y
    los avisos de corrección aparecen señalados, y los que ya están en tu biblioteca se marcan. Haz clic en un artículo
    para abrirlo, o para añadirlo si no lo tienes. Úsalo antes del envío, para no perder trabajos nuevos que
@@ -172,12 +175,24 @@ Todos los comandos están en la paleta de comandos (<kbd>Cmd/Ctrl</kbd>+<kbd>P</
 
 1. **Compile manuscript** deja el original intacto y abre una nota nueva, **Draft (compiled)**. Las citas quedan formateadas y la lista de referencias adjunta, lista para enviarla. Para un archivo Word, ejecuta **Export manuscript to Word (.docx)**.
 
+![Informe de comprobación de referencias agrupado por gravedad](img/es/20-refcheck.png)
+
+1. El informe se abre como una nota nueva, **nombre del manuscrito (reference check)**, junto al manuscrito. Los problemas se agrupan por gravedad: primero **Retracted**, luego **Needs attention** (no está en la biblioteca, sin DOI ni PMID, preprint, metadatos que faltan) y por último **Low severity** (nunca se comprobó si fue retractado, o la nota no tiene resumen ni texto completo). Resuelve los dos primeros grupos antes de enviar.
+
+> **Prefijos y localizadores de página.** **Compile manuscript** y la exportación a Word conservan el prefijo y el localizador de página de una cita, de modo que `[see @lv2024efficacy, p. 23]` se compila con «see» y el número de página intactos.
+
+> **Resúmenes antiguos.** **Re-summarize references made by an older model** pregunta, antes de empezar, de qué modelo rehacer los resúmenes (con el recuento por modelo). Los resúmenes hechos con el texto completo de un PDF no se tocan.
+
 ## 11. Revisiones sistemáticas (opcional)
 
 Estas herramientas son para revisiones sistemáticas y metanálisis. Actívalas en
 **Settings → Systematic review → Systematic review tools**. Una biblioteca que ya tiene decisiones de cribado
 las mantiene activadas; una biblioteca nueva empieza con ellas desactivadas. Desactivarlas solo oculta los
 comandos; todo lo que ya esté guardado en tus notas permanece.
+
+![Ajustes, grupo Systematic review, con el interruptor Systematic review tools](img/es/17-settings-review.png)
+
+1. Activa **Systematic review tools**. Los comandos de abajo aparecen entonces en la paleta de comandos.
 
 | Comando o lugar | Qué hace |
 |---|---|
@@ -189,8 +204,22 @@ comandos; todo lo que ya esté guardado en tus notas permanece.
 | Risk-of-bias summary table | Una tabla por herramienta de evaluación (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), recuentos por juicio y los registros incluidos que aún no se han evaluado |
 | Export evidence table (CSV) | Guarda todos los hallazgos extraídos (la sección *Evidence (extracted)* de la nota) de un ámbito en un único CSV en `Exports/`, con columnas de referencia y de cribado, para R o RevMan. Los valores se copian tal como están escritos; el texto coreano se abre correctamente en Excel |
 
+Ejecuta **Open screening pane** para cribar la biblioteca registro a registro.
+
+![Panel de cribado con los botones de decisión, la fila Risk of bias y el campo Study](img/es/18-screening.png)
+
+1. Los botones de decisión: **Include (i)**, **Exclude (e)** o **Maybe / pending (m)**; las letras son atajos de teclado. Include necesita al menos una pregunta clave.
+2. **Risk of bias**: la herramienta de evaluación, el juicio global y una nota breve. **Risk-of-bias summary table** los reúne.
+3. **Study**: da el mismo id a todos los informes de un estudio. El panel muestra entonces los demás informes de ese estudio y el diagrama PRISMA cuenta por separado informes y estudios.
+
+Ejecuta **Snowball from included records…**, elige todos los registros incluidos o una pregunta clave, y el resultado se abre como una nota.
+
+![Nota de candidatos de snowballing con una tabla ordenada](img/es/19-snowball.png)
+
+1. La tabla ordena los candidatos por **Links**, el número de registros incluidos que los citan o a los que citan. **Linked included records** los nombra. Los artículos que ya están en tu biblioteca se omiten; la nota contiene hasta 200 candidatos.
+
 Los candidatos de snowballing son para cribar, no para citar directamente: añade un artículo y léelo primero.
 
 ---
 
-<sub>Capturas de pantalla: complemento v0.10.1 en una biblioteca de prueba de 56 artículos. Las respuestas del chat son la salida del modelo sin editar. Los mantenedores regeneran las capturas con `python scripts/manual/capture.py es`.</sub>
+<sub>Capturas de pantalla: complemento v0.11.3 en una biblioteca de prueba de 56 artículos. Las respuestas del chat son la salida del modelo sin editar. Los mantenedores regeneran las capturas con `python scripts/manual/capture.py es`.</sub>

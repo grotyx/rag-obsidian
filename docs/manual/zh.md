@@ -144,7 +144,10 @@
 
 1. **引用地图**：紫色圆点是当前打开的论文。实线圆圈是你库中已有的论文，虚线圆圈是尚未收录的论文。点击虚线圆圈即可添加。
 2. **列表**：依次是该论文引用的论文、引用该论文的论文、与该论文共享大量参考文献的论文，以及你的库中经常被引用但尚未收录的论文。
-3. **引用本文的新论文（OpenAlex）**：点击 **Find newest citing papers**，列出全球范围内引用当前论文的最新论文，并显示年份和期刊。已撤稿的论文和更正声明会被标出，已在你库中的论文也会标记。点击论文可打开它；若尚未收录，则可添加。投稿前用一下，以免漏掉更新或反驳关键参考文献的新研究。只显示 OpenAlex 已收录的引用，非常新的论文可能缺失。各行也可用 <kbd>Tab</kbd> 选中，按 <kbd>Enter</kbd> 打开。
+
+![列出引用本文的最新论文的相关论文窗格](img/zh/16-citing-papers.png)
+
+1. **引用本文的新论文（OpenAlex）**：点击 **Find newest citing papers**，列出全球范围内引用当前论文的最新论文，并显示年份和期刊。已撤稿的论文和更正声明会被标出，已在你库中的论文也会标记。点击论文可打开它；若尚未收录，则可添加。投稿前用一下，以免漏掉更新或反驳关键参考文献的新研究。只显示 OpenAlex 已收录的引用，非常新的论文可能缺失。各行也可用 <kbd>Tab</kbd> 选中，按 <kbd>Enter</kbd> 打开。
 
 ## 10. 完成原稿并导出为 Word
 
@@ -167,9 +170,21 @@
 
 1. **Compile manuscript** 会保留原文不变，另外打开一个新的 **Draft (compiled)** 笔记。引用已格式化，参考文献列表已附上，可直接用于投稿。如需 Word 文件，运行 **Export manuscript to Word (.docx)**。
 
+![按严重程度分组的参考文献检查报告](img/zh/20-refcheck.png)
+
+1. 报告会在原稿旁以新笔记 **原稿名 (reference check)** 打开。问题按严重程度分组：先是 **Retracted**，然后是 **Needs attention**（不在文献库中、没有 DOI 或 PMID、预印本、元数据缺失），最后是 **Low severity**（从未检查过是否撤稿，或笔记中没有摘要和全文）。投稿前请先处理前两组。
+
+> **前缀与页码定位。** **Compile manuscript** 和 Word 导出会保留引用的前缀和页码定位，例如 `[see @lv2024efficacy, p. 23]` 编译后仍带有“see”和页码。
+
+> **旧版摘要。** **Re-summarize references made by an older model** 在开始前会先询问要重做哪个模型写的摘要（并显示各模型的数量）。基于 PDF 全文生成的摘要不会被改动。
+
 ## 11. 系统综述（可选）
 
 这些工具用于系统综述和荟萃分析。在 **Settings → Systematic review → Systematic review tools** 中开启。已有筛选记录的文献库会保持开启；新文献库默认关闭。关闭只会隐藏命令，笔记中已保存的内容不会丢失。
+
+![设置中 Systematic review 分组里的 Systematic review tools 开关](img/zh/17-settings-review.png)
+
+1. 打开 **Systematic review tools**。下面的命令随即出现在命令面板中。
 
 | 命令或位置 | 作用 |
 |---|---|
@@ -181,8 +196,22 @@
 | Risk-of-bias summary table | 每种评估工具（RoB 2、ROBINS-I、QUADAS-2、NOS、AMSTAR 2）一张表，按判断统计数量，并列出尚未评估的纳入记录 |
 | Export evidence table (CSV) | 把范围内所有已提取的发现（笔记的 *Evidence (extracted)* 部分）保存为 `Exports/` 下的一个 CSV，含参考文献和筛选列，可用于 R 或 RevMan。数值按原文复制；韩文在 Excel 中可正常打开 |
 
+运行 **Open screening pane**，即可逐条筛选文献库。
+
+![带有决定按钮、Risk of bias 行和 Study 字段的筛选窗格](img/zh/18-screening.png)
+
+1. 决定按钮：**Include (i)**、**Exclude (e)**、**Maybe / pending (m)**，括号内的字母是键盘快捷键。Include 至少需要一个关键问题。
+2. **Risk of bias** 行：评估工具、总体判断和简短备注。**Risk-of-bias summary table** 会把它们汇总。
+3. **Study**：给同一项研究的所有报告填写相同的 id。窗格随后会列出该研究的其他报告，PRISMA 图也会分别统计报告数和研究数。
+
+运行 **Snowball from included records…**，选择全部纳入的记录或某一个关键问题，结果会作为笔记打开。
+
+![带有排序表格的 Snowball 候选笔记](img/zh/19-snowball.png)
+
+1. 表格按 **Links** 给候选排序，Links 是引用该论文或被该论文引用的纳入记录数。**Linked included records** 列出这些记录。文献库中已有的论文不会出现，笔记最多包含 200 篇候选。
+
 Snowball 候选用于筛选，不能直接引用：先添加该论文并阅读后再引用。
 
 ---
 
-<sub>截图：插件 v0.10.1，测试库共 56 篇论文。聊天回答为模型原始输出，未经编辑。维护者用 `python scripts/manual/capture.py zh` 重新生成截图。</sub>
+<sub>截图：插件 v0.11.3，测试库共 56 篇论文。聊天回答为模型原始输出，未经编辑。维护者用 `python scripts/manual/capture.py zh` 重新生成截图。</sub>

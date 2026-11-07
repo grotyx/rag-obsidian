@@ -58,6 +58,7 @@
   *Summary language*(설정 → Chat)에서 영어, 한글, 둘 다(기본값 — 영어 섹션 + 간결한 한글 요약),
   또는 원하는 다른 언어를 이름으로 지정 가능.
 - open access 논문은 **본문 전체**(PubMed Central), 그 외는 abstract 기반.
+- **Re-summarize references made by an older model**은 어느 모델이 쓴 요약을 다시 만들지 물어봄(모델별 개수 표시). PDF 본문 기반 요약은 건드리지 않음.
 
 **🏷️ 정리**
 - 모든 노트에 **MeSH 주제 태그** 자동 부여 → Obsidian **그래프 뷰**에서 주제별로 묶임.
@@ -98,6 +99,7 @@
   그다음 라이브러리에 없음 · DOI 또는 PMID 없음 · preprint(출판본 확인) · 서지 정보 누락,
   마지막으로 철회 확인을 한 번도 안 했거나 노트에 요약·본문이 없는 논문.
 - **Compile manuscript** → 인용이 풀린 사본 → **`.docx`** 변환.
+  인용 앞 문구와 page locator(`[see @a, p. 23]`)를 컴파일 사본과 Word 파일 모두에 그대로 유지.
 
 **🔎 검색·챗**
 - 하이브리드 **의미 검색**(BM25 + 벡터) + 라이브러리 근거 기반 **챗** (`[n]` 출처).

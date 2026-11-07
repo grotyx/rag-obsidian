@@ -178,7 +178,10 @@ citation data from OpenAlex (about 40 seconds for 56 papers).
    library; dashed circles are papers you do not have yet. Click a dashed circle to add it.
 2. **Lists**: papers this one cites, papers that cite it, papers that share many
    references with it, and papers your library cites often but does not contain.
-3. **Later papers citing this (OpenAlex)**: click **Find newest citing papers** to list the
+
+![Related papers pane listing the newest papers that cite this one](img/en/16-citing-papers.png)
+
+1. **Later papers citing this (OpenAlex)**: click **Find newest citing papers** to list the
    newest papers anywhere that cite the open paper, with year and journal. Retracted papers and
    correction notices are flagged, and papers already in your library are marked. Click a paper
    to open it, or to add it if you don't have it. Use this before submitting, so newer work that
@@ -210,12 +213,24 @@ Every command is in the command palette (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>). Type
    **Draft (compiled)** note. Citations are formatted and the reference list is attached,
    ready for submission. For a Word file, run **Export manuscript to Word (.docx)**.
 
+![Reference check report grouped by severity](img/en/20-refcheck.png)
+
+1. The report opens as a new note, **manuscript name (reference check)**, next to the manuscript. Problems are grouped by severity: **Retracted** first, then **Needs attention** (not in the library, no DOI or PMID, preprint, missing metadata), then **Low severity** (never checked for retraction, or no summary or full text in the note). Fix the first two groups before submitting.
+
+> **Prefixes and page locators.** **Compile manuscript** and the Word export keep a citation's prefix and page locator, so `[see @lv2024efficacy, p. 23]` compiles with "see" and the page number intact.
+
+> **Older summaries.** **Re-summarize references made by an older model** asks which model's summaries to redo (with a count per model) before it starts. Summaries made from a PDF's full text are never touched.
+
 ## 11. Systematic reviews (optional)
 
 These tools are for systematic reviews and meta-analyses. Turn them on in
 **Settings → Systematic review → Systematic review tools**. A library that already has screening
 decisions keeps them on; a new library starts with them off. Turning them off only hides the
 commands; anything already saved in your notes stays.
+
+![Settings, Systematic review group, with the Systematic review tools toggle](img/en/17-settings-review.png)
+
+1. Switch on **Systematic review tools**. The commands below then appear in the command palette.
 
 | Command or place | What it does |
 |---|---|
@@ -227,9 +242,23 @@ commands; anything already saved in your notes stays.
 | Risk-of-bias summary table | One table per assessment tool (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), counts per judgement, and the included records not yet assessed |
 | Export evidence table (CSV) | Saves every extracted finding (the note's *Evidence (extracted)* section) in a scope as one CSV in `Exports/`, with reference and screening columns, for R or RevMan. Values are copied as written; Korean text opens correctly in Excel |
 
+Run **Open screening pane** to screen the library one record at a time.
+
+![Screening pane with the decision buttons, the Risk of bias row and the Study field](img/en/18-screening.png)
+
+1. The decision: **Include (i)**, **Exclude (e)** or **Maybe / pending (m)**; the letters are keyboard shortcuts. Include needs at least one key question.
+2. **Risk of bias**: the assessment tool, the overall judgement and a short note. **Risk-of-bias summary table** collects them.
+3. **Study**: give every report of one study the same id. The pane then lists that study's other reports, and the PRISMA diagram counts reports and studies separately.
+
+Run **Snowball from included records…**, choose all included records or one key question, and the result opens as a note.
+
+![Snowball candidates note with a ranked table](img/en/19-snowball.png)
+
+1. The table ranks candidates by **Links**, the number of included records that cite them or that they cite. **Linked included records** names them. Papers already in your library are left out; the note holds up to 200 candidates.
+
 Snowball candidates are for screening, not for citing directly: add a paper and read it first.
 
 ---
 
-<sub>Screenshots: plugin v0.10.1 on a test vault of 56 papers. Chat answers are unedited model
+<sub>Screenshots: plugin v0.11.3 on a test vault of 56 papers. Chat answers are unedited model
 output. Maintainers regenerate the screenshots with `python scripts/manual/capture.py en`.</sub>

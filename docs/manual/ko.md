@@ -173,7 +173,10 @@ OpenAlex에서 인용 정보를 가져옵니다(56편에 약 40초).
    점선 원은 아직 없는 논문입니다. 점선 원을 누르면 바로 추가합니다.
 2. **목록**: 이 논문이 인용한 논문, 이 논문을 인용한 논문, 참고문헌을 많이 공유하는 논문,
    내 라이브러리가 자주 인용하지만 빠진 논문 순서로 나옵니다.
-3. **이 논문을 인용한 최신 논문(OpenAlex)**: **Find newest citing papers**를 누르면 지금 연
+
+![이 논문을 인용한 최신 논문이 나열된 관련 논문 창](img/ko/16-citing-papers.png)
+
+1. **이 논문을 인용한 최신 논문(OpenAlex)**: **Find newest citing papers**를 누르면 지금 연
    논문을 인용한 최신 논문을 전 세계에서 찾아 연도·저널과 함께 나열합니다. 철회 논문과
    정정 공지는 표시되고, 이미 내 라이브러리에 있는 논문에는 표식이 붙습니다. 논문을 누르면
    열리고, 없는 논문이면 추가합니다. 투고 전에 써 보세요. 핵심 참고문헌을 갱신하거나
@@ -203,11 +206,23 @@ OpenAlex에서 인용 정보를 가져옵니다(56편에 약 40초).
    인용이 저널 형식으로 바뀌고 참고문헌이 붙어 있어 그대로 투고 원고로 씁니다. Word
    파일이 필요하면 **Export manuscript to Word (.docx)**를 실행합니다.
 
+![심각도별로 묶인 참고문헌 점검 결과](img/ko/20-refcheck.png)
+
+1. 점검 결과는 원고 옆에 **원고 이름 (reference check)** 노트로 새로 열립니다. 문제는 심각도별로 묶여 나옵니다. **Retracted**가 맨 위, 그다음 **Needs attention**(라이브러리에 없음, DOI/PMID 없음, preprint, 서지 정보 누락), 마지막으로 **Low severity**(철회 확인을 한 번도 안 함, 노트에 요약·본문이 없음)입니다. 투고 전에 앞의 두 묶음은 해결하세요.
+
+> **접두어와 page locator.** **Compile manuscript**와 Word 내보내기는 인용의 접두어와 page locator를 그대로 유지합니다. 예를 들어 `[see @lv2024efficacy, p. 23]`은 "see"와 쪽 번호가 살아 있는 채로 컴파일됩니다.
+
+> **예전 요약.** **Re-summarize references made by an older model**은 시작하기 전에 어느 모델이 쓴 요약을 다시 만들지 (모델별 개수와 함께) 묻습니다. PDF 본문으로 만든 요약은 건드리지 않습니다.
+
 ## 11. 체계적 문헌고찰 (선택)
 
 체계적 문헌고찰과 meta-analysis를 위한 도구입니다. **Settings → Systematic review → Systematic review tools**에서
 켭니다. 스크리닝 결정이 이미 있는 라이브러리는 켜진 채로 유지되고, 새 라이브러리는 꺼진 채로
 시작합니다. 끄면 명령만 숨겨지고, 노트에 이미 저장된 내용은 그대로 남습니다.
+
+![Systematic review 그룹의 Systematic review tools 토글이 있는 설정 화면](img/ko/17-settings-review.png)
+
+1. **Systematic review tools**를 켭니다. 그러면 아래 명령이 명령 팔레트에 나타납니다.
 
 | 명령 또는 위치 | 하는 일 |
 |---|---|
@@ -219,9 +234,23 @@ OpenAlex에서 인용 정보를 가져옵니다(56편에 약 40초).
 | Risk-of-bias summary table | 평가 도구(RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2)별 표 하나, 판정별 건수, 그리고 아직 평가하지 않은 포함 기록 |
 | Export evidence table (CSV) | 범위 안의 추출된 finding 전부(노트의 *Evidence (extracted)* 섹션)를 참고문헌·스크리닝 열과 함께 `Exports/`에 CSV 하나로 저장해 R 또는 RevMan에서 쓰게 합니다. 값은 쓰인 그대로 복사하며, 한글도 Excel에서 깨지지 않고 열립니다 |
 
+**Open screening pane**을 실행하면 기록을 한 건씩 스크리닝할 수 있습니다.
+
+![결정 버튼, Risk of bias 행, Study 입력란이 있는 스크리닝 창](img/ko/18-screening.png)
+
+1. 결정 버튼: **Include (i)**, **Exclude (e)**, **Maybe / pending (m)**. 괄호 안 글자는 단축키입니다. Include에는 핵심질문이 하나 이상 필요합니다.
+2. **Risk of bias** 행: 평가 도구, 전체 판정, 짧은 메모. **Risk-of-bias summary table** 명령이 이를 모아 줍니다.
+3. **Study**: 한 연구의 모든 보고서에 같은 id를 입력합니다. 그러면 창이 그 연구의 다른 보고서를 나열하고, PRISMA 흐름도는 보고서와 연구를 따로 셉니다.
+
+**Snowball from included records…**를 실행해 포함한 모든 기록 또는 핵심질문 하나를 고르면, 결과가 노트로 열립니다.
+
+![순위가 매겨진 표가 있는 Snowball 후보 노트](img/ko/19-snowball.png)
+
+1. 표는 **Links** 순으로 후보를 정렬합니다. Links는 그 논문을 인용했거나 그 논문이 인용한 포함 기록의 수입니다. **Linked included records**에 해당 기록이 나옵니다. 이미 라이브러리에 있는 논문은 빠지며, 노트에는 최대 200건까지 담깁니다.
+
 Snowball 후보는 스크리닝용이지 바로 인용할 논문이 아닙니다. 추가한 뒤 먼저 읽어 보세요.
 
 ---
 
-<sub>화면: 플러그인 v0.10.1, 논문 56편 테스트 볼트. 채팅 답변은 모델 출력 그대로입니다.
+<sub>화면: 플러그인 v0.11.3, 논문 56편 테스트 볼트. 채팅 답변은 모델 출력 그대로입니다.
 관리자는 `python scripts/manual/capture.py ko`로 화면을 다시 찍습니다.</sub>

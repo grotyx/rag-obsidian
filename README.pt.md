@@ -58,6 +58,7 @@ Um guia passo a passo com capturas de tela, desde a inclusão de artigos até a 
   Conclusions). *Summary language* (Settings → Chat) permite escolher inglês, coreano,
   ambos (padrão: inglês + um resumo conciso em coreano) ou qualquer outro idioma pelo nome.
 - Usa o **texto completo** dos artigos de acesso aberto (PubMed Central) e, nos demais casos, o resumo (abstract).
+- **Re-summarize references made by an older model** pergunta de qual modelo refazer os resumos (com a contagem por modelo); resumos feitos a partir do texto completo de um PDF nunca são alterados.
 
 **🏷️ Organizar**
 - Marca automaticamente cada nota com **termos de tópico MeSH** → a **visualização em grafo** do Obsidian agrupa
@@ -100,6 +101,7 @@ Um guia passo a passo com capturas de tela, desde a inclusão de artigos até a 
   versão publicada) e com metadados incompletos; por fim os artigos nunca verificados quanto a retratação ou
   sem resumo ou texto completo na nota.
 - **Compile manuscript** → uma cópia limpa com as citações resolvidas → exportação para **`.docx`**.
+  Os prefixos de citação e os localizadores de página (`[see @a, p. 23]`) são mantidos, tanto na cópia compilada quanto no arquivo Word.
 
 **🔎 Busca e chat**
 - **Busca semântica** híbrida (BM25 + vetor) e **chat fundamentado em citações** que responde

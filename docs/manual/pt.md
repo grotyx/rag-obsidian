@@ -178,7 +178,10 @@ dados de citação do OpenAlex (cerca de 40 segundos para 56 artigos).
    biblioteca; os círculos tracejados são artigos que você ainda não tem. Clique em um círculo tracejado para adicioná-lo.
 2. **Listas**: artigos que este cita, artigos que o citam, artigos que compartilham muitas
    referências com ele e artigos que a sua biblioteca cita com frequência, mas não contém.
-3. **Artigos mais recentes que citam este (OpenAlex)**: clique em **Find newest citing papers** para listar os
+
+![Painel de artigos relacionados com os artigos mais recentes que citam este](img/en/16-citing-papers.png)
+
+1. **Artigos mais recentes que citam este (OpenAlex)**: clique em **Find newest citing papers** para listar os
    artigos mais novos, de qualquer lugar, que citam o artigo aberto, com ano e periódico. Artigos retratados e
    avisos de correção são sinalizados, e os artigos que já estão na sua biblioteca são marcados. Clique em um artigo
    para abri-lo ou, se você não o tiver, para adicioná-lo. Use isso antes de submeter, para que um trabalho recente
@@ -210,12 +213,24 @@ Todos os comandos estão na paleta de comandos (<kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd>
    **Draft (compiled)**. As citações ficam formatadas e a lista de referências é anexada,
    pronta para a submissão. Para obter um arquivo Word, execute **Export manuscript to Word (.docx)**.
 
+![Relatório de verificação das referências, agrupado por gravidade](img/en/20-refcheck.png)
+
+1. O relatório abre como uma nova nota, **nome do manuscrito (reference check)**, ao lado do manuscrito. Os problemas são agrupados por gravidade: primeiro **Retracted**, depois **Needs attention** (fora da biblioteca, sem DOI nem PMID, preprint, metadados ausentes) e por fim **Low severity** (nunca verificado quanto a retratação, ou sem resumo nem texto completo na nota). Corrija os dois primeiros grupos antes de submeter.
+
+> **Prefixos e localizadores de página.** **Compile manuscript** e a exportação para Word mantêm o prefixo e o localizador de página de uma citação, de modo que `[see @lv2024efficacy, p. 23]` é compilado com «see» e o número da página intactos.
+
+> **Resumos antigos.** **Re-summarize references made by an older model** pergunta, antes de começar, de qual modelo refazer os resumos (com a contagem por modelo). Os resumos feitos com o texto completo de um PDF nunca são alterados.
+
 ## 11. Revisões sistemáticas (opcional)
 
 Estas ferramentas são para revisões sistemáticas e metanálises. Ative-as em
 **Settings → Systematic review → Systematic review tools**. Uma biblioteca que já tem decisões de triagem
 as mantém ativadas; uma biblioteca nova começa com elas desativadas. Desativá-las apenas oculta os
 comandos; tudo o que já foi salvo nas suas notas permanece.
+
+![Configurações, grupo Systematic review, com a chave Systematic review tools](img/en/17-settings-review.png)
+
+1. Ative **Systematic review tools**. Os comandos abaixo passam a aparecer na paleta de comandos.
 
 | Comando ou local | O que faz |
 |---|---|
@@ -227,9 +242,23 @@ comandos; tudo o que já foi salvo nas suas notas permanece.
 | Risk-of-bias summary table | Uma tabela por ferramenta de avaliação (RoB 2, ROBINS-I, QUADAS-2, NOS, AMSTAR 2), contagens por julgamento e os registros incluídos ainda não avaliados |
 | Export evidence table (CSV) | Salva todos os achados extraídos (a seção *Evidence (extracted)* da nota) de um escopo em um único CSV em `Exports/`, com colunas de referência e de triagem, para R ou RevMan. Os valores são copiados como foram escritos; o texto em coreano abre corretamente no Excel |
 
+Execute **Open screening pane** para fazer a triagem da biblioteca registro a registro.
+
+![Painel de triagem com os botões de decisão, a linha Risk of bias e o campo Study](img/en/18-screening.png)
+
+1. A decisão: **Include (i)**, **Exclude (e)** ou **Maybe / pending (m)**; as letras são atalhos de teclado. Include exige pelo menos uma pergunta-chave.
+2. **Risk of bias**: a ferramenta de avaliação, o julgamento global e uma nota curta. **Risk-of-bias summary table** reúne esses dados.
+3. **Study**: dê o mesmo id a todos os relatórios de um estudo. O painel passa a listar os demais relatórios desse estudo, e o diagrama PRISMA conta relatórios e estudos separadamente.
+
+Execute **Snowball from included records…**, escolha todos os registros incluídos ou uma pergunta-chave, e o resultado abre como uma nota.
+
+![Nota de candidatos do snowballing com uma tabela ordenada](img/en/19-snowball.png)
+
+1. A tabela ordena os candidatos por **Links**, o número de registros incluídos que os citam ou que eles citam. **Linked included records** os nomeia. Os artigos que já estão na sua biblioteca ficam de fora; a nota traz até 200 candidatos.
+
 Os candidatos do snowballing são para triagem, não para citar diretamente: adicione o artigo e leia-o primeiro.
 
 ---
 
-<sub>Capturas de tela: plugin v0.10.1 em um vault de teste com 56 artigos. As respostas do chat são saídas do modelo, sem edição.
+<sub>Capturas de tela: plugin v0.11.3 em um vault de teste com 56 artigos. As respostas do chat são saídas do modelo, sem edição.
 Os mantenedores regeneram as capturas com `python scripts/manual/capture.py en`.</sub>
