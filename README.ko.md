@@ -19,6 +19,11 @@
 
 <p align="center"><a href="README.md">English</a> · <b>한국어</b> · <a href="README.zh.md">中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.es.md">Español</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a></p>
 
+<p align="center">
+  <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/refwright-demo-short.mp4"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/refwright-demo-short-poster.png" width="640" alt="1분 데모 영상 보기"></a><br>
+  <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/refwright-demo-short.mp4">▶ 1분 데모 영상 보기</a>
+</p>
+
 <table>
   <tr>
     <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/ko/03-pubmed-search.png" alt="PubMed로 논문 추가"><br><b>PubMed로 논문 추가</b></td>

@@ -19,6 +19,11 @@
 
 <p align="center"><a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh.md">中文</a> · <b>日本語</b> · <a href="README.es.md">Español</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a></p>
 
+<p align="center">
+  <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/refwright-demo-short.mp4"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/refwright-demo-short-poster.png" width="640" alt="1 分のデモを見る"></a><br>
+  <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/refwright-demo-short.mp4">▶ 1 分のデモを見る</a>
+</p>
+
 <table>
   <tr>
     <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/ja/03-pubmed-search.png" alt="PubMedから論文を追加"><br><b>PubMedから論文を追加</b></td>

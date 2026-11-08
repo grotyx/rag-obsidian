@@ -19,6 +19,11 @@
 
 <p align="center"><a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <b>中文</b> · <a href="README.ja.md">日本語</a> · <a href="README.es.md">Español</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.pt.md">Português</a></p>
 
+<p align="center">
+  <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/refwright-demo-short.mp4"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/refwright-demo-short-poster.png" width="640" alt="观看 1 分钟演示"></a><br>
+  <a href="https://github.com/grotyx/rag-obsidian/blob/main/docs/refwright-demo-short.mp4">▶ 观看 1 分钟演示</a>
+</p>
+
 <table>
   <tr>
     <td width="50%" align="center"><img src="https://raw.githubusercontent.com/grotyx/rag-obsidian/main/docs/manual/img/zh/03-pubmed-search.png" alt="从 PubMed 添加论文"><br><b>从 PubMed 添加论文</b></td>

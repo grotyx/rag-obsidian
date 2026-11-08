@@ -26,3 +26,6 @@ presentation/*.zip
 
 # Retrieval eval data (questions/judgments stay local: the question set is locked for a paper)
 _eval/
+
+# Demo-video HyperFrames projects (large; the README clip is docs/refwright-demo-short.mp4)
+video/
