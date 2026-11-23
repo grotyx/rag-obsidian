@@ -277,7 +277,7 @@ async function suggestFor(
   insert: (citekey: string) => void
 ): Promise<void> {
   if (!plugin.indexManager.ready) {
-    new Notice("Rebuild search index first");
+    new Notice("Update search index first");
     return;
   }
   const notice = new Notice("Searching for evidence…", 0);

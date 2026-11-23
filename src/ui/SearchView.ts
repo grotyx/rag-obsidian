@@ -56,7 +56,7 @@ export class SearchView extends ItemView {
     this.filterRow = new FilterRow(c, this.plugin);
 
     const tools = c.createDiv({ cls: "srag-tools" });
-    const rebuild = tools.createEl("button", { text: "Rebuild index" });
+    const rebuild = tools.createEl("button", { text: "Update index" });
     rebuild.onclick = () => void this.rebuild();
 
     this.statusEl = c.createDiv({ cls: "srag-count" });
@@ -70,7 +70,7 @@ export class SearchView extends ItemView {
     this.statusEl.setText(
       m.ready
         ? `${m.count} chunks indexed · ${m.modelId}`
-        : "Index not built — click “Rebuild index”."
+        : "Index not built — click “Update index”."
     );
   }
 

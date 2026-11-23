@@ -69,7 +69,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "rebuild_search_index",
-    description: "Start a rebuild of Obsidian's private search index in the background and return at once ({status: started | already-running}); poll library_status until indexReady is true. Use only after INDEX_NOT_READY or an embedding-model change. Uses embeddings, never a chat or summary LLM.",
+    description: "Start an update of Obsidian's private search index in the background (re-embeds only new or changed notes and drops deleted ones; a changed embedding model re-embeds everything) and return at once ({status: started | already-running}); poll library_status until indexReady is true. Use after INDEX_NOT_READY, an embedding-model change, or notes added outside Obsidian's own editing. Uses embeddings, never a chat or summary LLM.",
     inputSchema: objectSchema({}), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   {

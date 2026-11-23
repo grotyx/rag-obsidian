@@ -375,7 +375,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
     // which reads the live settings each time Obsidian renders or searches.
     const provider = s.embeddingProvider;
     const retrievalItems: Row[] = [
-      info("Changing the provider or model invalidates the index — rebuild it from the search pane afterward."),
+      info("Changing the provider or model invalidates the index — update the index from the search pane afterward."),
       dropdown(
         "embeddingProvider",
         "Embedding provider",

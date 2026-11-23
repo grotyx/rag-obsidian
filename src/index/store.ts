@@ -267,9 +267,9 @@ export class VectorStore {
     filters: SearchFilters = {}
   ): Promise<SearchHit[]> {
     const ti = this.ti;
-    if (!ti) throw new Error("Index not built yet — run “Rebuild index”.");
+    if (!ti) throw new Error("Index not built yet — run “Update search index”.");
     if (queryVec.length !== this.dim) {
-      throw new Error(`Query dim ${queryVec.length} ≠ index dim ${this.dim}. Rebuild the index.`);
+      throw new Error(`Query dim ${queryVec.length} ≠ index dim ${this.dim}. Run “Update search index”.`);
     }
     const allowed = ti.allowedRows(filters);
     // Text arm: BM25 (a boost, not a filter, on tagged passages), top score → 1.

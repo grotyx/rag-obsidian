@@ -148,8 +148,13 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addCommand({
       id: "rebuild-index",
-      name: "Rebuild search index",
+      name: "Update search index",
       callback: () => void this.rebuildIndex(),
+    });
+    this.addCommand({
+      id: "rebuild-index-fresh",
+      name: "Rebuild search index from scratch",
+      callback: () => void this.rebuildIndex({ fresh: true }),
     });
     this.addCommand({
       id: "build-mesh-synonyms",
@@ -635,7 +640,6 @@ export default class ScholarRagPlugin extends Plugin {
     this.citeCache.clear(); // style may have changed
   }
 
-  /** Full index rebuild with a progress notice (command palette + SearchView button). */
   /** Build the citation graph over the whole library (one OpenAlex request per paper).
    *  Needed once; afterwards `CitationGraph.enqueue` keeps it current on its own. */
   async buildCitationGraph(): Promise<void> {
@@ -653,16 +657,25 @@ export default class ScholarRagPlugin extends Plugin {
     }
   }
 
-  async rebuildIndex(): Promise<void> {
-    const notice = new Notice("Building index…", 0);
+  /** Update the search index (or rebuild it from scratch) with a progress notice (command palette + panes). */
+  async rebuildIndex(opts?: { fresh?: boolean }): Promise<void> {
+    const notice = new Notice(opts?.fresh ? "Building index…" : "Updating index…", 0);
+    const m = this.indexManager;
+    m.lastRun = null;
     try {
-      const n = await this.indexManager.rebuild((done, total) =>
-        notice.setMessage(`Indexing ${done}/${total} notes…`)
-      );
-      new Notice(`Index built: ${n} chunks`);
+      const n = await m.rebuild((done, total) => notice.setMessage(`Indexing ${done}/${total} notes…`), opts);
+      const r = m.lastRun as IndexManager["lastRun"]; // set by the run; TS still sees the null above
+      let msg =
+        r && r.mode === "update"
+          ? `Index updated: ${r.embedded.toLocaleString()} notes embedded, ${r.removed.toLocaleString()} removed, ${r.unchanged.toLocaleString()} unchanged`
+          : `Index built: ${n.toLocaleString()} chunks`;
+      if (r && r.failed > 0) msg += ` · ${r.failed.toLocaleString()} notes failed — run “Update search index” again to retry them`;
+      new Notice(msg, r && r.failed > 0 ? 15000 : undefined);
     } catch (e) {
       console.error("[Refwright] rebuild failed", e);
-      new Notice(`Rebuild failed: ${e instanceof Error ? e.message : String(e)}`);
+      const r = m.lastRun as IndexManager["lastRun"];
+      const part = r ? ` (${r.embedded.toLocaleString()} embedded, ${r.removed.toLocaleString()} removed, ${r.failed.toLocaleString()} failed)` : "";
+      new Notice(`Index update failed: ${e instanceof Error ? e.message : String(e)}${part}`, 15000);
     } finally {
       notice.hide();
     }

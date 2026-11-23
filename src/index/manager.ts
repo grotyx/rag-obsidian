@@ -189,7 +189,7 @@ export class IndexManager {
         return;
       }
       if ((meta.schema ?? 1) !== INDEX_SCHEMA) {
-        this.restoreError = "The search index format changed — run “Rebuild search index” once.";
+        this.restoreError = "The search index format changed — run “Update search index” once.";
         return;
       }
       // meta names the generation it commits; a meta without `gen` is a pre-generation index.
@@ -234,12 +234,17 @@ export class IndexManager {
     );
   }
 
-  /** Full rebuild from scratch over all reference notes. */
-  rebuild(onProgress?: (done: number, total: number) => void): Promise<number> {
+  /** Counts of the last `rebuild()` (also set just before it throws, so a caller can report partial progress). */
+  lastRun: { mode: "update" | "fresh"; embedded: number; removed: number; failed: number; unchanged: number } | null = null;
+
+  /** Bring the index in line with the vault: re-embed only new/changed notes and drop deleted ones
+   *  (`update`, the default). `fresh` throws the index away and embeds every note. A different
+   *  embedding model, or no index yet, always means fresh. Returns the chunk count afterward. */
+  rebuild(onProgress?: (done: number, total: number) => void, opts?: { fresh?: boolean }): Promise<number> {
     // Set synchronously, before the job waits in the queue: a second request while one is pending
-    // or running joins it instead of queueing another paid rebuild.
+    // or running joins it instead of queueing another paid rebuild (its opts are ignored).
     if (this.pendingRebuild) return this.pendingRebuild;
-    const p = this.serialized(() => this.rebuildNow(onProgress));
+    const p = this.serialized(() => this.rebuildNow(onProgress, opts));
     this.pendingRebuild = p;
     const clear = () => { if (this.pendingRebuild === p) this.pendingRebuild = null; };
     p.then(clear, clear);
@@ -252,79 +257,157 @@ export class IndexManager {
     return this.pendingRebuild !== null;
   }
 
-  private async rebuildNow(onProgress?: (done: number, total: number) => void): Promise<number> {
+  private async rebuildNow(onProgress?: (done: number, total: number) => void, opts?: { fresh?: boolean }): Promise<number> {
     const provider = this.getProvider();
     const files = this.files();
+    const update = !opts?.fresh && this.store.ready && this.store.modelId === provider.id;
     // Streamed in windows of notes: embed a window, put its vectors straight into the store's
     // Float32 bank, drop it. Holding every chunk and every embedding (as number[]) until the end
     // peaked at ~1 GB of extra heap on a 19k-note vault and crashed Obsidian's renderer.
     const WINDOW = 400;
     const batchSize = 32;
+    const MAX_CONSECUTIVE_FAILS = 5;
     const seen = new Set<string>();
-    let total = 0;
-    let doneNotes = 0;
-    // The old index is dropped first so two copies never sit in memory; if the build fails the
-    // last persisted index is restored from disk below.
-    this.store.reset();
-    this.rebuilding = true;
+    const run = { mode: update ? ("update" as const) : ("fresh" as const), embedded: 0, removed: 0, failed: 0, unchanged: 0 };
+    // Fresh: the old index is dropped first so two copies never sit in memory; if the build fails
+    // the last persisted index is restored from disk below. Update keeps it (and search) live.
+    if (!update) {
+      this.store.reset();
+      this.rebuilding = true;
+    }
+    // One failed batch fails only the notes in it; this many in a row means the key or endpoint is
+    // broken, so stop starting (paid) requests.
+    const stop = new AbortController();
+    let consecutive = 0;
+    let lastError: unknown = null;
+    let fatal = false;
     try {
+      let doneNotes = 0;
       for (let w = 0; w < files.length; w += WINDOW) {
         const chunks: Chunk[] = [];
-        const owners: { citekey: string; path: string; hash: string }[] = [];
+        const owners: { citekey: string; path: string; hash: string; from: number; to: number }[] = [];
         for (const f of files.slice(w, w + WINDOW)) {
           const cs = await this.readChunks(f);
           const citekey = cs[0]?.citekey;
-          if (!citekey) continue;
+          if (!citekey) {
+            // Only a path the index tracks: a same-named note elsewhere must not delete this key's chunks.
+            const tracked = update ? this.store.citekeyForPath(f.path) : undefined;
+            if (tracked) {
+              await this.store.removeCitekey(tracked);
+              run.removed++;
+            }
+            continue;
+          }
           if (seen.has(citekey)) {
             console.warn(`[Refwright] duplicate citekey "${citekey}" — skipping ${f.path}`);
             continue;
           }
           seen.add(citekey);
-          owners.push({ citekey, path: f.path, hash: chunkHash(cs) });
+          const hash = chunkHash(cs);
+          if (update && this.store.citekeyForPath(f.path) === citekey && this.store.hashForPath(f.path) === hash) {
+            run.unchanged++;
+            continue;
+          }
+          owners.push({ citekey, path: f.path, hash, from: chunks.length, to: chunks.length + cs.length });
           chunks.push(...cs);
         }
         doneNotes = Math.min(files.length, w + WINDOW);
-        if (!chunks.length) continue;
-        const batches: Chunk[][] = [];
-        for (let i = 0; i < chunks.length; i += batchSize) batches.push(chunks.slice(i, i + batchSize));
-        // A few embedding requests in flight; the first failure stops new (paid) requests.
-        const stop = new AbortController();
-        const results = await mapPool(
-          batches,
-          EMBED_WIDTH,
-          async (batch) => {
-            try {
-              return await provider.embed(batch.map((c) => c.embedText));
-            } catch (e) {
-              stop.abort();
-              throw e;
+        if (chunks.length) {
+          const batches: Chunk[][] = [];
+          for (let i = 0; i < chunks.length; i += batchSize) batches.push(chunks.slice(i, i + batchSize));
+          const results = await mapPool(
+            batches,
+            EMBED_WIDTH,
+            async (batch) => {
+              try {
+                const v = await provider.embed(batch.map((c) => c.embedText));
+                consecutive = 0;
+                return v;
+              } catch (e) {
+                console.warn("[Refwright] embedding batch failed", e);
+                lastError = e;
+                if (++consecutive >= MAX_CONSECUTIVE_FAILS) stop.abort();
+                return null;
+              }
+            },
+            stop.signal
+          );
+          // chunk index → vector; a hole (failed or never-started batch) fails the notes it touches
+          // (`results` is sparse for batches that never started, hence the index loop, not flatMap)
+          const vecs: (number[] | undefined)[] = [];
+          batches.forEach((b, i) => {
+            const r = results[i];
+            for (let j = 0; j < b.length; j++) vecs.push(r?.[j] ?? undefined);
+          });
+          const first = vecs.find((v): v is number[] => !!v);
+          if (update && first && first.length !== this.store.dim) {
+            throw new Error(`Embedding dimension ${first.length} ≠ index dimension ${this.store.dim} — rebuild the index from scratch.`);
+          }
+          for (const o of owners) {
+            const v = vecs.slice(o.from, o.to);
+            if (v.some((x) => !x)) {
+              run.failed++;
+              continue;
             }
-          },
-          stop.signal
-        );
-        const vectors = results.flat();
-        if (!this.store.ready) this.store.init(vectors[0].length, provider.id);
-        await this.store.addChunks(chunks, vectors);
-        for (const o of owners) this.store.setPath(o.path, o.citekey, o.hash);
-        total += chunks.length;
+            if (!this.store.ready) this.store.init(v[0]!.length, provider.id);
+            if (update) {
+              const old = this.store.citekeyForPath(o.path);
+              if (old && old !== o.citekey) await this.store.removeCitekey(old);
+              await this.store.removeCitekey(o.citekey);
+            }
+            await this.store.addChunks(chunks.slice(o.from, o.to), v as number[][]);
+            this.store.setPath(o.path, o.citekey, o.hash);
+            run.embedded++;
+          }
+        }
         onProgress?.(doneNotes, files.length);
+        if (stop.signal.aborted) break;
+      }
+      if (stop.signal.aborted) {
+        const why = lastError instanceof Error ? lastError.message : String(lastError);
+        fatal = true;
+        throw new Error(`${why} (${MAX_CONSECUTIVE_FAILS} embedding requests failed in a row)`);
+      }
+      if (update) {
+        // Tracked notes whose file is gone (or moved out of the library) and whose key no live note holds.
+        const live = new Set(files.map((f) => f.path));
+        for (const [p, ck] of Object.entries(this.store.paths)) {
+          if (live.has(p) || seen.has(ck)) continue;
+          await this.store.removeCitekey(ck);
+          run.removed++;
+        }
+      }
+      if (!update && run.embedded === 0 && run.failed > 0) {
+        throw new Error(`No note could be embedded (${run.failed} failed)`);
       }
     } catch (e) {
-      this.store.reset();
-      await this.restoreNow(); // back to the last persisted index (it never throws); we are inside the queue, so not restore()
+      this.lastRun = run;
+      if (!update) {
+        this.store.reset();
+        await this.restoreNow(); // back to the last persisted index (it never throws); we are inside the queue, so not restore()
+        throw e;
+      }
+      // Update: what was embedded so far stays, and is written so the next run resumes from it.
+      if (run.embedded || run.removed) {
+        this.dirty = true;
+        await this.persist();
+      }
+      if (fatal) throw new Error(`${e instanceof Error ? e.message : String(e)} — progress saved: ${run.embedded} notes embedded, ${run.removed} removed`);
       throw e;
     } finally {
       this.rebuilding = false;
     }
-    if (total === 0) {
+    this.lastRun = run;
+    if (this.store.count === 0) {
       // don't keep a bogus dim — clear instead so reindexFile no-ops until a real build
       this.store.reset();
       await this.clearPersisted();
       return 0;
     }
-    await this.persist();
+    // An update with nothing to do must not rewrite a multi-GB index.
+    if (!update || run.embedded > 0 || run.removed > 0 || this.dirty) await this.persist();
     if (this.reindexQueue.size) this.flush();
-    return total;
+    return this.store.count;
   }
 
   /** Incremental: re-embed a single note (on edit/create). No-op until first build.
@@ -452,7 +535,7 @@ export class IndexManager {
     // Query vectors from another model are meaningless against the stored ones, even at equal dimension.
     if (this.store.ready && this.store.modelId !== this.getProvider().id) {
       throw new Error(
-        `The embedding model changed (index: ${this.store.modelId}, now: ${this.getProvider().id}) — run “Rebuild search index”.`
+        `The embedding model changed (index: ${this.store.modelId}, now: ${this.getProvider().id}) — run “Update search index”.`
       );
     }
     // A Korean question lands far from its English twin in embedding space (cosine ~0.45), so
@@ -472,7 +555,7 @@ export class IndexManager {
     // chunks would otherwise fill the whole result set on its own.
     // The translation and embedding awaits above can span a rebuild starting or the store being reset.
     if (this.rebuilding) throw new Error("The search index is being rebuilt — search again when it finishes.");
-    if (!this.store.ready) throw new Error("Index not built yet — run “Rebuild index”.");
+    if (!this.store.ready) throw new Error("Index not built yet — run “Update search index”.");
     let hits = await this.store.search(vec, term, want * OVERFETCH, filters);
     if (opts.eligible) {
       const ok = new Map<string, boolean>();

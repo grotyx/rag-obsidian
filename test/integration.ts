@@ -1815,6 +1815,13 @@ async function main() {
     const embedCalls: { auth: string; model: string }[] = [];
     const embUrls: string[] = [];
     let embBroken = false; // answer 400 (not retried), to prove nothing is re-embedded
+    // Failure hooks for the index-update checks: embedding requests / texts seen, a marker that makes
+    // a batch fail (400), requests after the first N that fail, and a number of short 200 payloads.
+    let embReqs = 0;
+    let embTexts = 0;
+    let embFailMarker = "";
+    let embFailAfter = Infinity;
+    let embShortNext = 0;
     const embSrv = http.createServer((req, res) => {
       let body = "";
       req.on("data", (d) => (body += d));
@@ -1834,6 +1841,18 @@ async function main() {
         }
         if (req.url === "/api/embed") {
           res.end(JSON.stringify({ embeddings: b.input.map((t) => hashEmbed(t, 16)) }));
+          return;
+        }
+        embReqs++;
+        embTexts += b.input.length;
+        if (embReqs > embFailAfter || (embFailMarker && b.input.some((t) => t.includes(embFailMarker)))) {
+          res.statusCode = 400;
+          res.end("{}");
+          return;
+        }
+        if (embShortNext > 0) {
+          embShortNext--;
+          res.end(JSON.stringify({ data: b.input.slice(1).map((t, index) => ({ index, embedding: hashEmbed(t, 16) })) }));
           return;
         }
         res.end(JSON.stringify({ data: b.input.map((t, index) => ({ index, embedding: hashEmbed(t, 16) })) }));
@@ -1959,7 +1978,7 @@ async function main() {
     } catch (e) {
       msg = e instanceof Error ? e.message : String(e);
     }
-    ok(/embedding model changed/.test(msg) && /Rebuild search index/.test(msg), `search after a model change asks for a rebuild: ${msg}`);
+    ok(/embedding model changed/.test(msg) && /Update search index/.test(msg), `search after a model change asks for a rebuild: ${msg}`);
     notes.set("References/a.md", { fm: { citekey: "smith2024", title: "Alpha", abstract: "edited abstract" }, body: "x" });
     const warns: string[] = [];
     const realWarn = console.warn;
@@ -2293,6 +2312,104 @@ async function main() {
       const ol = await new OllamaProvider({ ...DEFAULT_SETTINGS, ollamaUrl: `http://127.0.0.1:${fport}`, embeddingModel: "m" }).embed(["x"]);
       ok(ol.length === 1 && hits["/api/embed"] === 3, `Ollama embeddings: two 503s then success (${hits["/api/embed"]} requests)`);
       flaky.close();
+    }
+
+    // ---- 26b. Update search index: only new/changed notes are embedded, failures are tolerated ----
+    log("\n[26b] Index update (incremental rebuild, failure tolerance)");
+    {
+      const savedNotes = new Map(notes);
+      notes.clear();
+      const gnote = (k: string, extra = "") => ({ fm: { citekey: k, title: k, abstract: `abstract ${k} common study ${extra}` }, body: `body of ${k} ${extra}` });
+      const gk = Array.from({ length: 16 }, (_, i) => `g${String(i + 1).padStart(2, "0")}`);
+      for (const k of gk) notes.set(`References/${k}.md`, gnote(k));
+      notes.set("References/victim.md", gnote("victim", "victimold"));
+      notes.set("References/tail.md", gnote("tail", "sixteenthword"));
+      const uset: ScholarRagSettings = { ...mset, embeddingModel: "model-a", openaiApiKey: "key-one", openaiBaseUrl: `http://127.0.0.1:${embPort}` };
+      const um = new IndexManager(app as never, { folder: () => "References", getItem: () => undefined } as never, uset, "plugin3");
+      const silent = async <T,>(fn: () => Promise<T>): Promise<T> => {
+        const w = console.warn;
+        console.warn = () => undefined;
+        try { return await fn(); } finally { console.warn = w; }
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const priv2 = (m: IndexManager) => m as any;
+      // does the search for `word` return a passage of `key` that contains it?
+      const has = async (key: string, word: string) => (await um.search(word.toLowerCase(), {}, 60, { translate: false })).some((h) => h.citekey === key && h.text.toLowerCase().includes(word.toLowerCase())); // lower-cased: the query must not trip the mock's failure marker
+
+      embReqs = 0; embTexts = 0;
+      await um.rebuild();
+      ok(um.lastRun?.mode === "fresh" && um.lastRun.embedded === 18 && um.count === 36, `[26b-1] no index yet: first rebuild is a fresh build of all 18 notes (${JSON.stringify(um.lastRun)}, ${um.count} chunks)`);
+
+      embReqs = 0; embTexts = 0; writes.length = 0;
+      const before = um.count;
+      await um.rebuild();
+      ok(embReqs === 0 && embTexts === 0, `[26b-2] update with no changes sends no embedding request (${embReqs})`);
+      ok(um.lastRun?.mode === "update" && um.lastRun.unchanged === 18 && um.lastRun.embedded === 0 && um.lastRun.removed === 0 && um.lastRun.failed === 0, `[26b-2] ...and reports 18 unchanged (${JSON.stringify(um.lastRun)})`);
+      ok(!writes.some((w) => w.startsWith("plugin3/")) && um.count === before, "[26b-2] ...and rewrites no index file");
+
+      notes.set("References/g01.md", gnote("g01", "editedword"));
+      notes.set("References/newnote.md", gnote("newnote", "zyxwv"));
+      notes.delete("References/tail.md"); // the file is gone; the index still tracks it
+      embReqs = 0; embTexts = 0;
+      await um.rebuild();
+      ok(um.lastRun?.embedded === 2 && um.lastRun.removed === 1 && um.lastRun.unchanged === 16 && um.lastRun.failed === 0, `[26b-3] edit + add + delete: 2 embedded, 1 removed, 16 unchanged (${JSON.stringify(um.lastRun)})`);
+      ok(embTexts === 4, `[26b-3] only the two changed notes' chunks were embedded (${embTexts} texts)`);
+      ok((await has("newnote", "zyxwv")) && (await has("g01", "editedword")), "[26b-3] the new and the edited note are searchable");
+      ok(!(await has("tail", "sixteenthword")), "[26b-3] the deleted note's chunks are gone");
+
+      // a batch of 32 chunks holds the 16 good notes; victim (edited) and newbad (new) fall in the next one and fail
+      for (const k of gk) notes.set(`References/${k}.md`, gnote(k, "second"));
+      notes.set("References/victim.md", gnote("victim", "BADMARK"));
+      notes.set("References/newbad.md", gnote("newbad", "BADMARK"));
+      embFailMarker = "BADMARK";
+      const warnLog: string[] = [];
+      const w0 = console.warn;
+      console.warn = (...a: unknown[]) => void warnLog.push(a.map(String).join(" "));
+      try { await um.rebuild(); } finally { console.warn = w0; }
+      ok(um.lastRun?.embedded === 16 && um.lastRun.failed === 2 && um.lastRun.unchanged === 1, `[26b-4] failing notes do not stop the run: 16 embedded, 2 failed, 1 unchanged (${JSON.stringify(um.lastRun)})`);
+      ok(warnLog.some((m) => /embedding batch failed/.test(m)), "[26b-4] the failed batch is logged");
+      ok((await has("victim", "victimold")) && priv2(um).store.hashForPath("References/victim.md") !== undefined, "[26b-4] the failing note's old chunks are still in the index");
+      ok(!(await has("newbad", "BADMARK")) && !priv2(um).store.citekeyForPath("References/newbad.md"), "[26b-4] the failing new note is simply absent");
+      embFailMarker = "";
+      embTexts = 0;
+      await um.rebuild();
+      ok(um.lastRun?.embedded === 2 && um.lastRun.failed === 0 && embTexts === 4, `[26b-5] the next update retries exactly the failed notes (${JSON.stringify(um.lastRun)}, ${embTexts} texts)`);
+      ok((await has("newbad", "BADMARK")) && (await has("victim", "BADMARK")) && !(await has("victim", "victimold")), "[26b-5] ...and they are now indexed with their new text");
+
+      // a 200 with a short payload is asked again
+      notes.set("References/g01.md", gnote("g01", "third"));
+      embReqs = 0; embShortNext = 1;
+      await um.rebuild();
+      ok(embShortNext === 0 && embReqs === 2 && um.lastRun?.embedded === 1 && um.lastRun.failed === 0, `[26b-6] one malformed 200 is retried (${embReqs} requests, ${JSON.stringify(um.lastRun)})`);
+
+      // five failed batches in a row: stop early, keep and persist what was done
+      for (let i = 1; i <= 300; i++) notes.set(`References/m${i}.md`, gnote(`m${i}`, "bulk"));
+      embReqs = 0; embFailAfter = 2;
+      let upErr = "";
+      await silent(async () => { try { await um.rebuild(); } catch (e) { upErr = e instanceof Error ? e.message : String(e); } });
+      embFailAfter = Infinity;
+      const kept = um.count;
+      ok(/saved/.test(upErr) && /400/.test(upErr), `[26b-7] 5 failed batches in a row: update throws, naming the cause and that progress was saved: ${upErr}`);
+      ok(embReqs < 19, `[26b-7] ...and stops starting requests early (${embReqs} of 19)`);
+      ok((um.lastRun?.embedded ?? 0) > 0 && (um.lastRun?.failed ?? 0) > 0 && um.ready, `[26b-7] ...the index stays searchable with the finished notes (${JSON.stringify(um.lastRun)})`);
+      const reread = new IndexManager(app as never, { folder: () => "References", getItem: () => undefined } as never, uset, "plugin3");
+      await reread.restore();
+      ok(reread.count === kept && kept > before, `[26b-7] ...and they were written to disk (${reread.count}/${kept} chunks restored)`);
+
+      // fresh mode with the same breakage restores the previous index
+      embReqs = 0; embFailAfter = 0;
+      let freshErr = "";
+      await silent(async () => { try { await um.rebuild(undefined, { fresh: true }); } catch (e) { freshErr = e instanceof Error ? e.message : String(e); } });
+      embFailAfter = Infinity;
+      ok(freshErr !== "" && !/saved/.test(freshErr) && um.ready && !um.rebuilding && um.count === kept, `[26b-8] a broken fresh rebuild restores the previous index (${um.count}/${kept} chunks): ${freshErr}`);
+
+      // fresh re-embeds everything
+      embTexts = 0;
+      await um.rebuild(undefined, { fresh: true });
+      ok(um.lastRun?.mode === "fresh" && um.lastRun.unchanged === 0 && embTexts === um.count && um.count > kept, `[26b-9] rebuild({fresh: true}) re-embeds every note (${embTexts} texts, ${um.count} chunks, ${JSON.stringify(um.lastRun)})`);
+
+      notes.clear();
+      for (const [k, v] of savedNotes) notes.set(k, v);
     }
 
     // hosted rerank only when embeddings or chat use a hosted endpoint

@@ -49,7 +49,7 @@ export class RagChat {
     filters: SearchFilters = {}
   ): Promise<RagAnswer> {
     if (!this.index.ready) {
-      throw new Error("Search index not built — open the search pane and click “Rebuild index”.");
+      throw new Error("Search index not built — open the search pane and click “Update index”.");
     }
 
     // With the reranker on, retrieve a wider pool and let the model pick the passages that
