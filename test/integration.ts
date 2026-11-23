@@ -2195,6 +2195,9 @@ async function main() {
         return new Response(JSON.stringify({ results: docs.map((_, index) => ({ index, relevance_score: 1 - index / 10 })) }), { status: 200 });
       }) as typeof fetch;
       mset.openaiBaseUrl = OPENROUTER; // the rerank host check wants the real host; the fetch above redirects it
+      // an index really built against OpenRouter records that endpoint (review #16 compares it)
+      const savedEndpoint = priv.store.endpoint;
+      priv.store.endpoint = endpointFingerprint(mset);
       try {
         const asked: string[] = [];
         const hits = await mgr.search("crash beta", {}, 5, {
@@ -2212,6 +2215,7 @@ async function main() {
       } finally {
         unredirect();
         mset.openaiBaseUrl = savedUrl;
+        priv.store.endpoint = savedEndpoint;
       }
     }
 
