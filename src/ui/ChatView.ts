@@ -183,7 +183,12 @@ export class ChatView extends ItemView {
       const summary = describeFilters(filters);
       thinking.remove();
       if (epoch !== this.epoch) return; // chat was cleared while this answer was in flight
-      await this.renderAnswer(ans, query, summary);
+      const rendered = await this.renderAnswer(ans, query, summary);
+      // Clear may have run while the Markdown renderer was awaited: drop the late bubble, keep history empty.
+      if (epoch !== this.epoch) {
+        rendered.remove();
+        return;
+      }
       this.history.push({ role: "user", content: query });
       // Keep this turn's source order so follow-up turns can resolve its [n] anchors, and
       // the filter label so a replayed answer still shows the scope it was answered in.
@@ -227,7 +232,7 @@ export class ChatView extends ItemView {
     };
   }
 
-  private async renderAnswer(ans: RagAnswer, question: string, filterSummary = ""): Promise<void> {
+  private async renderAnswer(ans: RagAnswer, question: string, filterSummary = ""): Promise<HTMLElement> {
     const wrap = this.logEl.createDiv({ cls: "srag-bubble srag-assistant" });
     const body = wrap.createDiv({ cls: "srag-answer" });
     // Neutralize embeds and loading HTML before rendering (`![[…]]` → `[[…]]`, `<img>`/`<iframe>`
@@ -253,6 +258,7 @@ export class ChatView extends ItemView {
     save.onclick = () =>
       void this.saveAnswer(question, ans.text, ans.sources.map((s) => s.citekey));
     this.logEl.scrollTop = this.logEl.scrollHeight;
+    return wrap;
   }
 
   /** Write one answer to `Chat/<date> <question>.md` with its `[n]` anchors rewritten to

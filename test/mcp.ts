@@ -467,6 +467,11 @@ async function serviceChecks(): Promise<void> {
 
   const refs = await service.callTool("list_references", { tags: ["Spine"] }) as any;
   assert.equal(refs.references[0].citekey, "smith2024");
+  // review 2 #19: a leading # on a tag argument means the same tag, in list_references and search filters
+  const hashed = await service.callTool("list_references", { tags: ["#Spine"] }) as any;
+  assert.equal(hashed.references[0]?.citekey, "smith2024", "list_references: '#Spine' matches the Spine tag");
+  await service.callTool("search_library", { query: "question", tags: [" #Spine"] });
+  assert.deepEqual((searchArgs[1] as { tags?: string[] }).tags, ["Spine"], "search_library: '#' stripped from tag filters");
   assert.equal(refs.references[0].summarySource, null);
   const ref = await service.callTool("get_reference", { citekey: "smith2024" }) as any;
   assert.equal(ref.fullTextOmitted, true);

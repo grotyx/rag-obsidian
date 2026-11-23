@@ -12,7 +12,7 @@ import { searchLogNote, suffixedPath } from "../data/searchLog";
 import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
-import { tagsOf, text } from "../util/json";
+import { tagKey, tagsOf, text } from "../util/json";
 import { Finding, findingText, isRestated, parseFindings } from "../data/findings";
 import { canHostedRerank, hostedRerank } from "../index/rerank";
 import { citingWorks } from "../graph/openalex";
@@ -405,7 +405,7 @@ export class McpService {
     const author = optionalString(args, "author")?.trim();
     if (author) filters.author = author;
     const tags = stringArrayArg(args, "tags");
-    if (tags) filters.tags = tags;
+    if (tags) filters.tags = tags.map(tagKey).filter((t) => t !== "");
     return filters;
   }
 
@@ -528,7 +528,7 @@ export class McpService {
     const to = args.year_to === undefined ? 9999 : numberArg(args, "year_to", 9999, 1000, 3000);
     const author = optionalString(args, "author")?.trim().toLowerCase();
     const status = optionalString(args, "status")?.trim().toLowerCase();
-    const tags = stringArrayArg(args, "tags") ?? [];
+    const tags = (stringArrayArg(args, "tags") ?? []).map(tagKey).filter((t) => t !== "");
     const kq = optionalString(args, "kq")?.trim();
     const include = enumArg(args, "include", INCLUDE_VALUES);
     const guideline = optionalString(args, "guideline")?.trim();

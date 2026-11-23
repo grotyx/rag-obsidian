@@ -6,7 +6,7 @@
  *  the whole document produced a real false positive. The slice is re-enforced here too, so a
  *  caller that forgets still gets the safe behavior. */
 
-import { titleInHead } from "../ingest/pdf";
+import { isNoticeHead, titleInHead } from "../ingest/pdf";
 
 export interface PdfCandidate {
   citekey: string;
@@ -51,6 +51,8 @@ export function matchPdf(fileBase: string, head: string | null, candidates: PdfC
   if (nameHit) return { citekey: nameHit.citekey, by: "name" };
 
   if (!sliced) return null;
+  // A correction / retraction notice quotes the original's title and ids but is a different work.
+  if (isNoticeHead(sliced)) return null;
 
   // 2. DOI in the head text. An erratum or a cited paper's DOI printed early must not link the
   //    wrong paper, so the reference's own title has to be in the head too; otherwise fall through.

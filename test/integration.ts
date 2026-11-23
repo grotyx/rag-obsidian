@@ -2813,6 +2813,9 @@ async function main() {
     ok(/must point to a file named pandoc/.test(await rejects("/bin/sh")), "exportDocx: a pandoc setting naming another program is refused");
     ok(/inside this vault/.test(await rejects(path.join(vaultDir, "pandoc"))), "exportDocx: a pandoc inside the vault is refused");
     ok(!fs.existsSync(path.join(root, "never.docx")), "exportDocx: nothing ran for a refused binary");
+    const rel = path.relative(process.cwd(), path.join(binDir, "pandoc")); // a working executable, named relatively
+    ok(/absolute path/.test(await rejects(rel)) && /absolute path/.test(await rejects("./pandoc")), "exportDocx: a relative pandoc path is refused, never resolved against a working directory (review 2 #1)");
+    ok(!fs.existsSync(path.join(root, "never.docx")), "exportDocx: nothing ran for a relative path");
     process.env.REFWRIGHT_TEST_SECRET = "leak-me";
     const out = path.join(root, "env.txt");
     await exportDocx("# t", out, path.join(binDir, "pandoc"));

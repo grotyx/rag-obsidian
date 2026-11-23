@@ -25,7 +25,7 @@ function loadDesktopNode(): {
   pathApi: PathModuleLike;
 } {
   return {
-      cp: require("node:child_process") as ChildProcessModuleLike,
+    cp: require("node:child_process") as ChildProcessModuleLike,
     fs: nodeRequire<FsPromisesLike>("node:fs/promises"),
     fsSync: nodeRequire<FsSyncLike>("node:fs"),
     os: nodeRequire<OsModuleLike>("node:os"),
@@ -58,8 +58,19 @@ export async function exportDocx(
 ): Promise<void> {
   if (!Platform.isDesktopApp) throw new Error("Export to Word needs Obsidian desktop");
   // `pandocPath` syncs through data.json: it must be a pandoc outside the vault, run with a scrubbed environment.
-  await assertExecutableAllowed("pandoc", pandocPath, "Pandoc path");
-  const { cp, fs, os, pathApi } = loadDesktopNode();
+  const { cp, fs, fsSync, os, pathApi } = loadDesktopNode();
+  // Resolve once to an absolute path and run exactly that: a relative path would resolve against
+  // Obsidian's cwd for the checks but against the manuscript folder (the child's cwd) for the run.
+  let bin = pandocPath;
+  if (!/[\\/]/.test(bin)) {
+    // a bare command name: only the known install locations count, never a PATH or cwd lookup
+    bin = pandocCandidates(os.homedir(), process.platform, process.env.LOCALAPPDATA).find((c) => fsSync.existsSync(c)) ?? "";
+    if (!bin) throw new Error(`Pandoc "${pandocPath}" was not found in the usual install folders: set the full path in "Pandoc path" (Settings → Refwright).`);
+  } else if (!pathApi.isAbsolute(bin)) {
+    throw new Error(`Refusing to run "${pandocPath}": "Pandoc path" (Settings → Refwright) must be an absolute path.`);
+  }
+  await assertExecutableAllowed("pandoc", bin, "Pandoc path");
+  try { bin = await fs.realpath(bin); } catch { /* execFile reports a missing file */ }
   const hostPath = Object.entries(process.env).find(([k]) => k.toUpperCase() === "PATH")?.[1] ?? "";
   const tmp = await fs.mkdtemp(pathApi.join(os.tmpdir(), "rag-obsidian-docx-"));
   try {
@@ -69,7 +80,7 @@ export async function exportDocx(
     await fs.writeFile(templatePath, template);
     await new Promise<void>((resolve, reject) => {
       cp.execFile(
-        pandocPath,
+        bin,
         [
           inPath, "-f", "markdown", "-t", "docx", "--reference-doc", templatePath, "-o", outAbsPath,
           ...(resourceDir ? ["--resource-path", resourceDir] : []),

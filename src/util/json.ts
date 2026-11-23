@@ -45,9 +45,15 @@ export function isNumberArray(v: unknown): v is number[] {
   return Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "number" && Number.isFinite(x));
 }
 
+/** One tag in comparable form: trimmed, leading `#` dropped. Stored tags, filter arguments and the
+ *  index all go through this, so `#trial` and `trial` are the same tag. */
+export function tagKey(t: string): string {
+  return t.trim().replace(/^#/, "");
+}
+
 /** Tags from frontmatter or a CSL item: a list or one scalar string (`tags: diskectomy`), leading
  *  `#` dropped, blanks skipped. The one reading of `tags` shared by the index, the filters and MCP. */
 export function tagsOf(v: unknown): string[] {
   const list = Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
-  return list.map((t) => text(t).trim().replace(/^#/, "")).filter((t) => t !== "");
+  return list.map((t) => tagKey(text(t))).filter((t) => t !== "");
 }

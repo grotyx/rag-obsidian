@@ -233,6 +233,12 @@ export function titleInHead(title: string | undefined, text: string): boolean {
   return t.length > 0 && norm(text.slice(0, 4000)).includes(t);
 }
 
+/** Does the PDF open with a correction / retraction notice? Such a PDF quotes the original's title
+ *  and DOI/PMID but is a different work, so it must not be matched to (or imported as) the original. */
+export function isNoticeHead(text: string): boolean {
+  return /\b(?:correction to|corrections? and|erratum|errata|corrigendum|corrigenda|retraction|expression of concern)\b|\bretracted:/i.test(text.slice(0, 300));
+}
+
 /** True when `data` starts with the PDF magic number. A repository can 200 with an HTML landing
  *  page instead of the file it links to — this is the guard against saving that as a `.pdf`. */
 export function isPdfMagic(data: ArrayBuffer): boolean {

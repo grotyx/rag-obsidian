@@ -109,7 +109,7 @@ import { readFileSync } from "node:fs";
 import { isForeignQuery, buildExpander, expandedTerm, parseVocabulary } from "../src/index/expand";
 import { citeTooltip } from "../src/cite/format";
 import { citeClusters } from "../src/cite/clusters";
-import { isNumberArray, numLike, tagsOf, text } from "../src/util/json";
+import { isNumberArray, numLike, tagKey, tagsOf, text } from "../src/util/json";
 import {
   getYear,
   firstAuthorFamily,
@@ -778,6 +778,10 @@ AID - 10.1000/xyz123 [doi]
   // review #22: the DOI / PMID alone (an erratum quoting the original's id) must not match
   const erratum = "Erratum to https://doi.org/10.1038/x PMID: 87654321\nCorrection notice for a figure legend.";
   check(matchPdf("random-download", erratum, cands) === null, "matchPdf: a DOI / PMID without the reference's title in the head is not a match");
+
+  const corr = "Correction to: The efficacy of endoscopic diskectomy for lumbar herniation\nhttps://doi.org/10.1038/x PMID: 12345678\nThe original article was published in 2021.";
+  check(matchPdf("random-download", corr, cands) === null, "matchPdf: a 'Correction to' notice quoting the title + DOI is not matched to the original (review 2 #17)");
+  check(matchPdf("random-download", "Retracted: " + doiHead, cands) === null && matchPdf("random-download", "Expression of concern\n" + pmidHead, cands) === null, "matchPdf: retraction / expression-of-concern notices unmatched");
 
   const titleHead = "The Efficacy of Endoscopic Diskectomy for Lumbar Herniation\nJournal of Spine, 2021.\nAuthors: Park et al.";
   const titleHit = matchPdf("random-download", titleHead, cands);
@@ -1869,6 +1873,17 @@ check(
   check(tagsOf(undefined).length === 0 && tagsOf({}).length === 0, "tagsOf: absent or odd values are no tags");
   const chunks = chunkReference({ citekey: "k", title: "t", year: 2020, tags: tagsOf("#diskectomy"), authors: [], abstract: "abstract text", body: "" }, 800);
   check(chunks.length > 0 && chunks.every((c) => c.tags.join() === "diskectomy"), "tagsOf: chunks carry the normalized tag");
+  // review 2 #19: '#trial' and 'trial' are one tag for filters, old indexes (stored "#trial") and new ones
+  check(tagKey(" #trial ") === "trial" && tagKey("trial") === "trial", "tagKey: trims and drops a leading #");
+  {
+    const ti = new TextIndex();
+    const base = { citekey: "k", title: "t", section: "s", year: 2020, author: [] as string[], text: "alpha" };
+    ti.add(0, { ...base, id: "old", tags: ["#trial"] }); // what a 0.11.3 index restores
+    ti.add(1, { ...base, id: "new", tags: ["trial"] });
+    const rows = (tags: string[]) => [...(ti.allowedRows({ tags }) ?? [])].reduce((n, x) => n + x, 0);
+    check(rows(["trial"]) === 2 && rows(["#trial"]) === 2, "TextIndex tag filter: '#trial' and 'trial' both match old and new rows");
+    check(rows(["other"]) === 0, "TextIndex tag filter: a different tag still matches nothing");
+  }
 }
 
 // ---------- data/library.ts: Library.folder() — the one referencesFolder fallback ----------
@@ -2496,6 +2511,18 @@ check(
     status404 = true;
     await flush();
     check(g.refIds("k").join() === "W9", "citation graph: an unchanged identifier costs no lookup");
+    // review 2 #18: a node from a pre-src cache. Same explicit id → provenance recorded, no lookup;
+    // a different id → re-resolved.
+    const nodes = (g as unknown as { data: { byCitekey: Record<string, { src?: string }> } }).data.byCitekey;
+    delete nodes.k.src;
+    await flush(); // fm still carries openalex_id W2 = the node's id, and every lookup 404s
+    check(g.refIds("k").join() === "W9" && nodes.k.src === "oa:W2", `citation graph: a legacy node whose id still agrees keeps its edges and records src (${nodes.k.src})`);
+    delete nodes.k.src;
+    status404 = false;
+    fm = { citekey: "k", DOI: "10.1/old", openalex_id: "W1" };
+    await flush();
+    check(g.refIds("k").join() === "W8" && nodes.k.src === "oa:W1", `citation graph: a legacy node whose note now names another id is re-resolved (${g.refIds("k")})`);
+    status404 = true;
     // the corrected id resolves to nothing: the stale node goes, in an incremental pass and in a build
     fm = { citekey: "k", DOI: "10.1/old", openalex_id: "W404" };
     await flush();
@@ -3189,9 +3216,13 @@ check(
     const dirty = 'a ![x](http://e/?q=1) ![[Private]] <img src="http://e/?q=1"> <IFRAME src=x></iframe> <svg onload=1> <img src=x\n';
     const clean = sanitizeModelMarkdown(dirty);
     check(!/!\[/.test(clean) && !/<\s*\/?\s*(img|iframe|svg)/i.test(clean), `sanitizeModelMarkdown strips embeds and loading tags (${JSON.stringify(clean)})`);
-    check(sanitizeModelMarkdown("<im<img>g src=x>") === "", "sanitizeModelMarkdown: nested tag cannot reassemble");
-    check(sanitizeModelMarkdown('a <div style="background:url(https://x/?q=1)">b</div>') === "a b</div>", "sanitizeModelMarkdown strips tags with a style attribute (css url loads)");
-    check(sanitizeModelMarkdown("see [[Note]] and [a](b) <b>bold</b> x<y [@k] a < b") === "see [[Note]] and [a](b) <b>bold</b> x<y [@k] a < b", "sanitizeModelMarkdown leaves plain markdown and harmless HTML alone");
+    check(!/<[a-z/!?]/i.test(sanitizeModelMarkdown("<im<img>g src=x>")), "sanitizeModelMarkdown: nested tag cannot reassemble");
+    check(sanitizeModelMarkdown("!![[x]]") === "[[x]]", "sanitizeModelMarkdown: stacked ! cannot reassemble an embed");
+    const tricky = sanitizeModelMarkdown('<div title="a>b" style="background:url(https://x/?q=1)">b</div> <!-- c --> <?php ?>');
+    check(!/<[a-z/!?]/i.test(tricky) && tricky.includes("&lt;div"), `sanitizeModelMarkdown: a quoted > in an earlier attribute cannot hide a style (${tricky})`);
+    check(sanitizeModelMarkdown("<b>bold</b>") === "&lt;b>bold&lt;/b>", "sanitizeModelMarkdown: any tag, even <b>, is escaped");
+    check(sanitizeModelMarkdown("see [[Note]] and [a](b) [@k] a < b 1<2 <3") === "see [[Note]] and [a](b) [@k] a < b 1<2 <3", "sanitizeModelMarkdown leaves plain markdown and comparisons alone");
+    check(sanitizeModelMarkdown("x<y") === "x&lt;y", "sanitizeModelMarkdown: '<' before a letter is escaped (renders the same)");
     check(safeFileName("Chat/2026-01-01 What is X?.md") === "Chat/2026-01-01 What is X-.md", "safeFileName: '?' rewritten in the basename only");
     check(safeFileName("A: b.md") === "A- b.md" && safeFileName("...md") === "md" && safeFileName("dir/?.md") === "dir/-.md", "safeFileName: ':' and leading dots");
   }
@@ -3219,6 +3250,13 @@ check(
   // #30: one level of brackets inside a value
   const f30 = parseFindings('## Evidence (extracted)\n\n> - [kind:: comparative] [outcome:: ODI] [ci:: [0.52, 0.91]] [p:: 0.02]\n>   "ODI improved."\n');
   check(f30.length === 1 && f30[0].p === "0.02", "parseFindings: a bracketed value does not break later fields");
+  check(f30[0].ci === "[0.52, 0.91]", "parseFindings: a balanced bracket span stays in the value");
+  // review 2 #22: a literal opening bracket (half-open interval) keeps the finding
+  const f31 = parseFindings('## Evidence (extracted)\n\n> - [kind:: comparative] [outcome:: Score on [0, 1)] [p:: 0.02]\n>   "Score rose."\n');
+  check(f31.length === 1 && f31[0].outcome === "Score on [0, 1)" && f31[0].p === "0.02", `parseFindings: a lone "[" in a value keeps the finding (${JSON.stringify(f31)})`);
+  const f32 = parseFindings('## Evidence (extracted)\n\n> - [kind:: comparative] [p:: 0.02] [outcome:: Score on [0, 1)]\n>   "Score rose."\n');
+  check(f32.length === 1 && f32[0].outcome === "Score on [0, 1)", "parseFindings: a lone \"[\" in the last field");
+  check(parseFindings('## Evidence (extracted)\n\n> - [kind:: comparative] [outcome:: ' + "[".repeat(5000) + '] [p:: 1]\n>   "q"\n').length >= 0, "parseFindings: many brackets do not hang");
   check(parseFindings('## Evidence (extracted)\n\n> - [kind:: comparative] [outcome:: OR [95% CI 1-2]] [p:: 0.02]\n>   "q"\n')[0]?.outcome === "OR [95% CI 1-2]", "parseFindings: a value keeps one level of brackets");
 
   // #35: an N-backtick span closes only on an N-backtick run

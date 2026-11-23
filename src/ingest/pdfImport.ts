@@ -1,7 +1,7 @@
 import { App, TFile } from "obsidian";
 import { ScholarRagSettings, CSLItem } from "../types";
 import { Library } from "../data/library";
-import { extractPdfText, findIdentifier, titleInHead } from "./pdf";
+import { extractPdfText, findIdentifier, isNoticeHead, titleInHead } from "./pdf";
 import { appendStash, resolvePdfLink } from "./pdfStash";
 import { fetchMetadata } from "./metadata";
 import { LLMClient } from "../llm/client";
@@ -21,7 +21,8 @@ export class PdfImporter {
     const { text } = await extractPdfText(data); // throws on a scanned/image PDF
 
     let item: CSLItem | null = null;
-    const id = findIdentifier(text);
+    // A correction / retraction notice prints the original's DOI but is its own work: no id lookup.
+    const id = isNoticeHead(text) ? null : findIdentifier(text);
     if (id) {
       try {
         item = await fetchMetadata(id, this.settings.pubmedApiKey);

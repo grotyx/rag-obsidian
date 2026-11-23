@@ -217,7 +217,16 @@ export class CitationGraph {
         const prev = this.data.byCitekey[citekey];
         const src = graphSource(fm ?? {});
         // Already resolved from this very identifier (or from a cache that never recorded one): nothing to do.
-        if (prev && (prev.src === undefined || prev.src === src)) continue;
+        if (prev && prev.src === src) continue;
+        if (prev && prev.src === undefined) {
+          // A cache from before `src` existed: an explicit openalex_id that still equals the node's
+          // id only needs its provenance recorded; a different one is a correction to resolve.
+          if (src.startsWith("oa:") && src.slice(3) === shortId(prev.openalexId)) {
+            prev.src = src;
+            changed = true;
+          }
+          if (!src.startsWith("oa:") || prev.src !== undefined) continue;
+        }
         try {
           const w = await resolveWork(fm as unknown as CSLItem, this.settings.openalexMailto);
           if (!w?.openalexId) {

@@ -1,19 +1,15 @@
 // Pure helpers: no obsidian imports.
 
-/** Tags that load a resource or run code. Model output steered by an injected note must not carry them. */
-const ACTIVE_TAGS =
-  "img|iframe|video|audio|source|object|embed|svg|script|style|link|meta|base|form|picture|track";
-const TAG_RE = new RegExp(`</?(?:${ACTIVE_TAGS})\\b[^>]*(?:>|$)`, "gi");
-/** Any other tag carrying a `style` attribute (`background:url(...)` loads a remote resource too). */
-const STYLED_RE = /<[a-z][\w:-]*\b[^<>]*\bstyle\s*=[^>]*>/gi;
-
-/** Neutralize embeds and loading/active HTML in model output before it is rendered or saved
- *  (`![[x]]` → `[[x]]`, `![a](u)` → `[a](u)`, `<img …>` / `<iframe …>` etc. removed). */
+/** Neutralize embeds and raw HTML in model output before it is rendered or saved. Model output
+ *  steered by an injected note must not load a resource or run markup, and attributes cannot be
+ *  reliably regex-parsed, so every `<` that starts a tag, comment or processing instruction
+ *  (`<` + letter, `/`, `!` or `?`) is escaped to `&lt;`; `![[x]]` → `[[x]]`, `![a](u)` → `[a](u)`.
+ *  `a < b` and `x<y` are untouched. */
 export function sanitizeModelMarkdown(text: string): string {
-  let out = text;
+  let out = text.replace(/<(?=[A-Za-z/!?])/g, "&lt;");
   for (let prev = ""; prev !== out; ) {
     prev = out;
-    out = out.replace(/!\[/g, "[").replace(TAG_RE, "").replace(STYLED_RE, "");
+    out = out.replace(/!\[/g, "["); // `!![[x]]` would otherwise reassemble an embed
   }
   return out;
 }

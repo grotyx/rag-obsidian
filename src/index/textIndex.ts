@@ -22,6 +22,8 @@
  *  stale postings. A stale row must not be re-added until a compaction (`epoch` changes) has run.
  *  Pure module: no obsidian import. */
 
+import { tagKey } from "../util/json";
+
 export interface TextDoc {
   id: string;
   citekey: string;
@@ -233,7 +235,7 @@ export class TextIndex {
     this.poolOff[row] = this.poolUsed;
     this.tagN[row] = d.tags.length;
     this.authN[row] = d.author.length;
-    for (const t of d.tags) this.pool[this.poolUsed++] = this.intern(t);
+    for (const t of d.tags) this.pool[this.poolUsed++] = this.intern(tagKey(t)); // a restored 0.11.3 index may hold "#tag"
     for (const a of d.author) this.pool[this.poolUsed++] = this.intern(a);
     this.year[row] = Number(d.year) || 0;
     const values = [...strs, d.tags.join(" ")];
@@ -350,7 +352,7 @@ export class TextIndex {
     if (f.tags?.length) {
       wantTags = true;
       for (const t of f.tags) {
-        const id = this.strId.get(t);
+        const id = this.strId.get(tagKey(t));
         if (id === undefined) return new Uint8Array(this.st.length);
         tagIds.push(id);
       }

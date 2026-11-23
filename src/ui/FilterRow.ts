@@ -1,6 +1,6 @@
 import type ScholarRagPlugin from "../../main";
 import { SearchFilters } from "../index/store";
-import { tagsOf } from "../util/json";
+import { tagKey, tagsOf } from "../util/json";
 
 /** Year range + author + tag chips, shared by the search and chat panes.
  *  State is view-local — deliberately not persisted to settings. */
@@ -33,7 +33,7 @@ export class FilterRow {
     tagInput.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       e.preventDefault();
-      const t = tagInput.value.trim();
+      const t = tagKey(tagInput.value);
       if (t && !this.tags.includes(t)) {
         this.tags.push(t);
         this.renderChips();
