@@ -121,6 +121,7 @@ import { applyScreening, hasKq, kqChoices, kqKey } from "../src/data/screening";
 import { robMarkdown, RobRecord, toRobRecord } from "../src/data/rob";
 import { prismaCounts, prismaMarkdown, PrismaRecord, toPrismaRecord } from "../src/data/prisma";
 import { aggregateSnowball, pickSnowballCandidates, snowballMarkdown, SnowballRecord, SnowballWork } from "../src/data/snowball";
+import { sanitizeModelMarkdown, safeFileName } from "../src/util/sanitize";
 import { searchLogNote, suffixedPath, parseSearchLog, searchLogTotals, countedSearchLogs } from "../src/data/searchLog";
 
 let passed = 0;
@@ -2795,6 +2796,17 @@ check(
   check(sr.base.endsWith("More") && sr.tail === "\n# Appendix\nkeep\n", `splitAtReferences: fenced heading skipped (${JSON.stringify(sr)})`);
   const sr2 = splitAtReferences("## References\n\n- x\n\n~~~\n# not a heading\n~~~\n\n- y\n");
   check(sr2.tail === "", `splitAtReferences: fenced heading does not end the section (${JSON.stringify(sr2)})`);
+
+  // 9. model-output sanitizer + safe file names (review #18, #8)
+  {
+    const dirty = 'a ![x](http://e/?q=1) ![[Private]] <img src="http://e/?q=1"> <IFRAME src=x></iframe> <svg onload=1> <img src=x\n';
+    const clean = sanitizeModelMarkdown(dirty);
+    check(!/!\[/.test(clean) && !/<\s*\/?\s*(img|iframe|svg)/i.test(clean), `sanitizeModelMarkdown strips embeds and loading tags (${JSON.stringify(clean)})`);
+    check(sanitizeModelMarkdown("<im<img>g src=x>") === "", "sanitizeModelMarkdown: nested tag cannot reassemble");
+    check(sanitizeModelMarkdown("see [[Note]] and [a](b) <b>bold</b> x<y [@k] a < b") === "see [[Note]] and [a](b) <b>bold</b> x<y [@k] a < b", "sanitizeModelMarkdown leaves plain markdown and harmless HTML alone");
+    check(safeFileName("Chat/2026-01-01 What is X?.md") === "Chat/2026-01-01 What is X-.md", "safeFileName: '?' rewritten in the basename only");
+    check(safeFileName("A: b.md") === "A- b.md" && safeFileName("...md") === "md" && safeFileName("dir/?.md") === "dir/-.md", "safeFileName: ':' and leading dots");
+  }
 }
 
 console.log(`unit: all ${passed} assertions passed`);

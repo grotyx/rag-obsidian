@@ -119,7 +119,10 @@ export class ScreeningView extends ItemView {
     this.errorEl = c.createDiv({ cls: "srag-badge-error" });
     this.bodyEl = c.createDiv({ cls: "srag-screening-body" });
 
-    this.registerDomEvent(document, "keydown", this.onKeydown);
+    // On the pane itself (not `document`): a pop-out window has its own document. tabindex lets a
+    // click on blank space keep focus inside the pane, so the shortcuts still reach it.
+    c.tabIndex = -1;
+    this.registerDomEvent(c, "keydown", this.onKeydown);
     this.recompute();
   }
 
@@ -155,7 +158,7 @@ export class ScreeningView extends ItemView {
     if (!item) return null;
     const file = this.plugin.app.vault.getAbstractFileByPath(item.file.path);
     if (!(file instanceof TFile)) return null;
-    return this.plugin.library.entries().find((e) => e.citekey === item.citekey) ?? null;
+    return this.plugin.library.entries().find((e) => e.file.path === item.file.path) ?? null;
   }
 
   private async showCurrent(): Promise<void> {
@@ -412,15 +415,14 @@ export class ScreeningView extends ItemView {
     try {
       if (!(await this.writeFields(item, this.buildFields(include)))) return;
       this.plugin.library.invalidateKeyCache();
-      const key = item.citekey;
       // metadataCache re-parses the note asynchronously, so entries() still holds the old
       // decision here — overlay the one we just wrote.
       const scoped = this.plugin.library
         .entries()
         .filter((e) => inScope(e, this.currentScope()))
-        .map((e) => (e.citekey === key ? { ...e, item: { ...e.item, include } } : e));
+        .map((e) => (e.file.path === item.file.path ? { ...e, item: { ...e.item, include } } : e));
       this.queue = scoped.filter((e) => matchesStatus(e, this.statusFilter)).map((e) => ({ citekey: e.citekey, file: e.file }));
-      const stillAt = this.queue.findIndex((q) => q.citekey === key);
+      const stillAt = this.queue.findIndex((q) => q.file.path === item.file.path);
       this.index = stillAt >= 0 ? Math.min(stillAt + 1, this.queue.length - 1) : Math.min(this.index, Math.max(0, this.queue.length - 1));
       this.renderProgress(scoped);
       await this.showCurrent();
@@ -430,11 +432,11 @@ export class ScreeningView extends ItemView {
   }
 
   private onKeydown = (evt: KeyboardEvent): void => {
-    if (!this.contentEl.contains(document.activeElement)) return;
     // Not while typing in any field (the design <select> jumps by letter), and never with a
-    // modifier: Cmd+E / Cmd+I are Obsidian's own shortcuts.
-    const active = document.activeElement;
-    if (active instanceof HTMLInputElement || active instanceof HTMLSelectElement || active instanceof HTMLTextAreaElement) return;
+    // modifier: Cmd+E / Cmd+I are Obsidian's own shortcuts. instanceOf, not instanceof: the
+    // element may belong to a pop-out window's realm.
+    const active = this.contentEl.ownerDocument.activeElement;
+    if (active?.instanceOf(HTMLInputElement) || active?.instanceOf(HTMLSelectElement) || active?.instanceOf(HTMLTextAreaElement)) return;
     if (evt.metaKey || evt.ctrlKey || evt.altKey) return;
     switch (evt.key) {
       case "i": case "I": evt.preventDefault(); void this.commit("include"); break;

@@ -8,6 +8,7 @@ import { FilterRow } from "./FilterRow";
 import { activatable } from "./RelatedView";
 import { formatCitation } from "../cite/format";
 import { rec, arr } from "../util/json";
+import { sanitizeModelMarkdown, safeFileName } from "../util/sanitize";
 
 export const VIEW_TYPE_CHAT = "rag-obsidian-chat";
 
@@ -21,6 +22,9 @@ export class ChatView extends ItemView {
   private logEl!: HTMLElement;
   private inputEl!: HTMLTextAreaElement;
   private filterRow!: FilterRow;
+  private sendBtn!: HTMLButtonElement;
+  private epoch = 0; // bumped by Clear chat: an answer that was in flight must not come back
+  private pending = false;
 
   constructor(leaf: WorkspaceLeaf, plugin: ScholarRagPlugin) {
     super(leaf);
@@ -52,7 +56,7 @@ export class ChatView extends ItemView {
       cls: "srag-chat-input",
       attr: { rows: "2", placeholder: "Ask your library…  (Enter to send, Shift+Enter for newline)" },
     });
-    const send = composer.createEl("button", { text: "Send", cls: "mod-cta" });
+    const send = (this.sendBtn = composer.createEl("button", { text: "Send", cls: "mod-cta" }));
     send.onclick = () => void this.send();
     const clear = composer.createEl("button", { text: "Clear", attr: { "aria-label": "Clear chat" } });
     clear.onclick = () => void this.clear();
@@ -126,6 +130,7 @@ export class ChatView extends ItemView {
   }
 
   private async clear(): Promise<void> {
+    this.epoch++;
     this.history = [];
     this.logEl.empty();
     const adapter = this.app.vault.adapter;
@@ -164,9 +169,12 @@ export class ChatView extends ItemView {
 
   private async send(): Promise<void> {
     const query = this.inputEl.value.trim();
-    if (!query) return;
+    if (!query || this.pending) return;
     this.inputEl.value = "";
     this.bubble("user", query);
+    const epoch = this.epoch;
+    this.pending = true;
+    this.sendBtn.disabled = true;
 
     const thinking = this.bubble("assistant", "…");
     try {
@@ -174,6 +182,7 @@ export class ChatView extends ItemView {
       const ans = await this.rag.answer(query, this.history.slice(-CONTEXT_TURNS), filters);
       const summary = describeFilters(filters);
       thinking.remove();
+      if (epoch !== this.epoch) return; // chat was cleared while this answer was in flight
       await this.renderAnswer(ans, query, summary);
       this.history.push({ role: "user", content: query });
       // Keep this turn's source order so follow-up turns can resolve its [n] anchors, and
@@ -192,8 +201,12 @@ export class ChatView extends ItemView {
         this.notReadyBubble();
         return;
       }
+      if (epoch !== this.epoch) return;
       const msg = e instanceof Error ? e.message : String(e);
       this.bubble("system", `⚠ ${msg}`);
+    } finally {
+      this.pending = false;
+      this.sendBtn.disabled = false;
     }
   }
 
@@ -217,10 +230,10 @@ export class ChatView extends ItemView {
   private async renderAnswer(ans: RagAnswer, question: string, filterSummary = ""): Promise<void> {
     const wrap = this.logEl.createDiv({ cls: "srag-bubble srag-assistant" });
     const body = wrap.createDiv({ cls: "srag-answer" });
-    // Neutralize embeds/images before rendering (`![[…]]` → `[[…]]`, `![…](…)` → `[…](…)`):
-    // model output steered by a malicious note could otherwise auto-load an external image
-    // (exfil beacon) or transclude a private note. Render-time only — history keeps ans.text.
-    const safeText = ans.text.replace(/!\[/g, "[");
+    // Neutralize embeds and loading HTML before rendering (`![[…]]` → `[[…]]`, `<img>`/`<iframe>`
+    // dropped): model output steered by a malicious note could otherwise auto-load an external
+    // resource (exfil beacon) or transclude a private note. History keeps ans.text as is.
+    const safeText = sanitizeModelMarkdown(ans.text);
     await MarkdownRenderer.render(this.app, safeText, body, "", this);
 
     if (ans.sources.length) {
@@ -251,9 +264,10 @@ export class ChatView extends ItemView {
     }
     const date = new Date().toISOString().slice(0, 10);
     const stem = question.replace(/\s+/g, " ").trim().slice(0, 40).trim() || "answer";
-    const out = `## Question\n\n${question}\n\n## Answer\n\n${anchorsToCitekeys(text, citekeys)}\n`;
+    const out = `## Question\n\n${question}\n\n## Answer\n\n${sanitizeModelMarkdown(anchorsToCitekeys(text, citekeys))}\n`;
     // Never overwrite an earlier answer to the same question: -2, -3 … until the name is free.
-    const path = `${folder}/${date} ${stem}.md`;
+    // Check the name writeAndOpen will really use (it rewrites `?` `:` etc.), not the raw one.
+    const path = safeFileName(`${folder}/${date} ${stem}.md`);
     let n = 1;
     while (this.app.vault.getAbstractFileByPath(normalizePath(suffixedPath(path, n)))) n++;
     await this.plugin.writeAndOpen(suffixedPath(path, n), out);

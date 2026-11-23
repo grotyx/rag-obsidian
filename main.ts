@@ -60,6 +60,7 @@ import { McpVault } from "./src/mcp/vault";
 import { McpService, mcpToolsFor } from "./src/mcp/service";
 import { assertVaultPath, McpHttpServer, McpServerStatus } from "./src/mcp/http";
 import { str, rec, text } from "./src/util/json";
+import { safeFileName } from "./src/util/sanitize";
 import { compileMcpManuscript } from "./src/write/manuscript";
 
 const LEGACY_PLUGIN_ID = "rag-obsidian";
@@ -470,6 +471,7 @@ export default class ScholarRagPlugin extends Plugin {
         if (file.path.startsWith(this.library.folder() + "/")) {
           this.citeCache.clear(); // reference data changed
           this.pokeEditors(); // editors re-read labels and titles (debounced: imports write hundreds)
+          this.rerenderReadingViews();
           this.library.invalidateKeyCache();
         } else void this.refreshCitations(file.path); // style or numbering in this note may have changed
       })
@@ -483,6 +485,7 @@ export default class ScholarRagPlugin extends Plugin {
         if (file.path.startsWith(this.library.folder() + "/")) {
           this.citeCache.clear(); // a deleted reference leaves stale manuscript labels
           this.pokeEditors();
+          this.rerenderReadingViews();
         }
       })
     );
@@ -501,6 +504,7 @@ export default class ScholarRagPlugin extends Plugin {
   onunload(): void {
     this.citationGraph?.dispose();
     this.pokeEditors.cancel();
+    this.rerenderReadingViews.cancel();
     void this.mcpServer?.stop();
     void this.indexManager?.flushPending();
   }
@@ -613,6 +617,7 @@ export default class ScholarRagPlugin extends Plugin {
           if (legacy) store.setSecret(legacyId, "");
         } catch (e) {
           console.warn(`${this.manifest.id}: secretStorage write failed for ${field}; key stays in data.json`, e);
+          this.warnSecretFallback(field);
         }
       }
     }
@@ -631,6 +636,7 @@ export default class ScholarRagPlugin extends Plugin {
           data[field] = ""; // only blank in data.json once the keychain write succeeded
         } catch (e) {
           console.warn(`${this.manifest.id}: secretStorage write failed for ${field}; keeping key in data.json`, e);
+          this.warnSecretFallback(field);
         }
       }
       await this.saveData(data);
@@ -638,6 +644,15 @@ export default class ScholarRagPlugin extends Plugin {
       await this.saveData(this.settings);
     }
     this.citeCache.clear(); // style may have changed
+    this.rerenderReadingViews(); // ...so open reading views redraw their labels
+  }
+
+  private secretWarned = new Set<string>();
+  /** The key stays in data.json (which can sync) when the keychain write fails: say so, once per field. */
+  private warnSecretFallback(field: string): void {
+    if (this.secretWarned.has(field)) return;
+    this.secretWarned.add(field);
+    new Notice(`API key (${field}) could not be saved to the keychain; it is stored in data.json instead.`, 10000);
   }
 
   /** Build the citation graph over the whole library (one OpenAlex request per paper).
@@ -685,6 +700,17 @@ export default class ScholarRagPlugin extends Plugin {
   // concurrent post-processor blocks share one engine build; a failed render is evicted.
   private citeCache = new Map<string, Promise<Record<string, string>>>();
   private pokeEditors = debounce(() => this.app.workspace.updateOptions(), 1000, true);
+  /** Reading view keeps rendered paragraphs whose text did not change, so after the cite cache is
+   *  dropped (reference edited/deleted, style or settings changed) redraw every open preview. */
+  private rerenderReadingViews = debounce(
+    () => {
+      for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+        if (leaf.view instanceof MarkdownView) leaf.view.previewMode?.rerender(true);
+      }
+    },
+    1000,
+    true
+  );
 
   /** Citation style for a note: its `csl` / `citation-style` frontmatter, else the global setting. */
   styleForNote(file: TFile | null): string {
@@ -841,11 +867,7 @@ export default class ScholarRagPlugin extends Plugin {
   }
 
   async writeAndOpen(rawPath: string, content: string): Promise<void> {
-    // Basenames are built from citekeys / titles: strip the characters Obsidian rejects in
-    // file names (and `[]#^|` that would break the link to the new note).
-    const slash = rawPath.lastIndexOf("/");
-    const base = rawPath.slice(slash + 1).replace(/[\\/:*?"<>|#^[\]]+/g, "-").replace(/^\.+/, "");
-    const path = normalizePath(rawPath.slice(0, slash + 1) + (base || "untitled.md"));
+    const path = normalizePath(safeFileName(rawPath)); // basenames come from citekeys / titles
     const existing = this.app.vault.getAbstractFileByPath(path);
     let file: TFile;
     if (existing instanceof TFile) {
