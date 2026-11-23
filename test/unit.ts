@@ -22,7 +22,7 @@ import { parseCollections, parseCslPage } from "../src/ingest/zotero";
 import "./dom-shim"; // globalThis.DOMParser for fetchPubmedRecord's XML path
 import { cleanDoi, detectId, splitName, parsePubDate, esummaryToItem, extractAbstractXml, fetchMetadata } from "../src/ingest/metadata";
 import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
-import { findIdentifier, titleInHead, isPdfMagic, extractPdfHighlights, setPdfjsLoader } from "../src/ingest/pdf";
+import { findIdentifier, titleInHead, isPdfMagic, extractPdfHighlights, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, stashedText, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
 import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summarize";
 import { buildTags, MIN_TAGS, fetchPubmedRecord } from "../src/ingest/pubmedSearch";
@@ -534,6 +534,25 @@ AID - 10.1000/xyz123 [doi]
     partial.length === 1 && partial[0].text === "second line",
     `extractPdfHighlights: one malformed quad among good ones still adds ann.rect: ${JSON.stringify(partial)}`
   );
+
+  // review #23: the loading task is destroyed on success, on failure and on timeout
+  let destroyed = 0;
+  const loader = (promise: Promise<unknown>) => async () => ({
+    GlobalWorkerOptions: { workerSrc: "" },
+    getDocument: () => ({ promise: promise as never, destroy: async () => void destroyed++ }),
+  });
+  const page = { getTextContent: async () => ({ items: [{ str: "hello" }] }), getAnnotations: async () => [] };
+  setPdfjsLoader(loader(Promise.resolve({ numPages: 1, getPage: async () => page })));
+  await extractPdfText(new ArrayBuffer(8));
+  check(destroyed === 1, "extractPdfText: destroys the loading task after success");
+  await extractPdfHighlights(new ArrayBuffer(8));
+  check(destroyed === 2, "extractPdfHighlights: destroys the loading task after success");
+  setPdfjsLoader(loader(Promise.reject(new Error("bad pdf"))));
+  await extractPdfHighlights(new ArrayBuffer(8)).catch(() => {});
+  check(destroyed === 3, "extractPdfHighlights: destroys the loading task after a failure");
+  setPdfjsLoader(loader(new Promise<never>(() => {})));
+  const stuck = await extractPdfHighlights(new ArrayBuffer(8), { timeoutMs: 30 }).then(() => "resolved", (e: unknown) => String(e));
+  check(/timed out/.test(stuck) && destroyed === 4, `extractPdfHighlights: a stuck PDF times out and is destroyed → ${stuck}`);
 }
 
 // ---------- ingest/pdfStash.ts ----------
@@ -725,13 +744,17 @@ AID - 10.1000/xyz123 [doi]
   check(matchPdf("Park2021Efficacy", null, cands)?.by === "name", "matchPdf: filename match is case-insensitive");
   check(matchPdf("random-download", null, cands) === null, "matchPdf: no head, no name match → null");
 
-  const doiHead = "Downloaded from https://doi.org/10.1038/x. on 2024-01-01\nSome intro text.";
+  const doiHead = "Downloaded from https://doi.org/10.1038/x. on 2024-01-01\nThe efficacy of endoscopic diskectomy for lumbar herniation\nSome intro text.";
   check(matchPdf("random-download", doiHead, cands)?.citekey === "park2021efficacy", "matchPdf: DOI with URL prefix + trailing period");
   check(matchPdf("random-download", doiHead, cands)?.by === "doi", "matchPdf: DOI match reports by=doi");
 
-  const pmidHead = "Article header.\nPMID: 87654321\nAbstract follows.";
+  const pmidHead = "Article header.\nOutcomes of biportal endoscopy in spinal stenosis patients\nPMID: 87654321\nAbstract follows.";
   const pmidHit = matchPdf("random-download", pmidHead, cands);
   check(pmidHit?.citekey === "kim2019outcomes" && pmidHit?.by === "pmid", "matchPdf: PMID match");
+
+  // review #22: the DOI / PMID alone (an erratum quoting the original's id) must not match
+  const erratum = "Erratum to https://doi.org/10.1038/x PMID: 87654321\nCorrection notice for a figure legend.";
+  check(matchPdf("random-download", erratum, cands) === null, "matchPdf: a DOI / PMID without the reference's title in the head is not a match");
 
   const titleHead = "The Efficacy of Endoscopic Diskectomy for Lumbar Herniation\nJournal of Spine, 2021.\nAuthors: Park et al.";
   const titleHit = matchPdf("random-download", titleHead, cands);
@@ -1640,7 +1663,11 @@ check(
     const c3 = prismaCounts([exc, inc], [["x1", "i1"]], () => true);
     check(c3.reportsIncluded === 1 && c3.excludedAtScreening === 0, "prismaCounts: include beats exclude");
     const c4 = prismaCounts([{ citekey: "p1", include: "pending" }, undecided], [["p1", "u1"]], () => true);
-    check(c4.recordsScreened === 1 && c4.awaitingDecision === 1, "prismaCounts: ties fall back to input order");
+    // two notes with the same citekey (sync conflict) are told apart by file path (review #21)
+    const twin = (id: string): PrismaRecord => ({ id, citekey: "same2020", include: "include" });
+    const c5 = prismaCounts([twin("References/a.md"), twin("References/b.md")], [["References/a.md", "References/b.md"]], () => true);
+    check(c5.duplicatesRemoved === 1 && c5.reportsIncluded === 1, "prismaCounts: two notes sharing a citekey count as a removed duplicate");
+    check(c4.recordsScreened === 0 && c4.awaitingDecision === 1, "prismaCounts: ties fall back to input order");
   }
   // kq: "03" and 3 are one key question everywhere
   check(kqKey("03") === "3" && kqKey(3) === "3" && kqKey(" 3 ") === "3" && kqKey("kq-a") === "kq-a", "kqKey: leading zeros and padding collapse");
@@ -1665,7 +1692,7 @@ check(
 
   check(counts.recordsIdentified === 7, "prismaCounts: recordsIdentified counts every scoped record");
   check(counts.duplicatesRemoved === 1, "prismaCounts: one duplicate (beyond the first) removed");
-  check(counts.recordsScreened === 6, "prismaCounts: recordsScreened = identified - duplicates");
+  check(counts.recordsScreened === 4, "prismaCounts: recordsScreened counts only records with a decision (review #20)");
   check(counts.excludedAtScreening === 2, "prismaCounts: two excluded");
   check(counts.awaitingDecision === 2, "prismaCounts: pending + unscreened = awaiting decision");
   check(counts.reportsSoughtForRetrieval === 2, "prismaCounts: two included (duplicate not double-counted)");
@@ -1717,7 +1744,7 @@ check(
   // mutation check: a broken prismaCounts (off-by-one on duplicates) must fail the assertions above.
   const brokenDupGroups: string[][] = [];
   const brokenCounts = prismaCounts(records, brokenDupGroups, (r) => fullText.has(r.citekey));
-  check(brokenCounts.recordsScreened === 7, "prismaCounts mutation check: no dup groups -> nothing removed");
+  check(brokenCounts.recordsIdentified === 7 && brokenCounts.duplicatesRemoved === 0, "prismaCounts mutation check: no dup groups -> nothing removed");
 }
 
 // ---------- data/searchLog.ts: search-log note + PRISMA search-log section ----------
@@ -2358,6 +2385,67 @@ check(
   check(scans === before, "dispose: a pending prune never scans after unload");
   check(cancelled === 1, "dispose: the add-flush debouncer is cancelled");
 }
+
+// ---------- graph/citations.ts: a corrected identifier refreshes the node (review #27) ----------
+{
+  const realFetch = globalThis.fetch;
+  let status404 = false;
+  let throwNet = false;
+  const work = (id: string, refs: string[]) => ({ id: `https://openalex.org/${id}`, title: id, referenced_works: refs.map((r) => `https://openalex.org/${r}`) });
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    if (throwNet) throw new Error("offline");
+    const u = String(input);
+    if (status404 || u.includes("/W404")) return new Response("{}", { status: 404 });
+    if (u.includes("10.1/new")) return new Response(JSON.stringify(work("W2", ["W9"])), { status: 200 });
+    if (u.includes("/W2")) return new Response(JSON.stringify(work("W2", ["W9"])), { status: 200 });
+    return new Response(JSON.stringify(work("W1", ["W8"])), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const file = new TFile();
+    file.path = "References/k.md";
+    let fm: Record<string, unknown> = { citekey: "k", DOI: "10.1/old" };
+    const app = {
+      vault: { adapter: { exists: async () => true, read: async () => "{}", write: async () => {}, mkdir: async () => {} }, getAbstractFileByPath: () => file },
+      metadataCache: { getFileCache: () => ({ frontmatter: fm }) },
+      fileManager: { processFrontMatter: async (_f: unknown, fn: (m: Record<string, unknown>) => void) => fn(fm) },
+    };
+    const lib = { entries: () => [{ citekey: "k", item: fm, file }], folder: () => "References", getFile: () => file };
+    const g = new CitationGraph(app as never, lib as never, { openalexMailto: "" } as never, "_x");
+    (g as unknown as { flush: unknown }).flush = Object.assign(() => undefined, { cancel: () => undefined }); // no real 3 s timer
+    const flush = async () => {
+      g.enqueue(file);
+      await (g as unknown as { flushAdds: () => Promise<void> }).flushAdds();
+    };
+    await g.build();
+    check(g.refIds("k").join() === "W8", "citation graph: build resolves the note from its DOI");
+    check(fm.openalex_id === "W1", "citation graph: the resolved id is written back to the note");
+    fm = { citekey: "k", DOI: "10.1/old", openalex_id: "W2" }; // the id was corrected
+    await flush();
+    check(g.refIds("k").join() === "W9", `citation graph: a changed openalex_id re-resolves the incremental node (${g.refIds("k")})`);
+    // an unchanged identifier is not looked up again
+    status404 = true;
+    await flush();
+    check(g.refIds("k").join() === "W9", "citation graph: an unchanged identifier costs no lookup");
+    // the corrected id resolves to nothing: the stale node goes, in an incremental pass and in a build
+    fm = { citekey: "k", DOI: "10.1/old", openalex_id: "W404" };
+    await flush();
+    check(!g.has("k"), "citation graph: an id that resolves to nothing drops the old node");
+    status404 = false;
+    fm = { citekey: "k", DOI: "10.1/old" };
+    await g.build();
+    check(g.has("k"), "citation graph: rebuilt");
+    fm = { citekey: "k", DOI: "10.1/old", openalex_id: "W404" };
+    throwNet = true;
+    await g.build();
+    check(g.has("k"), "citation graph: a transient failure during a build keeps the previous node");
+    throwNet = false;
+    await g.build();
+    check(!g.has("k"), "citation graph: a definitive not-found during a build drops the node");
+    g.dispose();
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
   // ---------- ingest/pdf.ts: titleInHead ----------
   {
     const own = "Outcomes of Biportal Endoscopic Decompression for Lumbar Stenosis";
@@ -2695,6 +2783,34 @@ check(
 
   const hs = { openaiBaseUrl: "https://openrouter.ai/api/v1", embeddingProvider: "ollama" as const, llmProvider: "ollama" as const };
   check(!canHostedRerank(hs) && canHostedRerank({ ...hs, llmProvider: "openai" }) && canHostedRerank({ ...hs, embeddingProvider: "openai" }) && !canHostedRerank({ ...hs, embeddingProvider: "openai", openaiBaseUrl: "https://api.openai.com/v1" }), "canHostedRerank: OpenRouter and a hosted embedding or chat provider");
+}
+
+// ---------- cite/csl.ts: a fetched locale is cached for offline use (review #33) ----------
+{
+  const files = new Map<string, string>();
+  const adapter = {
+    read: async (p: string) => {
+      const v = files.get(p);
+      if (v === undefined) throw new Error("ENOENT");
+      return v;
+    },
+    write: async (p: string, t: string) => void files.set(p, t),
+    exists: async (p: string) => [...files.keys()].some((k) => k.startsWith(p)),
+    mkdir: async () => undefined,
+  };
+  const locale = (e: CiteEngine) => (e as unknown as { locales: () => Promise<string> }).locales();
+  const realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response("<locale>en-US</locale>", { status: 200 })) as typeof fetch;
+    check((await locale(new CiteEngine({ vault: { adapter } } as never, "plug"))) === "<locale>en-US</locale>", "locales: fetched when nothing is on disk");
+    globalThis.fetch = (async () => {
+      throw new Error("offline");
+    }) as typeof fetch;
+    // a fresh engine = a restart; no styles/ folder, no network
+    check((await locale(new CiteEngine({ vault: { adapter } } as never, "plug"))) === "<locale>en-US</locale>", "locales: after a restart the cached copy is used offline");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 }
 
 // ---------- cite: renderNote clusters, compile, export, fences, summary placement ----------

@@ -60,21 +60,21 @@ async function getPdfjs(): Promise<PdfjsLike> {
 /** A malformed PDF can leave pdfjs waiting forever; past this the file counts as failed. */
 export const PDF_EXTRACT_TIMEOUT_MS = 120_000;
 
-/** Extract a PDF's text. Rejects after `timeoutMs`, or as soon as `signal` aborts, so one stuck
- *  file can't hold a batch (or its cancel button) open forever. */
-export async function extractPdfText(
-  data: ArrayBuffer,
-  opts: { signal?: AbortSignal; timeoutMs?: number } = {}
-): Promise<{ text: string; pages: number }> {
+interface PdfOpts {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+/** Open `data`, run `work` on the document, and always destroy the loading task (and its worker)
+ *  afterwards. Rejects after `timeoutMs`, or as soon as `signal` aborts, so one stuck file can't
+ *  hold a batch (or its cancel button) open forever. */
+async function withPdf<T>(data: ArrayBuffer, opts: PdfOpts, work: (doc: PdfDocument) => Promise<T>): Promise<T> {
   const pdfjs = await getPdfjs();
   const task = pdfjs.getDocument({ data: new Uint8Array(data), isEvalSupported: false });
   let timer = 0;
   let onAbort = (): void => {};
   const stop = new Promise<never>((_, reject) => {
-    const fail = (why: string) => {
-      void task.destroy?.().catch(() => {});
-      reject(new Error(why));
-    };
+    const fail = (why: string) => reject(new Error(why));
     if (opts.signal?.aborted) return fail("Cancelled");
     onAbort = () => fail("Cancelled");
     opts.signal?.addEventListener("abort", onAbort);
@@ -82,15 +82,20 @@ export async function extractPdfText(
     timer = window.setTimeout(() => fail(`PDF text extraction timed out after ${Math.round(ms / 1000)}s`), ms);
   });
   try {
-    return await Promise.race([readText(task.promise), stop]);
+    return await Promise.race([task.promise.then(work), stop]);
   } finally {
     window.clearTimeout(timer);
     opts.signal?.removeEventListener("abort", onAbort);
+    void Promise.resolve(task.destroy?.()).catch(() => {});
   }
 }
 
-async function readText(docPromise: Promise<PdfDocument>): Promise<{ text: string; pages: number }> {
-  const doc = await docPromise;
+/** Extract a PDF's text (see `withPdf` for the timeout / cancel / cleanup contract). */
+export function extractPdfText(data: ArrayBuffer, opts: PdfOpts = {}): Promise<{ text: string; pages: number }> {
+  return withPdf(data, opts, readText);
+}
+
+async function readText(doc: PdfDocument): Promise<{ text: string; pages: number }> {
   const pages = num(doc.numPages) ?? 0;
   let text = "";
   for (let i = 1; i <= pages; i++) {
@@ -162,9 +167,11 @@ function quadRects(ann: PdfAnnotation): number[][] {
 }
 
 /** Extract highlight/underline text and sticky-note contents from a PDF's annotations. */
-export async function extractPdfHighlights(data: ArrayBuffer): Promise<PdfHighlight[]> {
-  const pdfjs = await getPdfjs();
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(data), isEvalSupported: false }).promise;
+export function extractPdfHighlights(data: ArrayBuffer, opts: PdfOpts = {}): Promise<PdfHighlight[]> {
+  return withPdf(data, opts, readHighlights);
+}
+
+async function readHighlights(doc: PdfDocument): Promise<PdfHighlight[]> {
   const out: PdfHighlight[] = [];
   const MARKUP = new Set(["Highlight", "Underline", "StrikeOut", "Squiggly"]);
   const numPages = num(doc.numPages) ?? 0;

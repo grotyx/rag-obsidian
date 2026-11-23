@@ -6,6 +6,8 @@
  *  the whole document produced a real false positive. The slice is re-enforced here too, so a
  *  caller that forgets still gets the safe behavior. */
 
+import { titleInHead } from "../ingest/pdf";
+
 export interface PdfCandidate {
   citekey: string;
   DOI?: string;
@@ -50,18 +52,19 @@ export function matchPdf(fileBase: string, head: string | null, candidates: PdfC
 
   if (!sliced) return null;
 
-  // 2. DOI in the head text.
+  // 2. DOI in the head text. An erratum or a cited paper's DOI printed early must not link the
+  //    wrong paper, so the reference's own title has to be in the head too; otherwise fall through.
   const doiFound = normDoi(sliced.match(DOI_RE)?.[0]);
   if (doiFound) {
     const doiHit = candidates.find((c) => c.DOI && normDoi(c.DOI) === doiFound);
-    if (doiHit) return { citekey: doiHit.citekey, by: "doi" };
+    if (doiHit && titleInHead(doiHit.title, sliced)) return { citekey: doiHit.citekey, by: "doi" };
   }
 
   // 3. PMID in the head text.
   const pmidFound = sliced.match(PMID_RE)?.[1];
   if (pmidFound) {
     const pmidHit = candidates.find((c) => c.PMID && c.PMID === pmidFound);
-    if (pmidHit) return { citekey: pmidHit.citekey, by: "pmid" };
+    if (pmidHit && titleInHead(pmidHit.title, sliced)) return { citekey: pmidHit.citekey, by: "pmid" };
   }
 
   // 4. Title contained in the head text, with the year as a tiebreaker guard. Ambiguous (more

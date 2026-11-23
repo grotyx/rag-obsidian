@@ -5,6 +5,9 @@ import { SearchLogSummary, countedSearchLogs, searchLogTotals } from "./searchLo
 /** The one slice of a reference an in-scope PRISMA count needs — the caller (the command layer,
  *  which has vault access) projects `library.entries()` down to this before calling `prismaCounts`. */
 export interface PrismaRecord {
+  /** Identity for duplicate groups and lookups (the note's file path). Two notes may share a
+   *  citekey (a sync conflict), so the citekey is for display only; falls back to it when unset. */
+  id?: string;
   citekey: string;
   include?: string | null;
   screening_note?: string | null;
@@ -13,8 +16,9 @@ export interface PrismaRecord {
 }
 
 /** Project a reference's frontmatter onto `PrismaRecord`; unquoted YAML numbers (`study_id: 2019001`) count as text. */
-export function toPrismaRecord(citekey: string, item: Record<string, unknown>): PrismaRecord {
+export function toPrismaRecord(citekey: string, item: Record<string, unknown>, id?: string): PrismaRecord {
   return {
+    id,
     citekey,
     include: text(item.include).trim() || null,
     screening_note: text(item.screening_note) || null,
@@ -40,7 +44,9 @@ export interface PrismaCounts {
   exclusionReasons: { reason: string; count: number }[];
 }
 
-/** Count a PRISMA 2020 flow from a scope's records, a duplicate-group list (citekeys, as
+export const prismaId = (r: PrismaRecord): string => r.id ?? r.citekey;
+
+/** Count a PRISMA 2020 flow from a scope's records, a duplicate-group list (record ids, as
  *  `duplicateGroups` from data/library.ts returns them, restricted to this scope), and a
  *  full-text lookup. Duplicates are every record but one present in each
  *  group (the one with a decision stays, include before exclude, else the first in input order) — the rest of the counts (excluded/included/awaiting) are over the deduplicated set, so
@@ -50,7 +56,7 @@ export function prismaCounts(
   dupGroups: string[][],
   hasFullText: (r: PrismaRecord) => boolean
 ): PrismaCounts {
-  const byKey = new Map(records.map((r) => [r.citekey, r]));
+  const byKey = new Map(records.map((r) => [prismaId(r), r]));
   const rank = (k: string): number => {
     const d = byKey.get(k)?.include;
     return d === "include" ? 2 : d === "exclude" ? 1 : 0;
@@ -62,7 +68,7 @@ export function prismaCounts(
     const keep = present.reduce((best, k) => (rank(k) > rank(best) ? k : best), present[0]);
     for (const k of present) if (k !== keep) extraDupes.add(k);
   }
-  const primary = records.filter((r) => !extraDupes.has(r.citekey));
+  const primary = records.filter((r) => !extraDupes.has(prismaId(r)));
   const duplicatesRemoved = records.length - primary.length;
 
   const excluded = primary.filter((r) => r.include === "exclude");
@@ -70,7 +76,7 @@ export function prismaCounts(
   const awaiting = primary.filter((r) => r.include !== "exclude" && r.include !== "include");
   const includedWithFullText = included.filter((r) => hasFullText(r));
 
-  const studyOf = (r: PrismaRecord): string => r.study_id?.trim() || `\0${r.citekey}`;
+  const studyOf = (r: PrismaRecord): string => r.study_id?.trim() || `\0${prismaId(r)}`;
   const studies = new Set(included.map(studyOf));
 
   const reasonCounts = new Map<string, number>();
@@ -86,7 +92,7 @@ export function prismaCounts(
   return {
     recordsIdentified: records.length,
     duplicatesRemoved,
-    recordsScreened: primary.length,
+    recordsScreened: excluded.length + included.length,
     excludedAtScreening: excluded.length,
     awaitingDecision: awaiting.length,
     reportsSoughtForRetrieval: included.length,
@@ -127,8 +133,8 @@ export function prismaMarkdown(counts: PrismaCounts, scopeLabel: string, date: s
     `    H["Studies included in review<br/>n = ${c.studiesIncluded}${c.hasStudyIds ? ` · reports of included studies n = ${c.reportsIncluded}` : ""}<br/>full text ${c.reportsAssessed} · abstract only ${c.reportsNotRetrieved}"]`,
     "    end",
     "    A --> B --> C",
+    "    B --> W",
     "    C --> D",
-    "    C --> W",
     "    C --> E --> F",
     "    E --> G --> H",
     ...(c.reportsNotRetrieved ? ["    F -.-> H"] : []),

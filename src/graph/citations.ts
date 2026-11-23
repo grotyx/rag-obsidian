@@ -1,10 +1,12 @@
 import { App, TFile, normalizePath, debounce } from "obsidian";
 import { Library } from "../data/library";
 import { CSLItem, ScholarRagSettings } from "../types";
-import { resolveWork, fetchTitles } from "./openalex";
+import { text } from "../util/json";
+import { resolveWork, fetchTitles, shortId, normalizeDoi } from "./openalex";
 
 interface GraphData {
-  byCitekey: Record<string, { openalexId: string; refs: string[] }>;
+  /** `src` is the identifier the node was resolved from (`graphSource`); absent on caches written before it existed. */
+  byCitekey: Record<string, { openalexId: string; refs: string[]; src?: string }>;
   idToCitekey: Record<string, string>;
 }
 
@@ -22,6 +24,22 @@ function isGraphData(v: unknown): v is GraphData {
       Array.isArray((n as { refs?: unknown }).refs)
   );
 }
+
+/** The identifier `resolveWork` would use for a note (openalex_id → DOI → PMID), as a comparable
+ *  string; "" when it would fall back to a title search. */
+export function graphSource(item: { openalex_id?: unknown; DOI?: unknown; PMID?: unknown }): string {
+  const oa = typeof item.openalex_id === "string" ? shortId(item.openalex_id) : "";
+  if (oa) return `oa:${oa}`;
+  const doi = text(item.DOI).trim();
+  if (doi) return `doi:${normalizeDoi(doi)}`;
+  const pmid = text(item.PMID).trim();
+  if (pmid) return `pmid:${pmid}`;
+  return "";
+}
+
+/** What to record for a freshly resolved node: `backfillId` writes openalex_id into a note that had
+ *  none, so a DOI / PMID / title source becomes `oa:<id>` and the write's own change event is a no-op. */
+const storedSource = (src: string, openalexId: string): string => (src.startsWith("oa:") ? src : `oa:${openalexId}`);
 
 export interface MissingPaper {
   openalexId: string;
@@ -142,20 +160,24 @@ export class CitationGraph {
       // One paper's network failure must not abort the whole build: keep going and
       // preserve the previously resolved node (transient 429/offline), like flushAdds.
       let w: Awaited<ReturnType<typeof resolveWork>> = null;
+      let threw = false;
       try {
         w = await resolveWork(e.item, this.settings.openalexMailto);
       } catch (err) {
         failed++;
+        threw = true;
         console.warn(`[Refwright] OpenAlex lookup failed for "${e.citekey}" — keeping the previous node`, err);
         w = null;
       }
       if (w && w.openalexId) {
-        data.byCitekey[e.citekey] = { openalexId: w.openalexId, refs: w.referencedWorks };
+        // `backfillId` is about to write openalex_id when the note had none, so that is the source.
+        data.byCitekey[e.citekey] = { openalexId: w.openalexId, refs: w.referencedWorks, src: storedSource(graphSource(e.item), w.openalexId) };
         data.idToCitekey[w.openalexId] = e.citekey;
         // Frontmatter-only write: the indexer's content hash keeps this from re-embedding the note.
         await this.backfillId(e.file, w.openalexId);
-      } else if (this.data.byCitekey[e.citekey]) {
-        // Transient failure (e.g. 429): keep the previously resolved node.
+      } else if (threw && this.data.byCitekey[e.citekey]) {
+        // Transient failure (e.g. 429): keep the previously resolved node. A definitive
+        // not-found (404, title mismatch) drops it instead, so stale edges don't outlive the id.
         const prev = this.data.byCitekey[e.citekey];
         data.byCitekey[e.citekey] = prev;
         data.idToCitekey[prev.openalexId] = e.citekey;
@@ -191,15 +213,28 @@ export class CitationGraph {
         if (!(file instanceof TFile)) continue;
         const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
         const citekey = fm?.citekey ? String(fm.citekey) : "";
-        if (!citekey || this.data.byCitekey[citekey]) continue;
+        if (!citekey) continue;
+        const prev = this.data.byCitekey[citekey];
+        const src = graphSource(fm ?? {});
+        // Already resolved from this very identifier (or from a cache that never recorded one): nothing to do.
+        if (prev && (prev.src === undefined || prev.src === src)) continue;
         try {
           const w = await resolveWork(fm as unknown as CSLItem, this.settings.openalexMailto);
-          if (!w?.openalexId) continue;
+          if (!w?.openalexId) {
+            if (prev) {
+              // The corrected identifier resolves to nothing: the old node's edges are wrong now.
+              if (this.data.idToCitekey[prev.openalexId] === citekey) delete this.data.idToCitekey[prev.openalexId];
+              delete this.data.byCitekey[citekey];
+              changed = true;
+            }
+            continue;
+          }
+          if (prev && this.data.idToCitekey[prev.openalexId] === citekey) delete this.data.idToCitekey[prev.openalexId];
           // Same work under a changed citekey: drop the old key's node when its note is gone,
           // so the stale node can't be pruned later (or double-count as a second citing paper).
           const old = this.data.idToCitekey[w.openalexId];
           if (old && old !== citekey && !this.library.getFile(old)) delete this.data.byCitekey[old];
-          this.data.byCitekey[citekey] = { openalexId: w.openalexId, refs: w.referencedWorks };
+          this.data.byCitekey[citekey] = { openalexId: w.openalexId, refs: w.referencedWorks, src: storedSource(src, w.openalexId) };
           this.data.idToCitekey[w.openalexId] = citekey;
           await this.backfillId(file, w.openalexId);
           changed = true;

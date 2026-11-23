@@ -105,8 +105,25 @@ export class CiteEngine {
     if (this.locale) return this.locale;
     const bundled = await this.readFile("locales-en-US.xml");
     if (bundled) return (this.locale = bundled);
+    // Community installs ship no styles/ folder: a fetched locale is cached like a fetched style,
+    // so it still renders offline after a restart.
+    const cached = await this.readFile("cache/locales-en-US.xml");
+    if (cached) return (this.locale = cached);
     const r = await requestUrl({ url: RAW_LOCALE });
+    if (r.status === 200 && r.text.includes("<locale")) await this.cacheWrite("cache/locales-en-US.xml", r.text);
     return (this.locale = r.text);
+  }
+
+  /** Best-effort write under `styles/cache/` (created on first use). */
+  private async cacheWrite(rel: string, text: string): Promise<void> {
+    try {
+      const a = this.app.vault.adapter;
+      const dir = this.path("cache");
+      if (!(await a.exists(dir))) await a.mkdir(dir);
+      await a.write(this.path(rel), text);
+    } catch {
+      /* offline reuse is a bonus, not a requirement */
+    }
   }
 
   /** Resolve a style id to independent CSL XML: bundled → on-disk cache → CSL repo; follow dependent parent. */
@@ -135,12 +152,7 @@ export class CiteEngine {
       try {
         const r = await requestUrl({ url: `${RAW_STYLES}/${rel}` });
         if (r.status === 200 && r.text.includes("<style")) {
-          // cache for offline reuse (best-effort)
-          try {
-            await this.app.vault.adapter.write(this.path(`cache/${id}.csl`), r.text);
-          } catch {
-            /* ignore cache write failure */
-          }
+          await this.cacheWrite(`cache/${id}.csl`, r.text);
           return r.text;
         }
       } catch {
