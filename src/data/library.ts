@@ -1,5 +1,5 @@
 import { App, TFile, normalizePath } from "obsidian";
-import { text } from "../util/json";
+import { tagsOf, text } from "../util/json";
 import { CSLItem, ScholarRagSettings, effective } from "../types";
 import { buildNote, generateCitekey, generateFilename, BuildNoteOpts } from "./reference";
 import { resolvePdfLink } from "../ingest/pdfStash";
@@ -477,9 +477,7 @@ export function inScope(
       return entry.file.path.startsWith(scope.folder.replace(/\/+$/, "") + "/");
     case "tag": {
       const want = scope.tag.replace(/^#/, "").toLowerCase();
-      const raw = entry.item.tags;
-      const tags = Array.isArray(raw) ? raw.map(String) : typeof raw === "string" ? [raw] : [];
-      return tags.some((t) => t.replace(/^#/, "").toLowerCase() === want);
+      return tagsOf(entry.item.tags).some((t) => t.toLowerCase() === want);
     }
   }
 }

@@ -1,5 +1,6 @@
 import type ScholarRagPlugin from "../../main";
 import { SearchFilters } from "../index/store";
+import { tagsOf } from "../util/json";
 
 /** Year range + author + tag chips, shared by the search and chat panes.
  *  State is view-local — deliberately not persisted to settings. */
@@ -81,8 +82,7 @@ export class FilterRow {
   private libraryTags(): string[] {
     const seen = new Set<string>();
     for (const e of this.plugin.library.entries()) {
-      const tags = e.item.tags;
-      if (Array.isArray(tags)) for (const t of tags) seen.add(String(t));
+      for (const t of tagsOf(e.item.tags)) seen.add(t);
     }
     return [...seen].sort();
   }

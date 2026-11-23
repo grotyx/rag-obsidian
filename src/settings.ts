@@ -182,6 +182,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         // doesn't snap back to the default on a framework re-read (see Library.folder()).
         s.referencesFolder = String(value);
         this.plugin.library.invalidateKeyCache(); // citekey and identifier caches belong to the old folder
+        this.plugin.indexManager.folderChanged(); // drop the old folder's notes from the index, queue the new folder's
         break;
       case "citekeyStyle":
         s.citekeyStyle = value as "authoryeartitle" | "authoryear";
@@ -237,9 +238,19 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         s.chunkChars = value as number;
         break;
       case "indexLocal": {
+        const prev = s.indexLocal;
         s.indexLocal = value as boolean;
         await this.plugin.saveSettings();
-        await this.plugin.indexManager.relocate();
+        try {
+          await this.plugin.indexManager.relocate();
+        } catch (e) {
+          // The index stayed where it was (relocate keeps the old copy until the new one is written).
+          s.indexLocal = prev;
+          await this.plugin.saveSettings();
+          new Notice(`Could not move the search index (${e instanceof Error ? e.message : String(e)}). It stays where it was.`, 10000);
+          this.refreshStructure();
+          return;
+        }
         new Notice(s.indexLocal ? "Search index moved to this computer's app-data folder." : "Search index moved back into the vault.");
         return;
       }

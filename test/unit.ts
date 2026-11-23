@@ -107,7 +107,7 @@ import { readFileSync } from "node:fs";
 import { isForeignQuery, buildExpander, expandedTerm, parseVocabulary } from "../src/index/expand";
 import { citeTooltip } from "../src/cite/format";
 import { citeClusters } from "../src/cite/clusters";
-import { isNumberArray, numLike, text } from "../src/util/json";
+import { isNumberArray, numLike, tagsOf, text } from "../src/util/json";
 import {
   getYear,
   firstAuthorFamily,
@@ -1837,6 +1837,15 @@ check(
   }
 }
 
+// ---------- util/json.ts: tagsOf — one reading of `tags` for index, filters and MCP ----------
+{
+  check(tagsOf(["a", "#b", 7, " ", null]).join("|") === "a|b|7", "tagsOf: list entries trimmed, leading # dropped, junk skipped");
+  check(tagsOf("diskectomy").join("|") === "diskectomy", "tagsOf: a scalar string is one tag (tags: diskectomy)");
+  check(tagsOf(undefined).length === 0 && tagsOf({}).length === 0, "tagsOf: absent or odd values are no tags");
+  const chunks = chunkReference({ citekey: "k", title: "t", year: 2020, tags: tagsOf("#diskectomy"), authors: [], abstract: "abstract text", body: "" }, 800);
+  check(chunks.length > 0 && chunks.every((c) => c.tags.join() === "diskectomy"), "tagsOf: chunks carry the normalized tag");
+}
+
 // ---------- data/library.ts: Library.folder() — the one referencesFolder fallback ----------
 {
   const settings = { ...DEFAULT_SETTINGS, referencesFolder: "" };
@@ -1852,11 +1861,16 @@ check(
   const settings = { ...DEFAULT_SETTINGS, embeddingProvider: "ollama" as const };
   let saves = 0;
   let keyCacheDrops = 0;
+  let folderChanges = 0;
+  let relocateFails = false;
   const fakePlugin = {
     settings,
     saveSettings: async () => { saves++; },
     library: { invalidateKeyCache: () => { keyCacheDrops++; } },
-    indexManager: { relocate: async () => {} },
+    indexManager: {
+      relocate: async () => { if (relocateFails) throw new Error("disk full"); },
+      folderChanged: () => { folderChanges++; },
+    },
     hasSecretStorage: () => true,
     mcpStatus: () => ({ running: false, port: 0 }),
     mcpSetupSnippets: () => null,
@@ -1880,6 +1894,17 @@ check(
   keyCacheDrops = 0;
   await tab.setControlValue("referencesFolder", "");
   check(keyCacheDrops === 1, "setControlValue: changing referencesFolder drops the library caches");
+  check(folderChanges === 1, "setControlValue: changing referencesFolder asks the index to reconcile with the new folder");
+  // a failed move of the index leaves the setting where the index still is
+  settings.indexLocal = false;
+  relocateFails = true;
+  saves = 0;
+  await tab.setControlValue("indexLocal", true);
+  relocateFails = false;
+  check(settings.indexLocal === false && saves === 2, "setControlValue: a failed index move reverts indexLocal and saves the revert");
+  await tab.setControlValue("indexLocal", true);
+  check(settings.indexLocal === true, "setControlValue: a successful index move keeps indexLocal");
+  settings.indexLocal = false;
   check(settings.referencesFolder === "", "setControlValue: clearing referencesFolder stores empty, not a default snap-back");
   await tab.setControlValue("ollamaUrl", "");
   check(settings.ollamaUrl === "", "setControlValue: clearing ollamaUrl stores empty, not a default snap-back");
@@ -2075,7 +2100,7 @@ check(
   const ser = await store.serialize();
   assert.equal(ser.vectors.byteLength, N * DIM * 4);
   const store2 = new VectorStore();
-  await store2.load(ser.docs, ser.vectors, ser.meta);
+  await store2.load(ser.docs, ser.vectors.slice(0), ser.meta);
   for (let qi = 0; qi < queries.length; qi++) {
     const a = await store.search(queries[qi], terms[qi], 10);
     const b = await store2.search(queries[qi], terms[qi], 10);
@@ -2858,23 +2883,36 @@ check(
   for (const ck of ["a", "b", "c"]) await s1.addChunks(mkc(ck, 3), vecs(3));
   const ser = await s1.serialize();
   const s2 = new VectorStore();
-  await s2.load(ser.docs, ser.vectors, ser.meta);
+  await s2.load(ser.docs, ser.vectors.slice(0), ser.meta);
   const cap0 = s2.bankCapacity;
-  check(cap0 === 9 * DIM, `store.load: bank sized exactly (${cap0})`);
+  check(cap0 === 10 * DIM, `store.load: bank has ~5% spare rows, so the first add need not copy it (${cap0} floats for 9 rows)`);
   await s2.removeCitekey("b");
   await s2.addChunks(mkc("b", 3), vecs(3));
   check(s2.bankCapacity === cap0, `re-embedding one note after load does not grow the bank (${s2.bankCapacity} vs ${cap0})`);
   const hit = await s2.search([1, 1, 2, 3], "word1 b", 20);
   check(hit.filter((h) => h.citekey === "b").length === 3 && hit.length === 9, `...and every chunk is still searchable (${hit.length})`);
   await s2.removeCitekey("b");
-  await s2.addChunks(mkc("b", 4), vecs(4));
-  check(s2.bankCapacity > cap0 && s2.count === 10, "a note that grows still gets rows (the bank grows only then)");
-  // the loaded buffer is normalized in place and used as the bank
+  const cap1 = s2.bankCapacity;
+  await s2.addChunks(mkc("b", 7), vecs(7));
+  check(s2.bankCapacity > cap1 && s2.count === 13, "a note that grows still gets rows (the bank grows only then)");
+  // the loaded vectors are normalized into the bank
   const raw = new Float32Array([3, 0, 0, 4]).buffer;
   const s3 = new VectorStore();
   await s3.load(JSON.stringify([{ id: "x#0", citekey: "x", title: "x", section: "s", year: 1, tags: [], author: [], text: "t" }]), raw, { modelId: "m", dim: 4, chunkIds: { x: ["x#0"] }, count: 1 });
-  const bank3 = new Float32Array(raw);
-  check(Math.abs(bank3[0] - 0.6) < 1e-6 && Math.abs(bank3[3] - 0.8) < 1e-6, "store.load: vectors normalized in place in the loaded buffer");
+  const bank3 = new Float32Array((await s3.serialize()).vectors);
+  check(Math.abs(bank3[0] - 0.6) < 1e-6 && Math.abs(bank3[3] - 0.8) < 1e-6 && bank3.length === 4, "store.load: vectors are normalized");
+  // the endpoint a vector came from rides in meta (absent = unknown, accepted)
+  const s4 = new VectorStore();
+  s4.init(DIM, "m", "https://a.example|m");
+  await s4.addChunks(mkc("a", 1), vecs(1));
+  const ser4 = await s4.serialize();
+  const s5 = new VectorStore();
+  await s5.load(ser4.docs, ser4.vectors.slice(0), ser4.meta);
+  check(ser4.meta.endpoint === "https://a.example|m" && s5.endpoint === "https://a.example|m", "store: endpoint fingerprint survives serialize/load");
+  const s6 = new VectorStore();
+  const ser6 = await s4.serialize();
+  await s6.load(ser6.docs, ser6.vectors.slice(0), { ...ser6.meta, endpoint: undefined });
+  check(s6.endpoint === "", "store: a meta without endpoint loads as unknown");
 
   // NodeFileIO.readBinary: whole buffer handed over, and the chunked path for big files
   const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "refwright-rb-"));

@@ -44,3 +44,10 @@ export function optStr(v: unknown): string | undefined {
 export function isNumberArray(v: unknown): v is number[] {
   return Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "number" && Number.isFinite(x));
 }
+
+/** Tags from frontmatter or a CSL item: a list or one scalar string (`tags: diskectomy`), leading
+ *  `#` dropped, blanks skipped. The one reading of `tags` shared by the index, the filters and MCP. */
+export function tagsOf(v: unknown): string[] {
+  const list = Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
+  return list.map((t) => text(t).trim().replace(/^#/, "")).filter((t) => t !== "");
+}

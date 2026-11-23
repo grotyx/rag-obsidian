@@ -54,7 +54,7 @@ import {
   replaceSummaryBlock,
 } from "../src/cite/bibliography";
 import { ScholarRagSettings, DEFAULT_SETTINGS, CSLItem } from "../src/types";
-import { IndexManager } from "../src/index/manager";
+import { IndexManager, endpointFingerprint } from "../src/index/manager";
 import { NodeFileIO } from "../src/index/localFiles";
 import ScholarRagPlugin from "../main";
 
@@ -252,7 +252,7 @@ async function main() {
     `vectors buffer ${serializedVectors.byteLength} bytes = count × dim × 4`
   );
   const store2 = new VectorStore();
-  await store2.load(docs, serializedVectors, meta);
+  await store2.load(docs, serializedVectors.slice(0), meta);
   ok(store2.count === store.count, `restored count = ${store2.count}`);
   const hits2 = await store2.search(qv, "deep learning neural network", settings.topK, {});
   ok(hits2.length > 0, "search works on restored index");
@@ -1253,7 +1253,7 @@ async function main() {
     const fser = await fstore.serialize();
     ok(fser.meta.schema === INDEX_SCHEMA, `meta carries schema ${fser.meta.schema}`);
     const fstore2 = new VectorStore();
-    await fstore2.load(fser.docs, fser.vectors, fser.meta);
+    await fstore2.load(fser.docs, fser.vectors.slice(0), fser.meta);
     ok(
       (await keys({ tags: ["Spinal Fusion", "Outcome"], yearFrom: 2010 }, fstore2)) === "new2022",
       "filters still work on a restored index"
@@ -1937,7 +1937,7 @@ async function main() {
       append: async (p: string, d: string) => void disk.set(p, String(disk.get(p) ?? "") + d),
       readBinary: async (p: string) => {
         if (readGate) await readGate; // a slow disk, for the restore-ordering test
-        return disk.get(p) as ArrayBuffer;
+        return (disk.get(p) as ArrayBuffer).slice(0); // a real adapter hands out a fresh buffer (the store takes it over)
       },
       writeBinary: async (p: string, d: ArrayBuffer) => void disk.set(p, d),
       appendBinary: async (p: string, d: ArrayBuffer) => {
@@ -2245,9 +2245,12 @@ async function main() {
     const before = mgr.count;
     writes.length = 0;
     await Promise.all(["c", "d", "e", "f", "a"].map((k) => mgr.removeFile(`References/${k}.md`)));
+    for (const k of ["c", "d", "e", "f", "a"]) notes.delete(`References/${k}.md`);
     ok(mgr.count < before && writes.filter((w) => w.endsWith("meta.json.tmp")).length === 0, "removals hit the in-memory index at once, without writing");
     await new Promise((r) => setTimeout(r, 1800));
     await priv.chain;
+    ok(writes.filter((w) => w.endsWith("meta.json.tmp")).length === 0, "...and the disk copy waits for the persist window, not the 1.5 s debounce");
+    await mgr.flushPending(); // what plugin unload runs
     const metaWrites = writes.filter((w) => w.endsWith("meta.json.tmp")).length;
     ok(metaWrites === 1, `5 removals persisted once, not 5 times (${metaWrites})`);
     const mgrD = fresh();
@@ -2516,6 +2519,201 @@ async function main() {
       ok(offLocal === false && askedRerank === true, `RagChat: hosted rerank off on Ollama-only (${offLocal}), on with a hosted chat model (${askedRerank})`);
     }
 
+    // ---- 27. review fixes: persist window, restore reconcile, relocate, bad vectors, endpoint, tags ----
+    log("\n[27] Index review fixes (#9 #10 #11 #14 #15 #16 #36)");
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const metaWritesNow = () => writes.filter((w) => w.endsWith("meta.json.tmp")).length;
+    mset.embeddingModel = "model-a";
+    mset.openaiApiKey = "key-one";
+    mset.openaiBaseUrl = `http://127.0.0.1:${embPort}`;
+    notes.clear();
+    for (const k of ["a", "b", "c", "d", "e"]) {
+      notes.set(`References/${k}.md`, {
+        fm: { citekey: `key${k}`, title: k, abstract: `${k}${k} abstract text`, ...(k === "c" ? { tags: "diskectomy" } : { tags: ["#plain"] }) },
+        body: `${k} body words`,
+      });
+    }
+    await mgr.rebuild();
+
+    // #36 a scalar `tags: diskectomy` is a tag in the index too
+    const tagHits = await mgr.search("abstract", { tags: ["diskectomy"] }, 5, { translate: false });
+    ok(tagHits.length > 0 && tagHits.every((h) => h.citekey === "keyc"), `#36 tags: diskectomy (scalar) is filterable in the index (${tagHits.length} hits)`);
+    const hashHits = await mgr.search("abstract", { tags: ["plain"] }, 5, { translate: false });
+    ok(hashHits.some((h) => h.citekey === "keya"), "#36 a #-prefixed tag is stored without the #");
+
+    // #10 the restored bank has spare rows
+    {
+      const m = fresh();
+      await m.restore();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const st = (m as any).store as { bankCapacity: number; dim: number };
+      ok(st.bankCapacity > m.count * st.dim, `#10 a restored bank keeps spare rows (${st.bankCapacity} floats for ${m.count * st.dim} used)`);
+    }
+
+    // #9 incremental changes persist on a window, not per burst; unload persists at once
+    priv.persistEveryMs = 400;
+    writes.length = 0;
+    await mgr.removeFile("References/c.md");
+    notes.delete("References/c.md");
+    await sleep(100);
+    await mgr.removeFile("References/b.md");
+    notes.delete("References/b.md");
+    ok(metaWritesNow() === 0, "#9 removals write nothing inside the window");
+    await sleep(800);
+    await priv.chain;
+    ok(metaWritesNow() === 1, `#9 two removals in one window → one persist (${metaWritesNow()})`);
+    priv.persistEveryMs = 60_000;
+    writes.length = 0;
+    notes.set("References/a.md", { fm: { citekey: "keya", title: "a", abstract: "edited aa abstract" }, body: "a body edited" });
+    priv.reindexQueue.add("References/a.md");
+    await priv.flushReindex();
+    ok(metaWritesNow() === 0 && priv.dirty === true && priv.persistTimer !== null, "#9 an incremental reindex only marks the index dirty and arms the timer");
+    await mgr.flushPending();
+    ok(metaWritesNow() === 1 && priv.dirty === false && priv.persistTimer === null, "#9 flushPending (plugin unload) persists a dirty index at once and disarms the timer");
+    await mgr.flushPending();
+    ok(metaWritesNow() === 1, "#9 ...and does nothing when nothing changed");
+
+    // #11 restore drops notes that vanished while Obsidian was closed and queues new ones
+    notes.delete("References/e.md");
+    notes.set("References/f.md", { fm: { citekey: "keyf", title: "f", abstract: "ff abstract text" }, body: "f body words" });
+    {
+      const m = fresh();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pm = m as any;
+      pm.persistEveryMs = 60_000;
+      await m.restore();
+      ok(!pm.store.chunkIds["keye"] && !!pm.store.chunkIds["keya"], "#11 restore drops the tracked note whose file is gone");
+      ok(pm.reindexQueue.has("References/f.md") || !!pm.store.chunkIds["keyf"], "#11 ...and queues the live note the index never saw");
+      ok(pm.dirty === true, "#11 ...and marks the index for a (windowed) persist");
+      await m.flushPending();
+      ok(!!pm.store.chunkIds["keyf"], "#11 the queued note is embedded");
+      ok((await m.search("ff", {}, 5, { translate: false })).some((h) => h.citekey === "keyf") && !(await m.search("ee", {}, 5, { translate: false })).some((h) => h.citekey === "keye"), "#11 search no longer returns the ghost and finds the new note");
+
+      // a changed references folder reconciles the same way (debounced; the work itself is reconcileNow)
+      let folder = "References";
+      const m2 = new IndexManager(app as never, { folder: () => folder, getItem: () => undefined } as never, mset, "plugin");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p2 = m2 as any;
+      p2.persistEveryMs = 60_000;
+      await m2.restore();
+      const had = m2.count;
+      folder = "Elsewhere";
+      await p2.serialized(() => p2.reconcileNow());
+      ok(had > 0 && m2.count === 0 && p2.dirty === true, `#11 after the folder changes, the old folder's notes leave the index (${had} → ${m2.count} chunks)`);
+      let soon = 0;
+      p2.reconcileSoon = () => soon++;
+      m2.folderChanged();
+      ok(soon === 1, "#11 folderChanged() schedules the reconcile");
+      await m2.flushPending();
+    }
+
+    // #15 a response that does not fit the index leaves the note's chunks alone and re-queues it
+    {
+      await mgr.rebuild();
+      const m = fresh();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pm = m as any;
+      pm.persistEveryMs = 60_000;
+      await m.restore();
+      const prov = pm.getProvider();
+      const realEmbed = prov.embed.bind(prov);
+      const base = m.count;
+      const nChunks = (pm.store.chunkIds["keya"] ?? []).length;
+      notes.set("References/a.md", { fm: { citekey: "keya", title: "a", abstract: "changed abstract once more" }, body: "changed body once more" });
+      const warnsOff = console.warn;
+      console.warn = () => undefined;
+      try {
+        prov.embed = async (t: string[]) => { const v = await realEmbed(t); v[v.length - 1] = v[v.length - 1].slice(0, 3); return v; };
+        const r1 = await pm.reindexNow(tfile("References/a.md"));
+        ok(nChunks >= 2 && r1 === false && m.count === base && pm.store.chunkIds["keya"].length === nChunks, `#15 one short vector: nothing removed (${m.count}/${base} chunks)`);
+        ok(pm.reindexQueue.has("References/a.md"), "#15 ...and the path is queued again");
+        pm.reindexQueue.clear();
+        prov.embed = async (t: string[]) => { const v = await realEmbed(t); v.pop(); return v; };
+        const r2 = await pm.reindexNow(tfile("References/a.md"));
+        ok(r2 === false && m.count === base && pm.reindexQueue.has("References/a.md"), "#15 too few vectors: nothing removed, queued again");
+      } finally {
+        console.warn = warnsOff;
+      }
+      prov.embed = realEmbed;
+      pm.reindexQueue.clear();
+      ok((await pm.reindexNow(tfile("References/a.md"))) === true, "#15 a valid response still replaces the note");
+      await m.flushPending();
+    }
+
+    // #16 the index remembers the endpoint (never the key); another endpoint is a model change
+    {
+      const fp = endpointFingerprint;
+      ok(fp({ ...mset, openaiBaseUrl: "http://localhost:1234/v1" }) === fp({ ...mset, openaiBaseUrl: "http://127.0.0.1:1234" }), "#16 localhost and 127.0.0.1 are one endpoint");
+      ok(fp({ ...mset, openaiBaseUrl: "https://openrouter.ai/api/v1" }) !== fp({ ...mset, openaiBaseUrl: "https://api.openai.com/v1" }), "#16 different hosts differ");
+      ok(!fp({ ...mset, openaiApiKey: "sekrit" }).includes("sekrit") && fp({ ...mset, openaiApiKey: "a" }) === fp({ ...mset, openaiApiKey: "b" }), "#16 the key is not part of it");
+      const meta = JSON.parse(disk.get(`${dir}/meta.json`) as string) as { endpoint?: string };
+      ok(meta.endpoint === fp(mset), `#16 meta records the endpoint (${meta.endpoint})`);
+      const goodUrl = mset.openaiBaseUrl;
+      const m = fresh();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pm = m as any;
+      await m.restore();
+      mset.openaiBaseUrl = `http://127.0.0.1:${embPort + 1}`;
+      let msg2 = "";
+      try { await m.search("alpha", {}, 5, { translate: false }); } catch (e) { msg2 = e instanceof Error ? e.message : String(e); }
+      ok(/embedding model changed/.test(msg2), `#16 search after an endpoint change asks for a rebuild: ${msg2}`);
+      const warnsOff = console.warn;
+      console.warn = () => undefined;
+      notes.set("References/a.md", { fm: { citekey: "keya", title: "a", abstract: "endpoint edit abstract" }, body: "endpoint body" });
+      embedCalls.length = 0;
+      const wrote = await pm.reindexNow(tfile("References/a.md"));
+      console.warn = warnsOff;
+      ok(wrote === false && embedCalls.length === 0, "#16 incremental reindex against another endpoint writes nothing and sends nothing");
+      const other = fresh();
+      await other.restore();
+      ok(other.count === 0 && !other.restoreError, "#16 restore refuses an index built at another endpoint");
+      // an index written before endpoints were recorded is accepted
+      const raw = JSON.parse(disk.get(`${dir}/meta.json`) as string) as Record<string, unknown>;
+      delete raw.endpoint;
+      disk.set(`${dir}/meta.json`, JSON.stringify(raw));
+      const old = fresh();
+      await old.restore();
+      ok(old.count > 0, "#16 an older meta without endpoint still restores");
+      mset.openaiBaseUrl = goodUrl;
+
+      // an embedQuery that was in flight when the endpoint changed does not poison the new cache
+      const q = fresh();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pq = q as any;
+      const prov = pq.getProvider();
+      const realEmbed = prov.embed.bind(prov);
+      let release!: () => void;
+      const gate = new Promise<void>((r) => { release = r; });
+      prov.embed = async (t: string[]) => { await gate; return realEmbed(t); };
+      const pending = pq.embedQuery("zeta race");
+      mset.openaiApiKey = "key-race";
+      pq.getProvider(); // what the next call after a settings change does: new provider, cache cleared
+      release();
+      await pending;
+      ok(pq.queryVecs.size === 0, `#16 a query vector from the previous endpoint is not cached (${pq.queryVecs.size})`);
+      mset.openaiApiKey = "key-one";
+    }
+
+    // #14 a failed move keeps the old location; a good one clears it
+    {
+      await mgr.rebuild();
+      await mgr.flushPending();
+      const m = fresh();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pm = m as any;
+      await m.restore();
+      const before = indexFiles();
+      pm.resolveLocation = async () => ({ io: { ...adapter, write: async () => { throw new Error("disk full"); } }, dir: "elsewhere/index" });
+      let err = "";
+      try { await m.relocate(); } catch (e) { err = e instanceof Error ? e.message : String(e); }
+      ok(/disk full/.test(err) && pm.io === adapter && pm.dir === `${dir}` && pm.metaPath === `${dir}/meta.json`, `#14 a failed write rejects and keeps the old location (${err})`);
+      ok(indexFiles().join() === before.join() && disk.has(`${dir}/meta.json`), "#14 ...the old copy is untouched");
+      ok((await restoredCount(fresh())) > 0, "#14 ...and a restart still restores it");
+      pm.resolveLocation = async () => ({ io: adapter, dir: "plugin/index-moved" });
+      await m.relocate();
+      ok(disk.has("plugin/index-moved/meta.json") && !disk.has(`${dir}/meta.json`) && pm.dir === "plugin/index-moved", "#14 a good move writes the new location and clears the old one");
+    }
+
     embSrv.close();
   }
 
@@ -2610,7 +2808,7 @@ async function main() {
 
 }
 
-main().catch((e) => {
+main().then(() => process.exit(), (e) => {
   console.error("\nTEST ERROR:", e);
   process.exit(1);
 });

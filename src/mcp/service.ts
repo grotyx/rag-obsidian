@@ -12,7 +12,7 @@ import { searchLogNote, suffixedPath } from "../data/searchLog";
 import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
-import { text } from "../util/json";
+import { tagsOf, text } from "../util/json";
 import { Finding, findingText, isRestated, parseFindings } from "../data/findings";
 import { canHostedRerank, hostedRerank } from "../index/rerank";
 import { citingWorks } from "../graph/openalex";
@@ -301,11 +301,6 @@ function yearOf(item: CSLItem): number {
   return typeof year === "number" ? year : 0;
 }
 
-function tagsOf(item: CSLItem): string[] {
-  const tags = item.tags;
-  return Array.isArray(tags) ? tags.map(String) : typeof tags === "string" ? [tags] : [];
-}
-
 function summaryMetadata(content: string, source: string, model: string): string {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?=\r?\n|$)/);
   if (!match) throw new Error("INVALID_REFERENCE: reference note has no YAML frontmatter");
@@ -546,7 +541,7 @@ export class McpService {
       .filter((entry) => yearOf(entry.item) >= from && yearOf(entry.item) <= to)
       .filter((entry) => !author || entry.authors.toLowerCase().includes(author))
       .filter((entry) => !status || (typeof entry.item.status === "string" && entry.item.status.toLowerCase() === status))
-      .filter((entry) => tags.every((tag) => tagsOf(entry.item).includes(tag)))
+      .filter((entry) => tags.every((tag) => tagsOf(entry.item.tags).includes(tag)))
       .filter((entry) => !kq || hasKq(entry.item.kq, kq))
       .filter((entry) => !include || entry.item.include === include)
       .filter((entry) => !guideline || entry.item.guideline === guideline)
@@ -569,7 +564,7 @@ export class McpService {
     return {
       references: page.map((entry) => ({
         citekey: entry.citekey, path: entry.file.path, title: entry.title, year: yearOf(entry.item),
-        authors: entry.authors, status: entry.item.status ?? "", tags: tagsOf(entry.item),
+        authors: entry.authors, status: entry.item.status ?? "", tags: tagsOf(entry.item.tags),
         DOI: entry.item.DOI ?? null, PMID: entry.item.PMID ?? null,
         summarySource: entry.item.summary_source ?? null,
         kq: Array.isArray(entry.item.kq) ? entry.item.kq : null,
@@ -660,7 +655,7 @@ export class McpService {
   private async listTags(): Promise<Record<string, unknown>> {
     const counts = new Map<string, number>();
     for (const entry of await this.safeEntries()) {
-      for (const tag of tagsOf(entry.item)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      for (const tag of tagsOf(entry.item.tags)) counts.set(tag, (counts.get(tag) ?? 0) + 1);
     }
     return { tags: [...counts].map(([tag, count]) => ({ tag, count })).sort((a, b) => a.tag.localeCompare(b.tag)) };
   }

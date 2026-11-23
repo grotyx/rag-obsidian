@@ -23,6 +23,8 @@ export interface StoredMeta {
   /** Generation id of the `docs-<gen>.json` / `vectors-<gen>.f32` pair this meta commits (absent =
    *  legacy plain `docs.json` / `vectors.f32`). The meta write is the single commit point of a persist. */
   gen?: string;
+  /** Endpoint fingerprint (origin + model, never a key) the vectors came from; absent in older metas. */
+  endpoint?: string;
 }
 
 export interface SearchHit {
@@ -94,6 +96,8 @@ export class VectorStore {
   private seenEpoch = 0;
   dim = 0;
   modelId = "";
+  /** Where the vectors came from (see `IndexManager.endpointId`); "" = unknown (older index). */
+  endpoint = "";
   chunkIds: Record<string, string[]> = {};
   /** note path → citekey, so deletes/renames can resolve chunks even when filename ≠ citekey. */
   paths: Record<string, string> = {};
@@ -115,6 +119,7 @@ export class VectorStore {
     this.clearBank();
     this.dim = 0;
     this.modelId = "";
+    this.endpoint = "";
     this.chunkIds = {};
     this.paths = {};
     this.hashes = {};
@@ -173,9 +178,10 @@ export class VectorStore {
   }
 
   /** Create a fresh DB for a given vector dimension + model id. Clears content. */
-  init(dim: number, modelId: string): void {
+  init(dim: number, modelId: string, endpoint = ""): void {
     this.dim = dim;
     this.modelId = modelId;
+    this.endpoint = endpoint;
     this.chunkIds = {};
     this.paths = {};
     this.hashes = {};
@@ -421,6 +427,7 @@ export class VectorStore {
       paths: this.paths,
       hashes: this.hashes,
       schema: INDEX_SCHEMA,
+      endpoint: this.endpoint,
     };
     return { parts: parts(), vectorSlices, meta };
   }
@@ -438,10 +445,19 @@ export class VectorStore {
         `index/meta desync (vectors ${vectors.byteLength} bytes vs ${expectedBytes} expected) — rebuild required`
       );
     }
-    this.init(meta.dim, meta.modelId);
+    this.init(meta.dim, meta.modelId, meta.endpoint ?? "");
     const ti = this.ti as TextIndex;
-    // The loaded buffer is the bank (normalized in place): a second 1.3 GB array would double the peak.
-    const view = new Float32Array(vectors);
+    // ~5% spare rows, so the first note added after a restore does not copy the whole bank (a
+    // second 1.3 GB array). `transfer` grows the loaded buffer without a second live copy where it
+    // exists (it detaches `vectors`); elsewhere one copy happens here instead of at the first add.
+    const spare = Math.max(1, Math.ceil(docs.length * 0.05)) * meta.dim * 4;
+    const grown = (vectors as ArrayBuffer & { transfer?: (n: number) => ArrayBuffer }).transfer?.(vectors.byteLength + spare);
+    let view: Float32Array;
+    if (grown) view = new Float32Array(grown);
+    else {
+      view = new Float32Array((vectors.byteLength + spare) / 4);
+      view.set(new Float32Array(vectors));
+    }
     this.bank = view;
     for (let i = 0; i < docs.length; i++) {
       const d = docs[i] as TextDoc;
