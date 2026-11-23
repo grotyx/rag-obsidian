@@ -1,6 +1,6 @@
 import { TFile } from "obsidian";
 import type ScholarRagPlugin from "../../main";
-import { joinNote, LinkRef, moveLinks, planMerge, splitNote } from "../data/merge";
+import { joinNote, LinkRef, linkTargetsInText, moveLinks, planMerge, splitNote } from "../data/merge";
 import { renameCiteKeys } from "../cite/bibliography";
 
 export interface MergeGroupPlan {
@@ -156,6 +156,34 @@ export async function mergeDuplicateGroups(
         return next;
       });
       if (changed) notesRewritten++;
+    }
+  }
+
+  // (d2) The cache can lag behind the files, so look at the text itself: any link spelling in any
+  // note that still resolves to a loser keeps it. A kept loser is a note like any other, so what
+  // it links to is kept too (repeat until nothing new is kept).
+  const loserPaths = new Set(allLosers.map((l) => l.file.path));
+  if (loserPaths.size) {
+    const linkedFrom = new Map<string, Set<string>>();
+    for (const file of plugin.app.vault.getMarkdownFiles()) {
+      const dests = new Set<string>();
+      for (const target of linkTargetsInText(await plugin.app.vault.read(file))) {
+        const dest = plugin.app.metadataCache.getFirstLinkpathDest(target, file.path);
+        if (dest && loserPaths.has(dest.path) && dest.path !== file.path) dests.add(dest.path);
+      }
+      if (dests.size) linkedFrom.set(file.path, dests);
+    }
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const [src, dests] of linkedFrom) {
+        if (loserPaths.has(src) && !keepLosers.has(src)) continue; // will be trashed: its links go with it
+        for (const d of dests) {
+          if (!keepLosers.has(d)) {
+            keepLosers.add(d);
+            grew = true;
+          }
+        }
+      }
     }
   }
 

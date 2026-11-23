@@ -459,7 +459,12 @@ export default class ScholarRagPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on("modify", (file: TAbstractFile) => this.vocabularyTouched(file.path))
     );
-    this.registerEvent(this.app.vault.on("create", (file: TAbstractFile) => this.vocabularyTouched(file.path)));
+    this.registerEvent(
+      this.app.vault.on("create", (file: TAbstractFile) => {
+        this.vocabularyTouched(file.path);
+        this.library.noteFileCreated(file.path);
+      })
+    );
     this.registerEvent(
       this.app.vault.on("rename", (file: TAbstractFile, oldPath: string) => {
         this.vocabularyTouched(file.path);

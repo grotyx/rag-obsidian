@@ -922,6 +922,19 @@ async function main() {
     const keyOf = (f: TFile) => /^citekey: (\S+)/m.exec(freshText.get(f.path) ?? "")?.[1];
     const threeKeys = new Set([keyOf(before), keyOf(fa), keyOf(fb)]);
     ok(threeKeys.size === 3, `citekeys stay unique before the metadata cache parses anything: ${[...threeKeys].join(", ")}`);
+    // review 2 #14: a note synced in after the key cache is warm, before its first metadata parse
+    {
+      const nextKey = `${generateCitekey(sameKeyItem("Spine outcomes alpha four"), settings)}c`; // the free one after base, a, b
+      const synced = new TFile("References/synced-in.md");
+      freshFiles.set(synced.path, synced);
+      freshText.set(synced.path, `---\ncitekey: ${nextKey}\n---\n`);
+      freshLibrary.noteFileCreated(synced.path); // the plugin's vault "create" handler
+      const fn = await freshLibrary.createReference(sameKeyItem("Spine outcomes alpha four"));
+      ok(keyOf(fn) !== nextKey && keyOf(fn) !== undefined, `a note synced in after the key cache warmed is not given the same citekey (${keyOf(fn)} vs ${nextKey})`);
+      freshLibrary.noteFileCreated(fn.path); // its own create event: nothing to drop
+      freshFiles.delete(synced.path);
+      freshText.delete(synced.path);
+    }
     freshFrontmatter = { ...freshItem, citekey: freshCitekey, title: "Updated after cache refresh" };
     ok(
       freshLibrary.getItem(freshCitekey)?.title === "Updated after cache refresh",

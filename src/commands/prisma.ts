@@ -1,6 +1,6 @@
 import { normalizePath } from "obsidian";
 import type ScholarRagPlugin from "../../main";
-import { duplicateGroups, inScope, BackfillScope } from "../data/library";
+import { prismaDuplicateGroups, inScope, BackfillScope } from "../data/library";
 import { prismaCounts, prismaMarkdown, PrismaRecord, prismaId, toPrismaRecord } from "../data/prisma";
 import { parseSearchLog, SEARCH_LOG_FOLDER, SearchLogSummary } from "../data/searchLog";
 import { localDate } from "../data/reference";
@@ -22,7 +22,7 @@ function scopeLabel(scope: BackfillScope): string {
 /** Build "PRISMA flow (<scope label>).md" at the vault root and open it. */
 export async function buildPrismaDiagram(plugin: ScholarRagPlugin, scope: BackfillScope): Promise<void> {
   const scoped = plugin.library.entries().filter((e) => inScope(e, scope));
-  const groups = duplicateGroups(scoped).map((g) => g.map((e) => e.file.path));
+  const groups = prismaDuplicateGroups(scoped);
   const records: PrismaRecord[] = scoped.map((e) => toPrismaRecord(e.citekey, e.item, e.file.path));
   const fullTextSet = new Set(scoped.filter((e) => hasFullText(plugin, e)).map((e) => e.file.path));
   const counts = prismaCounts(records, groups, (r) => fullTextSet.has(prismaId(r)));

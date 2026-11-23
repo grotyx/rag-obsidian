@@ -118,10 +118,18 @@ export class Library {
 
   private async knownKeysForCreate(): Promise<Set<string>> {
     if (this.keySet) return this.keySet;
-    const epoch = this.keyEpoch;
-    const set = this.knownCitekeys();
-    for (const k of await this.unparsedCitekeys()) set.add(k);
-    if (epoch === this.keyEpoch) this.keySet = set; // an invalidation during the read: use it once, don't keep it
+    // An invalidation during the read (a note synced in meanwhile) means the scan may have missed
+    // it: scan again before a key is allocated. ponytail: five tries, then use the last scan once.
+    let set = new Set<string>();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const epoch = this.keyEpoch;
+      set = this.knownCitekeys();
+      for (const k of await this.unparsedCitekeys()) set.add(k);
+      if (epoch === this.keyEpoch) {
+        this.keySet = set;
+        break;
+      }
+    }
     return set;
   }
 
@@ -198,6 +206,14 @@ export class Library {
 
   /** Notes created here whose first metadata-cache parse has not been seen yet. */
   private createdPaths = new Set<string>();
+
+  /** A markdown file appeared in the vault ('create' event). One this library made is already in
+   *  every cache; any other (synced in, pasted) may hold a citekey the next create must not repeat,
+   *  and the metadata cache has not parsed it yet. */
+  noteFileCreated(path: string): void {
+    if (!path.endsWith(".md") || !path.startsWith(this.folder() + "/") || this.createdPaths.has(path)) return;
+    this.invalidateKeyCache();
+  }
 
   /** Drop the `getFile`, identifier and citekey caches; call when notes are changed, moved, or
    *  deleted. Pass the changed note's `path` from the metadata-cache event: the first parse of a
@@ -393,14 +409,21 @@ export function idsConflict(
   return !!oa && !!ob && oa !== ob;
 }
 
-/** True when every note in the group shares a DOI, PMID or OpenAlex id with another member.
- *  A group joined by title alone is a guess (errata, "Reply to…", same-title different works),
- *  so the merge dialog leaves it unchecked. */
+/** True when the whole group is one connected set through shared DOI / PMID / OpenAlex ids
+ *  (A-B by DOI, B-C by PMID is fine). Two separate id-linked pairs joined only by a title are
+ *  two papers, so the merge dialog leaves such a group unchecked. */
 export function sharesStrongId(group: { item: { DOI?: unknown; PMID?: unknown; openalex_id?: unknown } }[]): boolean {
-  const count = new Map<string, number>();
-  const keys = group.map((e) => matchKeys(e.item).filter((k) => !k.startsWith("title:")));
-  for (const ks of keys) for (const k of ks) count.set(k, (count.get(k) ?? 0) + 1);
-  return keys.every((ks) => ks.some((k) => (count.get(k) ?? 0) > 1));
+  const parent = group.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const first = new Map<string, number>();
+  group.forEach((e, i) => {
+    for (const k of matchKeys(e.item).filter((k) => !k.startsWith("title:"))) {
+      const j = first.get(k);
+      if (j === undefined) first.set(k, i);
+      else parent[find(i)] = find(j);
+    }
+  });
+  return new Set(group.map((_, i) => find(i))).size === 1;
 }
 
 /** Group notes that are the same work. Two notes belong together when they share **any**
@@ -452,6 +475,32 @@ export function duplicateGroups<
     (byRoot.get(r) ?? byRoot.set(r, []).get(r)!).push(e);
   });
   return [...byRoot.values()].filter((g) => g.length > 1);
+}
+
+/** Duplicate groups for PRISMA, as note paths: `duplicateGroups`, plus notes that share a
+ *  citekey (a sync conflict leaves two copies of one note, often without any DOI / PMID). Two
+ *  copies whose identifiers conflict are different papers and stay apart. */
+export function prismaDuplicateGroups<
+  T extends { citekey: string; file: { path: string }; item: { DOI?: unknown; PMID?: unknown; title?: unknown; openalex_id?: unknown } }
+>(entries: T[]): string[][] {
+  const parent = new Map<string, string>(entries.map((e) => [e.file.path, e.file.path]));
+  const find = (p: string): string => (parent.get(p) === p ? p : find(parent.get(p)!));
+  const union = (a: string, b: string): void => void parent.set(find(a), find(b));
+  for (const g of duplicateGroups(entries)) for (const e of g.slice(1)) union(g[0].file.path, e.file.path);
+  const byKey = new Map<string, T[]>();
+  for (const e of entries) if (e.citekey) (byKey.get(e.citekey) ?? byKey.set(e.citekey, []).get(e.citekey)!).push(e);
+  for (const same of byKey.values()) {
+    same.forEach((e, i) => {
+      const mate = same.slice(0, i).find((o) => !idsConflict(o.item, e.item));
+      if (mate) union(mate.file.path, e.file.path);
+    });
+  }
+  const groups = new Map<string, string[]>();
+  for (const e of entries) {
+    const r = find(e.file.path);
+    (groups.get(r) ?? groups.set(r, []).get(r)!).push(e.file.path);
+  }
+  return [...groups.values()].filter((g) => g.length > 1);
 }
 
 /** What "Summarize and tag references (fill gaps)" should run over. */

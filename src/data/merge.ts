@@ -367,6 +367,19 @@ export function linkTarget(link: string): string {
   }
 }
 
+/** Every link target spelled in `text`, straight from the text: `[[x]]`, `[[x|a]]`, `[[x#h]]`,
+ *  `![[x]]`, `[t](x.md)`, `[t](<x y.md>)`. Code and frontmatter are not skipped: a link is
+ *  taken as live whenever it is written, which only ever keeps a note, never loses one. */
+export function linkTargetsInText(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/\[\[([^\]\n]+?)\]\]/g)) out.push(m[1].split("|")[0].replace(/\\$/, "").split("#")[0].trim());
+  for (const m of text.matchAll(/\]\(\s*(?:<([^>\n]+)>|([^)\s]+))/g)) {
+    const t = linkTarget(m[1] ?? m[2]);
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(t)) out.push(t);
+  }
+  return out.filter(Boolean);
+}
+
 /** Rewrite every link in `text` that resolves to a merged-away note so it points at the keeper.
  *  `refs` come from the metadata cache (links, embeds, frontmatter links); `loserOf` says which
  *  loser a link target resolves to from this note (null when none), `keeperOf` that loser's

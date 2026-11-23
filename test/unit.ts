@@ -67,6 +67,7 @@ import {
   duplicateGroups,
   idsConflict,
   sharesStrongId,
+  prismaDuplicateGroups,
   inScope,
   matchKeys,
   normDoi,
@@ -88,6 +89,7 @@ import {
   splitNote,
   MergeNote,
   MergeSourceNote,
+  linkTargetsInText,
 } from "../src/data/merge";
 import {
   extractSummaryBlock,
@@ -733,6 +735,14 @@ AID - 10.1000/xyz123 [doi]
   check(sharesStrongId(duplicateGroups([t1, { item: { DOI: "10.1/X", title: "Another title" } }, t5])[0] ?? []) === false, "sharesStrongId: a title-only member (no shared id) → not preselected");
   check(sharesStrongId(duplicateGroups([{ item: { DOI: "10.1/x", PMID: "5" } }, { item: { PMID: "5" } }])[0]), "sharesStrongId: group joined by a shared PMID is preselected");
   check(!sharesStrongId(duplicateGroups([t1, t5])[0]), "sharesStrongId: a group joined by title alone is not preselected");
+  {
+    // review 2 #3: two id-linked pairs joined only by a shared title are two papers, not one
+    const T = "A shared but generic study title";
+    const two = duplicateGroups([{ item: { DOI: "10.1/a", title: T } }, { item: { DOI: "10.1/a" } }, { item: { PMID: "7", title: T } }, { item: { PMID: "7" } }]);
+    check(two.length === 1 && two[0].length === 4, "duplicateGroups: setup joins two id-linked pairs through a title");
+    check(!sharesStrongId(two[0]), "sharesStrongId: two disconnected id-linked pairs joined by a title are not preselected");
+    check(sharesStrongId([{ item: { DOI: "10.1/a", PMID: "7" } }, { item: { DOI: "10.1/a" } }, { item: { PMID: "7" } }]), "sharesStrongId: A-B by DOI and B-C by PMID is one component");
+  }
   const chain = duplicateGroups([t1, t5, t2]);
   check(chain.length === 1 && chain[0].length === 2, "duplicateGroups: a generic title does not chain two different DOIs through a bare note");
 
@@ -1687,6 +1697,21 @@ check(
     const twin = (id: string): PrismaRecord => ({ id, citekey: "same2020", include: "include" });
     const c5 = prismaCounts([twin("References/a.md"), twin("References/b.md")], [["References/a.md", "References/b.md"]], () => true);
     check(c5.duplicatesRemoved === 1 && c5.reportsIncluded === 1, "prismaCounts: two notes sharing a citekey count as a removed duplicate");
+    // review 2 #20: the groups PRISMA uses include notes that share only a citekey
+    const pe = (path: string, citekey: string, item: Record<string, unknown>) => ({ citekey, file: { path }, item });
+    const pg = prismaDuplicateGroups([
+      pe("References/a.md", "same2020", { title: "Short" }),
+      pe("References/b.md", "same2020", { title: "Short" }),
+      pe("References/c.md", "other2020", { title: "Lone" }),
+      pe("References/d.md", "diff2020", { DOI: "10.1/d1" }),
+      pe("References/e.md", "diff2020", { DOI: "10.1/d2" }),
+      pe("References/f.md", "doi2020", { DOI: "10.1/f" }),
+      pe("References/g.md", "doi2021", { DOI: "10.1/f" }),
+    ]);
+    check(
+      pg.length === 2 && pg.some((g) => g.join() === "References/a.md,References/b.md") && pg.some((g) => g.join() === "References/f.md,References/g.md"),
+      `prismaDuplicateGroups: shared citekey and shared DOI group; conflicting DOIs under one citekey do not (${JSON.stringify(pg)})`
+    );
     check(c4.recordsScreened === 0 && c4.awaitingDecision === 1, "prismaCounts: ties fall back to input order");
   }
   // kq: "03" and 3 are one key question everywhere
@@ -2705,6 +2730,90 @@ check(
       `mergeDuplicateGroups: markdown link and embed to the loser are moved; a bare link that resolves to another note and code are left (${JSON.stringify(after)})`
     );
     check(r.losersKept === 1 && r.notesTrashed === 0 && texts.has(loser.path) && trashed.length === 0, "mergeDuplicateGroups: a loser with a link it could not move is kept, not trashed");
+  }
+
+  check(
+    JSON.stringify(linkTargetsInText("[[a]] [[b|x]] ![[c#h]] [[d\\|y]] [t](e%20f.md#z) [u](<g h.md>) [w](https://x.org/p) [[a]]")) === JSON.stringify(["a", "b", "c", "d", "a", "e f.md", "g h.md"]),
+    "linkTargetsInText: wikilink, alias, heading, embed, escaped pipe, markdown link, angle brackets; URLs skipped"
+  );
+
+  // ---------- commands/merge.ts: a link the metadata cache has not parsed keeps the loser (review 2 #4) ----------
+  {
+    const mkf = (path: string) => Object.assign(new TFile(path), { stat: { mtime: 1 } });
+    const build = (extra: Record<string, string>) => {
+      const keeper = mkf("References/keep2020.md");
+      const loser = mkf("References/lose2020.md");
+      const texts = new Map<string, string>([
+        [keeper.path, "---\ncitekey: keep2020\n---\n\n## Notes\n\nk\n"],
+        [loser.path, "---\ncitekey: lose2020\n---\n\n## Notes\n\nl\n"],
+        ...Object.entries(extra),
+      ]);
+      const files = new Map<string, TFile>([[keeper.path, keeper], [loser.path, loser], ...Object.keys(extra).map((p) => [p, mkf(p)] as [string, TFile])]);
+      const trashed: string[] = [];
+      const plugin = {
+        app: {
+          vault: {
+            getAbstractFileByPath: (p: string) => (texts.has(p) ? files.get(p) ?? null : null),
+            read: async (f: TFile) => texts.get(f.path)!,
+            cachedRead: async (f: TFile) => texts.get(f.path)!,
+            process: async (f: TFile, fn: (c: string) => string) => void texts.set(f.path, fn(texts.get(f.path)!)),
+            getMarkdownFiles: () => [...files.values()].filter((f) => texts.has(f.path)),
+          },
+          // nothing parsed yet for the manuscripts: no links in the cache, no resolvedLinks
+          metadataCache: {
+            getFileCache: (f: TFile) => (f === keeper || f === loser ? { frontmatter: { citekey: f.basename } } : null),
+            resolvedLinks: {},
+            getFirstLinkpathDest: (target: string) => {
+              const t = target.replace(/\.md$/, "");
+              return [...files.values()].find((f) => f.path.replace(/\.md$/, "") === t || f.basename === t) ?? null;
+            },
+          },
+          fileManager: { trashFile: async (f: TFile) => { trashed.push(f.path); texts.delete(f.path); } },
+        },
+      };
+      const plan = { keeperFile: keeper, loserFiles: [loser], expectedMtimes: new Map([[keeper.path, 1], [loser.path, 1]]) };
+      return { plugin, plan, texts, trashed, loser };
+    };
+    for (const link of ["[[lose2020]]", "[[lose2020|old]]", "[[lose2020#Notes]]", "![[lose2020]]", "[t](References/lose2020.md)", "[[References/lose2020]]"]) {
+      const t = build({ "Notes/draft.md": `see ${link}\n` });
+      const r = await mergeDuplicateGroups(t.plugin as never, [t.plan]);
+      check(r.losersKept === 1 && r.notesTrashed === 0 && t.texts.has(t.loser.path), `mergeDuplicateGroups: unparsed ${link} keeps the loser`);
+    }
+    const none = build({ "Notes/draft.md": "no links, only the word lose2020\n" });
+    const rn = await mergeDuplicateGroups(none.plugin as never, [none.plan]);
+    check(rn.notesTrashed === 1 && rn.losersKept === 0, "mergeDuplicateGroups: a note that merely mentions the name does not keep the loser");
+    // a kept loser's own links keep what they point to: B is linked only from A, and A stays
+    const keeper = mkf("References/k.md");
+    const a = mkf("References/a.md");
+    const b = mkf("References/b.md");
+    const man = mkf("Notes/m.md");
+    const ts = new Map<string, string>([
+      [keeper.path, "---\ncitekey: k\n---\n\nk\n"],
+      [a.path, "---\ncitekey: a\n---\n\nsee [[b]]\n"],
+      [b.path, "---\ncitekey: b\n---\n\nb\n"],
+      [man.path, "cites [[a]]\n"],
+    ]);
+    const all = [keeper, a, b, man];
+    const trashed2: string[] = [];
+    const plugin2 = {
+      app: {
+        vault: {
+          getAbstractFileByPath: (p: string) => all.find((f) => f.path === p && ts.has(p)) ?? null,
+          read: async (f: TFile) => ts.get(f.path)!,
+          cachedRead: async (f: TFile) => ts.get(f.path)!,
+          process: async (f: TFile, fn: (c: string) => string) => void ts.set(f.path, fn(ts.get(f.path)!)),
+          getMarkdownFiles: () => all.filter((f) => ts.has(f.path)),
+        },
+        metadataCache: {
+          getFileCache: (f: TFile) => ({ frontmatter: { citekey: f.basename } }),
+          resolvedLinks: {},
+          getFirstLinkpathDest: (target: string) => all.find((f) => f.basename === target) ?? null,
+        },
+        fileManager: { trashFile: async (f: TFile) => { trashed2.push(f.path); ts.delete(f.path); } },
+      },
+    };
+    const r2 = await mergeDuplicateGroups(plugin2 as never, [{ keeperFile: keeper, loserFiles: [a, b], expectedMtimes: new Map(all.map((f) => [f.path, 1])) }]);
+    check(r2.notesTrashed === 0 && r2.losersKept === 2 && trashed2.length === 0, "mergeDuplicateGroups: a kept loser keeps the loser it links to");
   }
 
   // ---------- commands/merge.ts: one guarded write, evidence carried over ----------
