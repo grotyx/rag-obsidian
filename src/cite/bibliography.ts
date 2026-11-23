@@ -41,7 +41,7 @@ export function codeRanges(text: string): [number, number][] {
         fence = null;
       }
     } else {
-      for (const c of line.matchAll(/`[^`]*`/g)) code.push([pos + (c.index ?? 0), pos + (c.index ?? 0) + c[0].length]);
+      for (const c of line.matchAll(/(?<!`)(`+)(?!`)[^\n]*?(?<!`)\1(?!`)/g)) code.push([pos + (c.index ?? 0), pos + (c.index ?? 0) + c[0].length]);
     }
     pos += line.length + 1;
   }
@@ -270,16 +270,17 @@ function safeCodePoint(n: number): string {
  *  half, which the walk below also skips over. Shared by `replaceSummaryBlock` (insert) and
  *  `extractSummaryBlock` (read) so they can never disagree on the boundary. */
 function summaryBlockRange(content: string): { start: number; end: number } | null {
-  const m = content.match(/(^|\n)##[ \t]+(Summary(?:[ \t]*\([^)\n]*\))?|요약 \(KR\))[ \t]*(\n|$)/);
+  const m = content.match(/(^|\n)##[ \t]+(Summary(?:[ \t]*\([^)\n]*\))?|요약 \(KR\))[ \t]*(\r?\n|$)/);
   if (!m || m.index === undefined) return null;
   const start = m.index + m[1].length;
   let cur = m.index + m[0].length;
   for (;;) {
-    const next = content.slice(cur).search(/\n#{1,6}[ \t]+/);
+    // From cur - 1: the heading's own newline may be the one the next heading needs.
+    const next = content.slice(Math.max(cur - 1, 0)).search(/\n#{1,6}[ \t]+/);
     if (next < 0) return { start, end: content.length };
-    const at = cur + next + 1;
+    const at = Math.max(cur - 1, 0) + next + 1;
     // The KR heading is the block's own second half — keep walking past it.
-    const kr = content.slice(at).match(/^##[ \t]+요약 \(KR\)[ \t]*(\n|$)/);
+    const kr = content.slice(at).match(/^##[ \t]+요약 \(KR\)[ \t]*(\r?\n|$)/);
     if (kr) {
       cur = at + kr[0].length;
       continue;

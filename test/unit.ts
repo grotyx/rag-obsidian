@@ -35,6 +35,8 @@ import { parseCitingPage, titlesMatch, resolveWork } from "../src/graph/openalex
 import { rerankHttpReason, mmr, parseRerankResponse, canHostedRerank } from "../src/index/rerank";
 import { requestWithRetry } from "../src/llm/client";
 import { mergeDuplicateGroups } from "../src/commands/merge";
+import { replaceHighlights } from "../src/commands/openaccess";
+import { updateBibliography } from "../src/commands/writing";
 import { isStaleSummary, staleModelGroups } from "../src/commands/summaries";
 import { TFile, parseYaml } from "obsidian";
 import {
@@ -2807,6 +2809,69 @@ check(
     check(sanitizeModelMarkdown("see [[Note]] and [a](b) <b>bold</b> x<y [@k] a < b") === "see [[Note]] and [a](b) <b>bold</b> x<y [@k] a < b", "sanitizeModelMarkdown leaves plain markdown and harmless HTML alone");
     check(safeFileName("Chat/2026-01-01 What is X?.md") === "Chat/2026-01-01 What is X-.md", "safeFileName: '?' rewritten in the basename only");
     check(safeFileName("A: b.md") === "A- b.md" && safeFileName("...md") === "md" && safeFileName("dir/?.md") === "dir/-.md", "safeFileName: ':' and leading dots");
+  }
+}
+
+// ---------- review fixes: #5 highlights, #24 summary boundary, #28 bibliography race, #30 findings, #35 code spans ----------
+{
+  const stash = "## Full text (extracted)\n\nPDF TEXT\n";
+  // #5: an empty Highlights followed by the stash and a user section — both survive.
+  const empty = `# T\n\n## Highlights\n\n${stash}\n## Mine\n\nuser words\n`;
+  const r5 = replaceHighlights(empty, "- hit _(p.1)_");
+  check(r5 === `# T\n\n## Highlights\n\n- hit _(p.1)_\n\n${stash}\n## Mine\n\nuser words\n`, `replaceHighlights: empty section keeps stash and later sections (${JSON.stringify(r5)})`);
+  const old = "# T\n\n## Highlights\n\n- old one\n- old two\n\n## Notes\n\nmine\n";
+  const r5b = replaceHighlights(old, "- new $5");
+  check(r5b === "# T\n\n## Highlights\n\n- new $5\n\n## Notes\n\nmine\n", `replaceHighlights: existing highlights replaced, "$" kept (${JSON.stringify(r5b)})`);
+  check(replaceHighlights("# T\n\n## Highlights\n\n- old\n", "- n") === "# T\n\n## Highlights\n\n- n\n", "replaceHighlights: last section");
+  check(replaceHighlights("# T\n", "- n") === "# T\n\n## Highlights\n\n- n\n", "replaceHighlights: no section -> appended");
+
+  // #24: no blank line after the heading, and CRLF
+  const r24 = replaceSummaryBlock("# T\n\n## Summary\n## Notes\n\nmine\n", ["## Summary", "", "new"]);
+  check(r24 === "# T\n\n## Summary\n\nnew\n\n## Notes\n\nmine\n", `replaceSummaryBlock: next heading right after ## Summary survives (${JSON.stringify(r24)})`);
+  const r24b = replaceSummaryBlock("# T\r\n\r\n## Summary\r\n\r\nold\r\n\r\n## Notes\r\n\r\nmine\r\n", ["## Summary", "", "new"]);
+  check(r24b.startsWith("# T\r\n\r\n## Summary\n\nnew\n\n## Notes") && (r24b.match(/## Summary/g) ?? []).length === 1 && !r24b.includes("old"), `replaceSummaryBlock: CRLF note is replaced, not duplicated (${JSON.stringify(r24b)})`);
+
+  // #30: one level of brackets inside a value
+  const f30 = parseFindings('## Evidence (extracted)\n\n> - [kind:: comparative] [outcome:: ODI] [ci:: [0.52, 0.91]] [p:: 0.02]\n>   "ODI improved."\n');
+  check(f30.length === 1 && f30[0].p === "0.02", "parseFindings: a bracketed value does not break later fields");
+  check(parseFindings('## Evidence (extracted)\n\n> - [kind:: comparative] [outcome:: OR [95% CI 1-2]] [p:: 0.02]\n>   "q"\n')[0]?.outcome === "OR [95% CI 1-2]", "parseFindings: a value keeps one level of brackets");
+
+  // #35: an N-backtick span closes only on an N-backtick run
+  check(extractCitekeys("a ``[@a]`` b [@b]").join() === "b", "extractCitekeys: double-backtick span is code");
+  check(extractCitekeys("a ``x ` [@a] y`` [@b]").join() === "b", "extractCitekeys: single backtick inside a double span does not close it");
+  check(extractCitekeys("`[@a]` [@b] ``[@c]``").join() === "b", "extractCitekeys: single and double spans on one line");
+  check(replaceCitations("``[@a]`` [@b]", (ks) => `<${ks}>`) === "``[@a]`` <b>", "replaceCitations: double-backtick span untouched");
+
+  // #28: a citation added while the style rendered -> note unchanged
+  {
+    const mk = (text: string) => {
+      const file = Object.assign(new TFile("N.md"), { stat: { mtime: 1 } });
+      const state = { text };
+      const plugin = {
+        app: {
+          workspace: { getActiveFile: () => file },
+          vault: {
+            read: async () => state.text,
+            process: async (_f: TFile, fn: (c: string) => string) => ((state.text = fn(state.text)), state.text),
+          },
+        },
+        settings: { citeStyle: "apa" },
+        styleForNote: () => "",
+        library: { getItem: () => null },
+      };
+      return { plugin, state };
+    };
+    const a = mk("Text [@a].\n");
+    await updateBibliography(a.plugin as never);
+    check(a.state.text.includes("## References"), "updateBibliography: unchanged note gets its References");
+    const b = mk("Text [@a].\n");
+    // The note gains a citation after the read, before the write.
+    b.plugin.app.vault.process = (async (_f: TFile, fn: (c: string) => string) => {
+      b.state.text = "Text [@a] and [@b].\n";
+      b.state.text = fn(b.state.text);
+    }) as never;
+    await updateBibliography(b.plugin as never);
+    check(b.state.text === "Text [@a] and [@b].\n", `updateBibliography: keys changed meanwhile -> note left unchanged (${JSON.stringify(b.state.text)})`);
   }
 }
 

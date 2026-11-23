@@ -30,6 +30,7 @@ import { OllamaProvider } from "../src/index/providers/ollama";
 import { formatCitation } from "../src/cite/format";
 import { CiteEngine } from "../src/cite/csl";
 import { TFile } from "obsidian";
+import { backfillSummaries } from "../src/commands/backfill";
 import { citingWorks } from "../src/graph/openalex";
 import { CitationGraph } from "../src/graph/citations";
 import { capPerReference, parseRerankOrder, buildRerankUser, coupledCandidates } from "../src/index/rerank";
@@ -2450,6 +2451,62 @@ async function main() {
 
     embSrv.close();
   }
+
+    // ---- 27. backfill: one failed note write does not drop the rest; a failed body write takes provenance back ----
+    {
+      const { server: bfSrv, port: bfPort } = await startMockLLM(
+        "===BACKGROUND===\nB\n===METHODS===\nM\n===RESULTS===\nR\n===CONCLUSIONS===\nC\n===MESH===\nX, Y"
+      );
+      try {
+        const run = async (failFm: string | null, failBody: string | null) => {
+          const tags = Array.from({ length: MIN_TAGS }, (_, i) => `t${i}`);
+          const files = new Map<string, { f: TFile; fm: Record<string, unknown>; body: string }>();
+          const entries = ["a2020", "b2020", "c2020"].map((citekey) => {
+            const f = new TFile(`References/${citekey}.md`);
+            files.set(f.path, { f, fm: {}, body: "# T\n" });
+            return { citekey, file: f, item: { title: citekey, abstract: "abs", tags } };
+          });
+          const span = () => ({ setAttr: () => undefined, setText: () => undefined, remove: () => undefined, onclick: null as unknown });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const plugin: any = {
+            settings: { ...settings, llmProvider: "openai", llmModel: "mock", openaiApiKey: "x", openaiBaseUrl: `http://127.0.0.1:${bfPort}`, summaryLanguage: "en" },
+            library: { entries: () => entries },
+            addStatusBarItem: () => ({ createSpan: span, remove: () => undefined }),
+            app: {
+              fileManager: {
+                processFrontMatter: async (f: TFile, fn: (fm: Record<string, unknown>) => void) => {
+                  if (f.path.includes(failFm ?? "\0")) throw new Error("fm boom");
+                  fn(files.get(f.path)!.fm);
+                },
+              },
+              vault: {
+                process: async (f: TFile, fn: (c: string) => string) => {
+                  if (f.path.includes(failBody ?? "\0")) throw new Error("body boom");
+                  const e = files.get(f.path)!;
+                  e.body = fn(e.body);
+                },
+              },
+            },
+          };
+          await backfillSummaries(plugin);
+          return files;
+        };
+        const f1 = await run("b2020", null);
+        ok(
+          f1.get("References/a2020.md")!.body.includes("## Summary") && f1.get("References/c2020.md")!.body.includes("## Summary") && !f1.get("References/b2020.md")!.body.includes("## Summary"),
+          "backfill: a note whose write fails does not stop the notes after it"
+        );
+        const f2 = await run(null, "c2020");
+        ok(
+          f2.get("References/a2020.md")!.fm.summary_source === "pubmed-abstract" &&
+            f2.get("References/c2020.md")!.fm.summary_source === undefined &&
+            f2.get("References/c2020.md")!.fm.summary_model === undefined,
+          `backfill: a failed body write takes summary_source back (${JSON.stringify(f2.get("References/c2020.md")!.fm)})`
+        );
+      } finally {
+        bfSrv.close();
+      }
+    }
 
 }
 

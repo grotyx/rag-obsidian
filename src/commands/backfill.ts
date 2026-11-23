@@ -50,9 +50,73 @@ export async function backfillSummaries(
   let tagged = 0;
   let failed = 0;
   let outcome = "Filling gaps failed (see console)";
+  interface Prepared {
+    entry: (typeof todo)[number];
+    summary: SummarySections | null;
+    sourceTag: string;
+    tags: string[];
+    meshTried: boolean;
+    error: unknown;
+  }
+  let chain: Promise<void> = Promise.resolve();
+  const enqueue = (r: Prepared): Prepared => {
+    chain = chain.then(() => writeOne(r));
+    return r;
+  };
+  const writeOne = async (r: Prepared): Promise<void> => {
+    if (r.error) {
+      console.error("[Refwright] backfill failed", r.entry.citekey, r.error);
+      return;
+    }
+    if (!r.summary && !r.tags.length && !r.meshTried) return;
+    let wroteProvenance = false;
+    try {
+      // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
+      // appended before it is silently dropped.
+      await plugin.app.fileManager.processFrontMatter(r.entry.file, (fm: Record<string, unknown>) => {
+        if (r.summary && r.sourceTag) {
+          fm.summary_source = r.sourceTag;
+          fm.summary_model = plugin.settings.llmModel;
+          wroteProvenance = true;
+        }
+        if (r.tags.length) {
+          // Merge into the tags as they are now: r.tags is a snapshot from batch start, and the
+          // user may have edited tags during the (long) network phase.
+          const cur: unknown = fm.tags;
+          const now = Array.isArray(cur) ? cur.map(String) : typeof cur === "string" && cur ? [cur] : [];
+          fm.tags = [...new Set([...now, ...r.tags])];
+        }
+        // Only for a note that asked and still came up short. Writing it on a note that
+        // reached MIN_TAGS would add a non-CSL key — and a modify event, which re-chunks the
+        // note for the search index — for nothing.
+        if (r.meshTried) fm.mesh_backfilled = true;
+      });
+      if (r.tags.length) tagged++;
+      if (r.summary) {
+        const block = summaryBlock(r.summary);
+        try {
+          await plugin.app.vault.process(r.entry.file, (c) => replaceSummaryBlock(c, block));
+        } catch (err) {
+          // summary_source says "summarized": take it back so the next run retries this note.
+          if (wroteProvenance) {
+            await plugin.app.fileManager.processFrontMatter(r.entry.file, (fm: Record<string, unknown>) => {
+              delete fm.summary_source;
+              delete fm.summary_model;
+            }).catch(() => undefined);
+          }
+          throw err;
+        }
+        summarized++;
+      }
+    } catch (err) {
+      failed++;
+      console.error("[Refwright] backfill write failed", r.entry.citekey, err);
+    }
+  };
   try {
-    // Network + LLM in parallel; the vault writes below stay sequential.
-    const prepared = await mapPool(todo, poolWidth(plugin.settings), async (e) => {
+    // Network + LLM in parallel; each result is written the moment it is ready, one write at a
+    // time (the chain), so cancelling or closing Obsidian keeps everything finished so far.
+    await mapPool(todo, poolWidth(plugin.settings), async (e) => {
       try {
         const pmid = e.item.PMID ? String(e.item.PMID) : "";
         const noteAbstract = (typeof e.item.abstract === "string" && e.item.abstract) || "";
@@ -122,49 +186,17 @@ export async function backfillSummaries(
           }
           if (merged.length > existing.length) tags = merged;
         }
-        return { entry: e, summary, sourceTag, tags, meshTried, error: null as unknown };
+        return enqueue({ entry: e, summary, sourceTag, tags, meshTried, error: null });
       } catch (err) {
         failed++;
-        return { entry: e, summary: null, sourceTag: "", tags: [] as string[], meshTried: false, error: err };
+        return enqueue({ entry: e, summary: null, sourceTag: "", tags: [], meshTried: false, error: err });
       } finally {
         batch.tick(++fetched, failed);
       }
     }, batch.signal);
 
-    for (const r of prepared) {
-      // Empty slot: the batch was cancelled before this one started.
-      if (!r) continue;
-      if (r.error) {
-        console.error("[Refwright] backfill failed", r.entry.citekey, r.error);
-        continue;
-      }
-      if (!r.summary && !r.tags.length && !r.meshTried) continue;
-      // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
-      // appended before it is silently dropped.
-      await plugin.app.fileManager.processFrontMatter(r.entry.file, (fm: Record<string, unknown>) => {
-        if (r.summary && r.sourceTag) {
-          fm.summary_source = r.sourceTag;
-          fm.summary_model = plugin.settings.llmModel;
-        }
-        if (r.tags.length) {
-          // Merge into the tags as they are now: r.tags is a snapshot from batch start, and the
-          // user may have edited tags during the (long) network phase.
-          const cur: unknown = fm.tags;
-          const now = Array.isArray(cur) ? cur.map(String) : typeof cur === "string" && cur ? [cur] : [];
-          fm.tags = [...new Set([...now, ...r.tags])];
-        }
-        // Only for a note that asked and still came up short. Writing it on a note that
-        // reached MIN_TAGS would add a non-CSL key — and a modify event, which re-chunks the
-        // note for the search index — for nothing.
-        if (r.meshTried) fm.mesh_backfilled = true;
-      });
-      if (r.tags.length) tagged++;
-      if (r.summary) {
-        const block = summaryBlock(r.summary);
-        await plugin.app.vault.process(r.entry.file, (c) => replaceSummaryBlock(c, block));
-        summarized++;
-      }
-    }
+    // Every write was queued as its result landed; wait for the last one.
+    await chain;
     const skipped = todo.length - fetched;
     outcome =
       `Summaries added: ${summarized} · tags added: ${tagged}` +

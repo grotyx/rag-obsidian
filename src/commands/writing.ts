@@ -54,11 +54,21 @@ export async function updateBibliography(plugin: ScholarRagPlugin): Promise<void
   }
   const section = `## References\n\n${bib}\n`;
   // The style load above can take seconds; apply to the text as it is now, not as it was read.
+  // A citation added meanwhile would be missing from the list: leave the note alone instead.
+  let changed = false;
   await plugin.app.vault.process(file, (current) => {
+    if (extractCitekeys(current).join("\n") !== keys.join("\n")) {
+      changed = true;
+      return current;
+    }
     const { base, tail } = splitAtReferences(current);
     return `${base ? base + "\n\n" : ""}${section}${tail}`;
   });
-  new Notice(`Bibliography updated: ${keys.length} reference(s)`);
+  new Notice(
+    changed
+      ? "The note changed while the bibliography was rendering — run Update bibliography again"
+      : `Bibliography updated: ${keys.length} reference(s)`
+  );
 }
 
 /** Produce a sibling "(compiled)" note: [@citekey] resolved to in-text labels + a References list. */

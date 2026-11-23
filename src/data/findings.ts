@@ -51,7 +51,7 @@ export function parseFindings(markdown: string): Finding[] {
     // Obsidian keeps metadata for every list item, ~0.8 GB of heap across 140k findings).
     if (/^(- )?\[[A-Za-z_]+::/.test(line)) {
       fields = new Map();
-      for (const m of line.matchAll(/\[([A-Za-z_]+)::\s*([^\]]*)\]/g)) fields.set(m[1].toLowerCase(), m[2].trim());
+      for (const m of line.matchAll(/\[([A-Za-z_]+)::\s*((?:[^[\]]|\[[^\]]*\])*)\]/g)) fields.set(m[1].toLowerCase(), m[2].trim());
     } else if (fields) {
       const q = /^\s+"(.*)"\s*$/.exec(line);
       if (q) flush(q[1].trim());

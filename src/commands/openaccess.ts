@@ -417,6 +417,20 @@ export async function checkRetractionAll(plugin: ScholarRagPlugin, recheck = fal
   new Notice(outcome);
 }
 
+/** Put `block` under `## Highlights`, replacing only that section: it ends at the next `#`/`##`
+ *  heading on its own line (the old lookahead wanted a `\n` the heading match had already eaten,
+ *  so an empty Highlights swallowed the stash and everything after it), or at the end of the
+ *  note. Appends the section when there is none. */
+export function replaceHighlights(content: string, block: string): string {
+  const re = /(^##[ \t]+Highlights[ \t]*\r?\n)[\s\S]*?(?=^#{1,2}\s|(?![\s\S]))/im;
+  // Function replacement: `block` may contain `$` (e.g. "$5"), which a string
+  // replacement would mis-read as a backreference.
+  if (!re.test(content)) return `${content.replace(/\s*$/, "")}\n\n## Highlights\n\n${block}\n`;
+  return content.replace(re, (m, h1: string, at: number, whole: string) =>
+    `${h1}\n${block}\n${at + m.length < whole.length ? "\n" : ""}`
+  );
+}
+
 /** Read this reference's PDF annotations and write them into its ## Highlights section. */
 export async function extractHighlights(plugin: ScholarRagPlugin): Promise<void> {
   const r = plugin.activeRef();
@@ -444,13 +458,6 @@ export async function extractHighlights(plugin: ScholarRagPlugin): Promise<void>
   const block = highlights
     .map((h) => `- ${h.text}${h.type === "note" ? " _(note)_" : ""} _(p.${h.page})_`)
     .join("\n");
-  const content = await plugin.app.vault.read(r.file);
-  const re = /(##\s+Highlights\s*\n)[\s\S]*?(?=\n#{1,2}\s|$)/i;
-  // Function replacement: `block` may contain `$` (e.g. "$5"), which a string
-  // replacement would mis-read as a backreference.
-  const next = re.test(content)
-    ? content.replace(re, (_m, h1) => `${h1}\n${block}\n`)
-    : `${content.replace(/\s*$/, "")}\n\n## Highlights\n\n${block}\n`;
-  await plugin.app.vault.modify(r.file, next);
+  await plugin.app.vault.process(r.file, (c) => replaceHighlights(c, block));
   new Notice(`Extracted ${highlights.length} highlight(s)/note(s)`);
 }
