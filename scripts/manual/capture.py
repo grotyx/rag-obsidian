@@ -8,6 +8,8 @@ Needs:
 
 Usage:  python scripts/manual/capture.py en      (or ko, ja, zh, es, ...)
         python scripts/manual/capture.py en new  (only the 0.8.8+ shots, 16-20; skips the PubMed/chat calls)
+        python scripts/manual/capture.py en search  (only 09-search)
+        CDP_PORT=9222 python ...  when Obsidian was started with another debug port
 
 The systematic-review shots (17-19) switch "Systematic review tools" on and give two references
 temporary include / kq fields; the snowball and reference-check notes are generated. Everything is put
@@ -23,7 +25,7 @@ import pathlib, sys, urllib.parse, subprocess
 from playwright.sync_api import sync_playwright
 
 LANG = sys.argv[1] if len(sys.argv) > 1 else 'en'
-CDP = 'http://127.0.0.1:9223'
+CDP = 'http://127.0.0.1:' + __import__('os').environ.get('CDP_PORT', '9223')
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VAULT = ROOT / '_testvault'
 OUT = ROOT / 'docs' / 'manual' / 'img' / LANG
@@ -35,6 +37,7 @@ RELATED = '.workspace-leaf-content[data-type="rag-obsidian-related"] '
 SCREEN = '.workspace-leaf-content[data-type="rag-obsidian-screening"] '
 PLUGIN = f'app.plugins.plugins["{PID}"]'
 ONLY_NEW = len(sys.argv) > 2 and sys.argv[2] == 'new'
+ONLY_SEARCH = len(sys.argv) > 2 and sys.argv[2] == 'search'  # just 09-search (no PubMed / chat calls)
 GUARDED = ['Draft.md', 'Draft (compiled).md', 'Manuscript.md']  # restored verbatim after the run
 SNOWBALL_SEEDS = ['References/2026-SpineJ-KazarianER-Primer.md', 'References/2019-WorldNeurosurg-LinGX-Systematic.md']
 ADDED = 'References/2024-OperNeurosurg-LvS-Efficacy.md'  # the paper the PubMed step adds
@@ -141,9 +144,28 @@ def main():
             reload_in(p, previous)
 
 
+def search_shot(p):
+    """09 · semantic search (builds the index first if needed)."""
+    # after a reload the index restores in the background; the pane's status line is drawn on open
+    wait_until(p, f'{PLUGIN}?.indexManager?.ready || !!{PLUGIN}?.indexManager?.restoreError', 60)
+    cmd(p, 'search', 1200)
+    if p.evaluate(f'!!document.querySelector(\'{SEARCH}\') && document.querySelector(\'{SEARCH}\').innerText.includes("not built")'):
+        cmd(p, 'rebuild-index', 1000)
+    p.fill(SEARCH + '.srag-header input', 'dural tear and other complications')
+    p.click(SEARCH + '.srag-header button')
+    wait_until(p, f'document.querySelectorAll(\'{SEARCH}.view-content > div\').length > 3', 90)
+    p.wait_for_timeout(2000)
+    shot(p, '09-search', [(SEARCH + '.srag-header input', 1), (SEARCH + '.srag-filters', 2), (SEARCH + '.srag-header button', 3)])
+
+
+
 def run(p, browser):
     p.evaluate('()=>{const w=require("@electron/remote").getCurrentWindow();w.setContentSize(1440,900);w.center();}')
     p.evaluate('app.workspace.leftSplit.collapse(); app.workspace.rightSplit.setSize(720)')
+    if ONLY_SEARCH:
+        open_file(p, 'Draft.md')
+        search_shot(p)
+        return
     if not ONLY_NEW:
         core_shots(p, browser)
     new_shots(p, browser)
@@ -231,15 +253,7 @@ def core_shots(p, browser):
     shot(p, '08-bibliography', [('.workspace-leaf.mod-active .markdown-reading-view p::text=Biportal', 1),
                                 ('.workspace-leaf.mod-active .markdown-reading-view h2', 2)])
 
-    # 09 · semantic search (rebuilds the index first if needed)
-    cmd(p, 'search', 1200)
-    if p.evaluate(f'!!document.querySelector(\'{SEARCH}\') && document.querySelector(\'{SEARCH}\').innerText.includes("not built")'):
-        cmd(p, 'rebuild-index', 1000)
-    p.fill(SEARCH + '.srag-header input', 'dural tear and other complications')
-    p.click(SEARCH + '.srag-header button')
-    wait_until(p, f'document.querySelectorAll(\'{SEARCH}.view-content > div\').length > 3', 90)
-    p.wait_for_timeout(2000)
-    shot(p, '09-search', [(SEARCH + '.srag-header input', 1), (SEARCH + '.srag-filters', 2), (SEARCH + '.srag-header button', 3)])
+    search_shot(p)
 
     # 10–11 · chat
     cmd(p, 'chat', 1500)

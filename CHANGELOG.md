@@ -6,6 +6,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+### Fixed
+- The Search pane no longer says "Index not built" after a search when it was opened while the index was still loading.
+
 ## [0.11.4] — 2026-11-23
 
 ### Changed — search index

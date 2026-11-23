@@ -93,6 +93,7 @@ export class SearchView extends ItemView {
       });
       if (gen !== this.searchGen) return;
       loading.remove();
+      this.updateStatus(); // the pane may have opened before the index finished restoring
       this.renderHits(hits);
     } catch (e) {
       if (gen !== this.searchGen) return;
