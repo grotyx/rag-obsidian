@@ -16,7 +16,9 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 - On start, notes deleted while Obsidian was closed (e.g. on another device) leave search, and notes added meanwhile are indexed; changing the references folder does the same.
 - An index built against one endpoint is not mixed with vectors from another endpoint serving the same model name.
 - A malformed embedding response no longer drops a note from search; moving the index between the vault and local storage keeps the old copy if the move fails; the first note added after start no longer briefly doubles the index memory.
-- A `tags:` value written as a single string is now usable in search filters.
+- A `tags:` value written as a single string is now usable in search filters, and `#tag` and `tag` match the same notes.
+- Closing Obsidian waits for pending index changes to be saved; a failed save is retried by the next update instead of being reported as unchanged; a malformed embedding reply never removes a note; a first build that stops part-way keeps what it finished.
+- Claude Code / Codex: `library_status` reports the last index run (embedded, failed, error); poll until `rebuilding` is false.
 
 ### Fixed — notes
 - **"Extract PDF highlights" deleted the section after `## Highlights`** (usually the extracted PDF text). It now replaces only the highlights.
@@ -25,18 +27,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 - A summary directly followed by another heading, or a note with Windows line endings, no longer loses that heading or gets a second summary.
 - "Update bibliography" leaves the note unchanged (and asks to run again) if citations were added while it rendered.
 - Merging duplicates moves every kind of link to the removed notes (including markdown links and embeds) and keeps a removed note when a link to it could not be moved. Groups matched by title alone are no longer pre-selected; different OpenAlex ids mean different papers.
-- Importing a large library no longer rescans the whole library for every new note.
+- Importing a large library no longer rescans the whole library for every new note; a note synced in from another device is seen before the next citekey is chosen.
+- Merging keeps a removed note while any note still links to it, and a group is pre-selected only when DOI / PMID / OpenAlex ids alone connect every member.
 
 ### Fixed — security
-- Chat answers no longer render HTML that loads remote content (images, frames, styled elements), on screen or in a saved note.
-- The pandoc path for Word export must name a `pandoc` program outside the vault, and pandoc runs without the host's environment secrets.
+- Chat answers no longer render raw HTML (shown as text instead), so an answer steered by a hostile document cannot load remote content, on screen or in a saved note.
+- The pandoc path for Word export must be an absolute path to a `pandoc` program outside the vault, and pandoc runs without the host's environment secrets.
 - With MCP note tools off, `compile_manuscript` is off too; MCP path checks apply to the resolved file behind a symlink; screening writes from MCP check for concurrent edits atomically; the MCP server cannot be left listening after it is turned off.
 - The hosted reranker and OpenRouter-only request fields are used only for an https `openrouter.ai` address.
 - A notice appears when an API key cannot be stored in the system keychain.
 
 ### Fixed — other
 - PRISMA counts only decided records as screened and counts two notes with the same citekey as a duplicate.
-- A PDF is matched to a reference by DOI or PMID only when the reference's title is also in the PDF, so an erratum is not attached to the original paper.
+- A PDF is matched to a reference by DOI or PMID only when the reference's title is also in the PDF, so an erratum is not attached to the original paper; correction, erratum and retraction notices are never matched to the original.
 - PDF reading always releases pdf.js resources; highlight extraction has the same timeout as text extraction.
 - The citation graph follows corrected OpenAlex ids and drops papers OpenAlex no longer finds.
 - The citation style locale is cached, so citations render offline after a restart.
