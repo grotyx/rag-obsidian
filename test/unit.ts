@@ -2803,6 +2803,7 @@ check(
     const clean = sanitizeModelMarkdown(dirty);
     check(!/!\[/.test(clean) && !/<\s*\/?\s*(img|iframe|svg)/i.test(clean), `sanitizeModelMarkdown strips embeds and loading tags (${JSON.stringify(clean)})`);
     check(sanitizeModelMarkdown("<im<img>g src=x>") === "", "sanitizeModelMarkdown: nested tag cannot reassemble");
+    check(sanitizeModelMarkdown('a <div style="background:url(https://x/?q=1)">b</div>') === "a b</div>", "sanitizeModelMarkdown strips tags with a style attribute (css url loads)");
     check(sanitizeModelMarkdown("see [[Note]] and [a](b) <b>bold</b> x<y [@k] a < b") === "see [[Note]] and [a](b) <b>bold</b> x<y [@k] a < b", "sanitizeModelMarkdown leaves plain markdown and harmless HTML alone");
     check(safeFileName("Chat/2026-01-01 What is X?.md") === "Chat/2026-01-01 What is X-.md", "safeFileName: '?' rewritten in the basename only");
     check(safeFileName("A: b.md") === "A- b.md" && safeFileName("...md") === "md" && safeFileName("dir/?.md") === "dir/-.md", "safeFileName: ':' and leading dots");
