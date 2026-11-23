@@ -7,6 +7,7 @@ import { SearchFilters } from "../index/store";
 import type { RerankOutcome } from "../index/manager";
 import { summaryBlock, keywordsToTags } from "../data/reference";
 import { applyScreening, hasKq, INCLUDE_VALUES, LEVELS, ROB_OVERALL, ROB_TOOLS, ScreeningFields } from "../data/screening";
+import { joinNote, splitNote } from "../data/merge";
 import { searchLogNote, suffixedPath } from "../data/searchLog";
 import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
@@ -321,6 +322,8 @@ function summaryMetadata(content: string, source: string, model: string): string
 /** General vault-editing tools, separable from the library tools by a setting. */
 export const NOTE_TOOLS: ReadonlySet<string> = new Set([
   "list_notes", "read_note", "create_note", "update_note", "replace_in_note", "move_note", "trash_note",
+  // The compiler reads any note that holds a citation and creates / updates any output note.
+  "compile_manuscript",
 ]);
 
 /** The tool list a client sees: every tool, or everything but the note tools. */
@@ -831,21 +834,18 @@ export class McpService {
       remove_tags: boundedStringArrayArg(fields, "remove_tags"),
     };
 
-    return this.vault.mutate(async () => {
-      const file = this.plugin.library.getFile(citekey);
-      if (!file) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
-      await this.vault.assertPath(file.path, false);
-      const current = await this.vault.readFullNote(file.path);
-      if (current.hash !== expectedHash) throw new Error(`CONTENT_CHANGED: read ${file.path} again before changing it`);
-
-      let result: ReturnType<typeof applyScreening> | undefined;
-      await this.plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-        result = applyScreening(fm, screening);
-      });
-
-      const updated = await this.vault.readFullNote(file.path);
-      return { citekey, path: file.path, hash: updated.hash, tags: result!.tags, fields: result!.fields };
+    const file = this.plugin.library.getFile(citekey);
+    if (!file) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
+    // One atomic write like every other note edit: `editNote` checks the hash again inside
+    // vault.process, so a change between the read and the write fails instead of being overwritten.
+    let result: ReturnType<typeof applyScreening> | undefined;
+    const mutation = await this.vault.editNote(file.path, expectedHash, (content) => {
+      const note = splitNote(content);
+      if (!note) throw new Error(`INVALID_REFERENCE: frontmatter of ${file.path} does not parse`);
+      result = applyScreening(note.fm, screening);
+      return joinNote(note.fm, note.body);
     });
+    return { citekey, path: file.path, hash: mutation.hash, tags: result!.tags, fields: result!.fields };
   }
 
   private summaryNextAction(citekey: string): Record<string, unknown> {

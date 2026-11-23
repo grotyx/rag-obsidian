@@ -38,6 +38,8 @@ import { layoutGraph, topByDegree, LayoutNode, LayoutEdge } from "../src/graph/l
 import { findIdentifier, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, STASH_MARKER } from "../src/ingest/pdfStash";
 import { findOpenAccess } from "../src/ingest/unpaywall";
+import { exportDocx } from "../src/write/docx";
+import { setCliVaultRoot } from "../src/llm/cli";
 import { checkRetraction } from "../src/ingest/retraction";
 import {
   anchorsToCitekeys,
@@ -117,6 +119,16 @@ function hashEmbed(text: string, dim: number): number[] {
 function ok(cond: boolean, label: string) {
   console.log(`  ${cond ? "✅" : "❌"} ${label}`);
   if (!cond) process.exitCode = 1;
+}
+
+/** The rerank / reasoning features need a real https://openrouter.ai base URL (isOpenRouter). Tests
+ *  keep that URL in the settings and send what it would receive to a local mock instead. */
+const OPENROUTER = "https://openrouter.ai/api/v1";
+function redirectOpenRouter(target: string): () => void {
+  const real = globalThis.fetch;
+  globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) =>
+    real(typeof url === "string" && url.startsWith(OPENROUTER) ? target + url.slice(OPENROUTER.length) : url, init)) as typeof fetch;
+  return () => { globalThis.fetch = real; };
 }
 
 async function main() {
@@ -329,6 +341,21 @@ async function main() {
     await new RagChat(idx, lib, rerankOn).answer("what is deep learning?");
     ok(lastBody().model === "chat-model", "rerank on: the answer still comes from chatModel");
     ok(lastBody().reasoning === undefined, "no `reasoning` field for a non-OpenRouter endpoint");
+    {
+      // Only the real OpenRouter host gets the `reasoning` field (review #17): the mock sits behind a fetch redirect.
+      const mockBase = `http://127.0.0.1:${port}`;
+      const unredirect = redirectOpenRouter(mockBase);
+      try {
+        const asOr = new LLMClient({ ...twoModel, openaiBaseUrl: OPENROUTER });
+        await asOr.chat([{ role: "user", content: "x" }], "sys", { noReasoning: true });
+        ok(JSON.stringify(lastBody().reasoning) === '{"enabled":false}', "noReasoning: the real OpenRouter host gets reasoning:{enabled:false}");
+        const lookalike = new LLMClient({ ...twoModel, openaiBaseUrl: `${mockBase}/openrouter.ai` });
+        await lookalike.chat([{ role: "user", content: "x" }], "sys", { noReasoning: true });
+        ok(lastBody().reasoning === undefined, "noReasoning: a URL that merely contains openrouter.ai gets no reasoning field");
+      } finally {
+        unredirect();
+      }
+    }
 
     // Coupled papers reach the reranker's candidate pool — check by name, since the mock server's
     // canned reply means parseRerankOrder can't tell us anything about what actually got sent.
@@ -2157,8 +2184,9 @@ async function main() {
     // MCP's eligibility guard runs before the hosted reranker: a denied reference's text is never sent
     {
       const savedUrl = mset.openaiBaseUrl;
-      const savedFetch = globalThis.fetch;
       const rerankBodies: string[] = [];
+      const unredirect = redirectOpenRouter(`${savedUrl}/openrouter.ai`);
+      const savedFetch = globalThis.fetch;
       globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
         if (!String(url).endsWith("/rerank")) return savedFetch(url, init);
         const body = String(init?.body);
@@ -2166,7 +2194,7 @@ async function main() {
         const docs = (JSON.parse(body) as { documents: string[] }).documents;
         return new Response(JSON.stringify({ results: docs.map((_, index) => ({ index, relevance_score: 1 - index / 10 })) }), { status: 200 });
       }) as typeof fetch;
-      mset.openaiBaseUrl = `${savedUrl}/openrouter.ai`; // the rerank host check is a substring test
+      mset.openaiBaseUrl = OPENROUTER; // the rerank host check wants the real host; the fetch above redirects it
       try {
         const asked: string[] = [];
         const hits = await mgr.search("crash beta", {}, 5, {
@@ -2182,7 +2210,7 @@ async function main() {
         await mgr.search("crash beta", {}, 5, { rerank: true, translate: false });
         ok(rerankBodies.length === 1 && /crash/.test(JSON.stringify((JSON.parse(rerankBodies[0]) as { documents: string[] }).documents)), "no eligible callback: nothing is filtered (other callers unchanged)");
       } finally {
-        globalThis.fetch = savedFetch;
+        unredirect();
         mset.openaiBaseUrl = savedUrl;
       }
     }
@@ -2458,11 +2486,12 @@ async function main() {
         llmProvider: "ollama",
         ollamaUrl: `http://127.0.0.1:${embPort}`,
         embeddingModel: "nomic-embed-text",
-        openaiBaseUrl: `http://127.0.0.1:${embPort}/openrouter.ai`,
+        openaiBaseUrl: OPENROUTER,
         openaiApiKey: "k",
         queryExpansion: false,
         indexLocal: false,
       };
+      const unredirectLocal = redirectOpenRouter(`http://127.0.0.1:${embPort}/openrouter.ai`);
       const local = new IndexManager(app as never, { folder: () => "References", getItem: () => undefined } as never, lset, "plugin2");
       await local.rebuild();
       embUrls.length = 0;
@@ -2474,6 +2503,7 @@ async function main() {
       await local.search("alpha", {}, 5, { translate: false, rerank: true, outcome });
       ok(outcome.asked && embUrls.some((u) => u.includes("rerank")), "chat on a hosted endpoint: rerank is allowed");
       await settle(local);
+      unredirectLocal();
       let askedRerank: boolean | undefined;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ridx: any = { ready: true, search: async (_q: string, _f: unknown, _k: number, o: { rerank?: boolean }) => ((askedRerank = o.rerank), []) };
@@ -2544,6 +2574,39 @@ async function main() {
         bfSrv.close();
       }
     }
+  // ---- 25. Export to Word: the pandoc setting is checked like the CLI path (review #1) ----
+  if (process.platform !== "win32") {
+    const root = fs.mkdtempSync(path.join(require("os").tmpdir(), "refwright-docx-"));
+    const vaultDir = path.join(root, "vault");
+    const binDir = path.join(root, "bin");
+    fs.mkdirSync(vaultDir);
+    fs.mkdirSync(binDir);
+    // A stand-in pandoc that writes its own environment to the -o file.
+    const script = '#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then out="$2"; fi; shift; done\nenv > "$out"\n';
+    for (const dir of [vaultDir, binDir]) {
+      fs.writeFileSync(path.join(dir, "pandoc"), script, { mode: 0o755 });
+    }
+    const rejects = async (bin: string): Promise<string> => {
+      try {
+        await exportDocx("# t", path.join(root, "never.docx"), bin);
+        return "";
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
+      }
+    };
+    setCliVaultRoot(vaultDir);
+    ok(/must point to a file named pandoc/.test(await rejects("/bin/sh")), "exportDocx: a pandoc setting naming another program is refused");
+    ok(/inside this vault/.test(await rejects(path.join(vaultDir, "pandoc"))), "exportDocx: a pandoc inside the vault is refused");
+    ok(!fs.existsSync(path.join(root, "never.docx")), "exportDocx: nothing ran for a refused binary");
+    process.env.REFWRIGHT_TEST_SECRET = "leak-me";
+    const out = path.join(root, "env.txt");
+    await exportDocx("# t", out, path.join(binDir, "pandoc"));
+    const seen = fs.readFileSync(out, "utf8");
+    ok(!seen.includes("REFWRIGHT_TEST_SECRET") && /^PATH=/m.test(seen), "exportDocx: pandoc runs with a scrubbed environment (no secrets from the host process)");
+    delete process.env.REFWRIGHT_TEST_SECRET;
+    setCliVaultRoot("");
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 
 }
 

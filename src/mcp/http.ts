@@ -1,7 +1,7 @@
 /* global Buffer, process -- desktop MCP server runs in Electron's Node.js context */
 import { bridgeSource } from "./bridge";
 import { handleProtocol, McpId, McpRequest, McpTool, mcpError } from "./protocol";
-import { validateMarkdownPath } from "./vault";
+import { DEFAULT_CONFIG_DIR, validateMarkdownPath } from "./vault";
 import {
   nodeRequire,
   type CryptoModuleLike,
@@ -82,18 +82,28 @@ function inside(root: string, target: string, pathApi: PathModuleLike): boolean 
   return relative === "" || (!relative.startsWith(".." + pathApi.sep) && relative !== ".." && !pathApi.isAbsolute(relative));
 }
 
-/** OS-level containment check that catches symlinks after lexical vault-path validation. */
-export async function assertVaultPath(vaultPath: string, relativePath: string, allowMissing: boolean): Promise<void> {
+/** OS-level containment check that catches symlinks after lexical vault-path validation. The
+ *  resolved target must itself still be a Markdown note outside the configuration folder (an
+ *  in-vault link to `.obsidian/…` or to a non-`.md` file passes the lexical checks). Returns the
+ *  canonical vault-relative path of an existing target, else the validated path. */
+export async function assertVaultPath(
+  vaultPath: string,
+  relativePath: string,
+  allowMissing: boolean,
+  configDir = ""
+): Promise<string> {
   const { fs, pathApi } = loadDesktopNode();
   const safe = validateMarkdownPath(relativePath);
   const root = await fs.realpath(vaultPath);
   const target = pathApi.resolve(root, ...safe.split("/"));
   let resolved: string;
+  let existed = true;
   try {
     resolved = await fs.realpath(target);
   } catch (error) {
     const code = (error as { code?: string }).code;
     if (!allowMissing || code !== "ENOENT") throw error;
+    existed = false;
     // realpath also reports ENOENT for a dangling symlink, whose target may lie outside the
     // vault: the parent walk below would pass and a create would write through the link.
     // Whatever lstat finds at the target or a missing ancestor is therefore rejected.
@@ -118,6 +128,13 @@ export async function assertVaultPath(vaultPath: string, relativePath: string, a
     }
   }
   if (!inside(root, resolved, pathApi)) throw new Error(`INVALID_PATH: path resolves outside vault: ${relativePath}`);
+  const canonical = pathApi.relative(root, resolved).split(pathApi.sep).join("/");
+  const first = canonical.split("/")[0].toLowerCase();
+  if (first === DEFAULT_CONFIG_DIR || (configDir && first === configDir.toLowerCase())) {
+    throw new Error(`INVALID_PATH: path resolves into private configuration: ${relativePath}`);
+  }
+  if (existed && !/\.md$/i.test(canonical)) throw new Error(`INVALID_PATH: path resolves to a file that is not a Markdown note: ${relativePath}`);
+  return existed ? canonical : safe;
 }
 
 async function guardToolPaths(vaultPath: string, request: McpRequest, visible: Set<string>): Promise<void> {
@@ -187,7 +204,31 @@ export class McpHttpServer {
     return mcpSetupSnippets(this.options.vaultPath, `${this.options.pluginPath}/mcp-bridge.cjs`);
   }
 
-  async start(): Promise<McpConnectionInfo> {
+  /** start / stop / restart run one at a time: `info` is only set after several awaits, so an
+   *  overlapping call would otherwise leave a listener nothing tracks (and nothing could stop). */
+  private queue: Promise<unknown> = Promise.resolve();
+  private serial<T>(job: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(job, job);
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  start(): Promise<McpConnectionInfo> {
+    return this.serial(() => this.startNow());
+  }
+
+  stop(): Promise<void> {
+    return this.serial(() => this.stopNow());
+  }
+
+  restart(): Promise<McpConnectionInfo> {
+    return this.serial(async () => {
+      await this.stopNow();
+      return this.startNow();
+    });
+  }
+
+  private async startNow(): Promise<McpConnectionInfo> {
     if (this.info) return this.info;
     const { crypto, fs, http, os, pathApi } = loadDesktopNode();
     // macOS filesystems (and cloud-sync clients like OneDrive) can hand back non-ASCII path
@@ -344,7 +385,7 @@ export class McpHttpServer {
     }
   }
 
-  async stop(): Promise<void> {
+  private async stopNow(): Promise<void> {
     const server = this.server;
     const info = this.info;
     this.server = null;
@@ -386,10 +427,5 @@ export class McpHttpServer {
         warn(error);
       }
     }
-  }
-
-  async restart(): Promise<McpConnectionInfo> {
-    await this.stop();
-    return this.start();
   }
 }

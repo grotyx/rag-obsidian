@@ -33,6 +33,7 @@ import { itemMemo } from "../src/cite/itemMemo";
 import { inTextLabel } from "../src/cite/bibliography";
 import { parseCitingPage, titlesMatch, resolveWork } from "../src/graph/openalex";
 import { rerankHttpReason, mmr, parseRerankResponse, canHostedRerank } from "../src/index/rerank";
+import { isOpenRouter } from "../src/types";
 import { requestWithRetry } from "../src/llm/client";
 import { mergeDuplicateGroups } from "../src/commands/merge";
 import { replaceHighlights } from "../src/commands/openaccess";
@@ -43,6 +44,7 @@ import {
   buildCliArgs,
   cliCandidates,
   cliBinaryAllowed,
+  assertExecutableAllowed,
   cliInsideVault,
   runCli,
   setCliVaultRoot,
@@ -2505,6 +2507,38 @@ check(
     check(env.PATH === "/final" && env.Path === undefined, "buildCliEnv: PATH is replaced, not duplicated");
   }
 
+  // ---------- write/docx.ts: the pandoc setting is held to the same rules as cliPath (review #1) ----------
+  {
+    check(cliBinaryAllowed("pandoc", "/opt/homebrew/bin/pandoc") && cliBinaryAllowed("pandoc", "C:\\Pandoc\\Pandoc.EXE"), "cliBinaryAllowed: pandoc / pandoc.exe");
+    check(!cliBinaryAllowed("pandoc", "/bin/sh") && !cliBinaryAllowed("pandoc", "/tmp/pandoc-evil") && !cliBinaryAllowed("pandoc", "/usr/bin/codex"), "cliBinaryAllowed: pandoc setting cannot name another program");
+    const vroot = fs.mkdtempSync(path.join(nodeOs.tmpdir(), "refwright-pandoc-vault-"));
+    const outside = fs.mkdtempSync(path.join(nodeOs.tmpdir(), "refwright-pandoc-out-"));
+    try {
+      fs.writeFileSync(path.join(vroot, "pandoc"), "#!/bin/sh\n");
+      fs.writeFileSync(path.join(outside, "pandoc"), "#!/bin/sh\n");
+      setCliVaultRoot(vroot);
+      let inside = "";
+      await assertExecutableAllowed("pandoc", path.join(vroot, "pandoc"), "Pandoc path").catch((e: Error) => { inside = e.message; });
+      check(/inside this vault/.test(inside), "assertExecutableAllowed: a pandoc inside the vault is refused");
+      let wrong = "";
+      await assertExecutableAllowed("pandoc", "/bin/sh", "Pandoc path").catch((e: Error) => { wrong = e.message; });
+      check(/must point to a file named pandoc/.test(wrong), "assertExecutableAllowed: a program that is not pandoc is refused");
+      try {
+        fs.symlinkSync(path.join(vroot, "pandoc"), path.join(outside, "pandoc-link"));
+        let linked = "";
+        await assertExecutableAllowed("pandoc", path.join(outside, "pandoc-link"), "Pandoc path").catch((e: Error) => { linked = e.message; });
+        check(/inside this vault/.test(linked), "assertExecutableAllowed: a link outside the vault that resolves into it is refused");
+      } catch { /* symlinks unavailable here */ }
+      let fine = "";
+      await assertExecutableAllowed("pandoc", path.join(outside, "pandoc"), "Pandoc path").catch((e: Error) => { fine = e.message; });
+      check(fine === "", "assertExecutableAllowed: a pandoc outside the vault passes");
+    } finally {
+      setCliVaultRoot("");
+      fs.rmSync(vroot, { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  }
+
   // ---------- commands/merge.ts: concurrent edits ----------
   {
     const KEEP = "---\ncitekey: keep2020\n---\n\n## Notes\n\nkeeper text\n";
@@ -2861,6 +2895,16 @@ check(
 
   const hs = { openaiBaseUrl: "https://openrouter.ai/api/v1", embeddingProvider: "ollama" as const, llmProvider: "ollama" as const };
   check(!canHostedRerank(hs) && canHostedRerank({ ...hs, llmProvider: "openai" }) && canHostedRerank({ ...hs, embeddingProvider: "openai" }) && !canHostedRerank({ ...hs, embeddingProvider: "openai", openaiBaseUrl: "https://api.openai.com/v1" }), "canHostedRerank: OpenRouter and a hosted embedding or chat provider");
+  check(
+    isOpenRouter("https://openrouter.ai/api/v1") && isOpenRouter("https://eu.openrouter.ai/api/v1") && isOpenRouter(" https://OpenRouter.ai/api/v1 "),
+    "isOpenRouter: the real host and its subdomains"
+  );
+  check(
+    !isOpenRouter("https://openrouter.ai.evil.test/v1") && !isOpenRouter("https://evil.test/openrouter.ai/v1") && !isOpenRouter("https://notopenrouter.ai/v1") &&
+      !isOpenRouter("http://openrouter.ai/api/v1") && !isOpenRouter("https://evil.test/?u=openrouter.ai") && !isOpenRouter("not a url") && !isOpenRouter(""),
+    "isOpenRouter: look-alike hosts, a URL that only contains the text, plain http and junk are refused"
+  );
+  check(!canHostedRerank({ ...hs, llmProvider: "openai", openaiBaseUrl: "https://openrouter.ai.evil.test/v1" }), "canHostedRerank: a look-alike host never gets the rerank request");
 }
 
 // ---------- cite/csl.ts: a fetched locale is cached for offline use (review #33) ----------

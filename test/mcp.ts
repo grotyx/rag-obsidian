@@ -298,8 +298,8 @@ async function serviceChecks(): Promise<void> {
   assert.equal(MCP_TOOLS.find((t) => t.name === "search_library")?.annotations?.readOnlyHint, true);
   assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
   const libraryOnly = mcpToolsFor(false).map((t) => t.name);
-  assert.equal(libraryOnly.length, 14, "note tools off leaves the 14 library tools");
-  for (const hidden of ["list_notes", "read_note", "create_note", "update_note", "replace_in_note", "move_note", "trash_note"]) {
+  assert.equal(libraryOnly.length, 13, "note tools off leaves the 13 library tools");
+  for (const hidden of ["list_notes", "read_note", "create_note", "update_note", "replace_in_note", "move_note", "trash_note", "compile_manuscript"]) {
     assert.ok(!libraryOnly.includes(hidden), `${hidden} hidden when note tools are off`);
   }
   assert.equal(mcpToolsFor(true), MCP_TOOLS);
@@ -541,6 +541,7 @@ async function serviceChecks(): Promise<void> {
   let cappedAt = 0;
   const noNotes = new McpService({ ...plugin, settings: { ...plugin.settings, mcpNoteTools: false } } as never, vault);
   await assert.rejects(noNotes.callTool("list_notes", {}), /UNKNOWN_TOOL/, "a hidden note tool is refused even if called directly");
+  await assert.rejects(noNotes.callTool("compile_manuscript", { path: "References/ref.md" }), /UNKNOWN_TOOL/, "the compiler reads and writes arbitrary notes, so it goes with the note tools (review #2)");
   const cap150 = await new McpService(plugin, vault, {
     searchPubmed: async (_q: string, opts: { n?: number }) => { cappedAt = opts.n ?? 0; return { hits: [], total: 0 }; },
   }).callTool("search_pubmed", { query: "trial", limit: 150 }) as any;
@@ -904,6 +905,27 @@ async function screeningFieldChecks(): Promise<void> {
   }) as any;
   assert.ok(retagged.tags.includes("extra-tag"));
   assert.ok(!retagged.tags.includes("existing-tag"), "remove_tags takes effect");
+  assert.equal(retagged.hash, await contentHash(fake.files.get("References/kq.md")?.content ?? ""), "the returned hash is that of the text written");
+
+  // The note changes in the editor between the hash check and the write: the write must fail, not
+  // overwrite it (review #13). The change lands right after the tool's read.
+  {
+    const realRead = fake.app.vault.read;
+    const edited = "---\ncitekey: kq2024\ntitle: Human edit\n---\n\nBody\n";
+    fake.app.vault.read = async (f: any) => {
+      const c = await realRead(f);
+      const entry = fake.files.get(f.path);
+      if (entry) entry.content = edited;
+      return c;
+    };
+    await assert.rejects(
+      () => service.callTool("set_reference_fields", { citekey: "kq2024", expected_hash: retagged.hash, fields: { include: "include", kq: ["1"], level: "1", design: "rct" } }),
+      /CONTENT_CHANGED/
+    );
+    fake.app.vault.read = realRead;
+    assert.equal(fake.files.get("References/kq.md")?.content, edited, "the human's edit survives; the stale decision wrote nothing");
+    fake.files.get("References/kq.md")!.content = edited.replace("Human edit", "Trial");
+  }
 
   const withScreening = { ...item, kq: ["1"], include: "include", level: "2", design: "rct", guideline: "BE", study_id: "S1", rob_tool: "RoB 2", rob_overall: "high" };
   const screenedService = new McpService(
@@ -989,7 +1011,7 @@ async function manuscriptChecks(): Promise<void> {
   assert.doesNotMatch(fallback.content, /\[@known\]/);
   assert.match(fallback.content, /## References/);
 
-  const fake = fakeApp({ "Draft.md": "Finding [@known].", "Manuscripts/Notes.md": "Finding [@known]." });
+  const fake = fakeApp({ "Draft.md": "Finding [@known].", "Manuscripts/Notes.md": "Finding [@known].", "Alias.md": "Finding [@known]." });
   const vault = new McpVault(fake.app);
   const plugin: any = {
     app: fake.app,
@@ -1014,6 +1036,16 @@ async function manuscriptChecks(): Promise<void> {
     /INVALID_PATH/,
     "an output_path that normalizes to the source is rejected, not just an identical string"
   );
+  // Two names for one file (a link inside the vault): the guard resolves "Alias.md" to "Draft.md".
+  const aliasVault = new McpVault(fake.app, () => false, ".obsidian", async (p) => (p === "Alias.md" ? "Draft.md" : p));
+  const draftBefore = fake.files.get("Draft.md")?.content;
+  const draftHash = await contentHash(draftBefore ?? "");
+  await assert.rejects(
+    () => compileMcpManuscript(plugin, aliasVault, "Draft.md", "Alias.md", draftHash),
+    /INVALID_PATH: compiled output must differ/,
+    "an output_path that is a link to the source is rejected by resolved path (review #12)"
+  );
+  assert.equal(fake.files.get("Draft.md")?.content, draftBefore, "the source was not overwritten through the alias");
 }
 
 async function httpChecks(): Promise<void> {
@@ -1051,6 +1083,18 @@ async function httpChecks(): Promise<void> {
   await assertVaultPath(vaultPath, "inside.md", false);
   if (symlinksWork) await assert.rejects(() => assertVaultPath(vaultPath, "linked.md", false), /outside vault/i);
   await assertVaultPath(vaultPath, "new/future.md", true);
+  // In-vault links whose target is private configuration or not a Markdown note (review #12).
+  if (symlinksWork) {
+    fs.writeFileSync(path.join(vaultPath, "plain.txt"), "not a note");
+    fs.writeFileSync(path.join(pluginPath, "data.md"), "private");
+    fs.symlinkSync(path.join(vaultPath, "plain.txt"), path.join(vaultPath, "txtalias.md"));
+    fs.symlinkSync(path.join(pluginPath, "data.md"), path.join(vaultPath, "cfgalias.md"));
+    fs.symlinkSync(path.join(vaultPath, "inside.md"), path.join(vaultPath, "okalias.md"));
+    await assert.rejects(() => assertVaultPath(vaultPath, "txtalias.md", false), /not a Markdown note/);
+    await assert.rejects(() => assertVaultPath(vaultPath, "cfgalias.md", false), /private configuration/);
+    assert.equal(await assertVaultPath(vaultPath, "okalias.md", false), "inside.md", "a link to another note resolves to its canonical path");
+    assert.equal(await assertVaultPath(vaultPath, "inside.md", false), "inside.md");
+  }
   // A dangling symlink: realpath says ENOENT for it too, but a create would write through it.
   if (symlinksWork) {
     fs.symlinkSync(path.join(root, "not-yet-outside.md"), path.join(vaultPath, "dangling.md"));
@@ -1410,6 +1454,42 @@ async function staleDiscoveryCleanupChecks(): Promise<void> {
   }
 }
 
+/** start / stop / restart overlap (review #3): `info` is assigned after several awaits, so a stop (or a second
+ *  start) landing inside that window used to leave a listener nothing tracked. */
+async function lifecycleChecks(): Promise<void> {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rag-obsidian-mcp-life-"));
+  const vaultPath = path.join(root, "vault");
+  const pluginPath = path.join(vaultPath, ".obsidian", "plugins", "rag-obsidian");
+  fs.mkdirSync(pluginPath, { recursive: true });
+  const make = () => new McpHttpServer({ vaultPath, pluginPath, version: "0.0.0-test", tools: [], callTool: async () => ({}) });
+  const reachable = (port: number): Promise<boolean> =>
+    fetch(`http://127.0.0.1:${port}/mcp`, { method: "POST" }).then(() => true, () => false);
+  try {
+    const twice = make();
+    const [a, b] = await Promise.all([twice.start(), twice.start()]);
+    assert.equal(a.port, b.port, "two overlapping starts share one listener");
+    await twice.stop();
+    assert.equal(await reachable(a.port), false, "stop closes it");
+
+    const raced = make();
+    const starting = raced.start();
+    const stopping = raced.stop();
+    const info = await starting;
+    await stopping;
+    assert.equal(raced.status().running, false, "a stop issued while start is in flight wins");
+    assert.equal(await reachable(info.port), false, "no untracked listener is left behind");
+
+    const restarted = make();
+    const first = await restarted.start();
+    const [second] = await Promise.all([restarted.restart(), restarted.stop()]);
+    assert.equal(restarted.status().running, false, "restart then stop ends stopped");
+    assert.equal(await reachable(first.port), false);
+    assert.equal(await reachable(second.port), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 async function main(): Promise<void> {
   assert.equal(DEFAULT_SETTINGS.mcpEnabled, false);
   await protocolChecks();
@@ -1425,6 +1505,7 @@ async function main(): Promise<void> {
   await unicodeVaultPathChecks();
   await discoveryPrePlantChecks();
   await staleDiscoveryCleanupChecks();
+  await lifecycleChecks();
   console.log("MCP checks passed");
 }
 

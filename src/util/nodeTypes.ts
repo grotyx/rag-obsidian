@@ -161,6 +161,7 @@ export interface SpawnOptionsLike {
 export interface ExecFileOptionsLike {
   timeout?: number;
   cwd?: string;
+  env?: ProcessEnv;
 }
 
 export interface ChildProcessModuleLike {

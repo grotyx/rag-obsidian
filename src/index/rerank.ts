@@ -1,7 +1,7 @@
 import { requestUrl } from "obsidian";
 import { arr, num, rec } from "../util/json";
 import { LLMClient } from "../llm/client";
-import { ScholarRagSettings } from "../types";
+import { DEFAULT_SETTINGS, isOpenRouter, ScholarRagSettings } from "../types";
 import { SearchHit } from "./store";
 import { yearFromIssued } from "./chunker";
 
@@ -20,7 +20,7 @@ const RERANK_TIMEOUT_MS = 30_000;
  *  the user already sends embeddings or chat to an OpenAI-compatible endpoint: a user who moved both
  *  to Ollama expects no text to leave the machine, whatever base URL is left in the settings. */
 export function canHostedRerank(s: Pick<ScholarRagSettings, "openaiBaseUrl" | "embeddingProvider" | "llmProvider">): boolean {
-  return s.openaiBaseUrl.includes("openrouter.ai") && (s.embeddingProvider === "openai" || s.llmProvider === "openai");
+  return isOpenRouter(s.openaiBaseUrl.trim() || DEFAULT_SETTINGS.openaiBaseUrl) && (s.embeddingProvider === "openai" || s.llmProvider === "openai");
 }
 
 /**

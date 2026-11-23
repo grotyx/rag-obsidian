@@ -168,3 +168,16 @@ export interface CSLItem {
 export function effective(settings: ScholarRagSettings, key: "referencesFolder" | "ollamaUrl" | "openaiBaseUrl"): string {
   return (settings[key] || "").trim() || DEFAULT_SETTINGS[key];
 }
+
+/** True only for an https URL whose host is openrouter.ai or a subdomain — not for a URL that merely
+ *  contains the text (`https://openrouter.ai.evil.test`, `http://x/?openrouter.ai`). Gates the
+ *  OpenRouter-only features (`/rerank`, the `reasoning` field). */
+export function isOpenRouter(url: string): boolean {
+  try {
+    const u = new URL(url.trim());
+    const host = u.hostname.toLowerCase();
+    return u.protocol === "https:" && (host === "openrouter.ai" || host.endsWith(".openrouter.ai"));
+  } catch {
+    return false;
+  }
+}

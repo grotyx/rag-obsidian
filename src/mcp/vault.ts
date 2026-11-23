@@ -44,7 +44,7 @@ export interface NotePage {
 const MAX_READ_CHARS = 50_000;
 const DEFAULT_READ_CHARS = 12_000;
 const MAX_WRITE_CHARS = 2_000_000;
-const DEFAULT_CONFIG_DIR = "." + "obsidian";
+export const DEFAULT_CONFIG_DIR = "." + "obsidian";
 
 function invalidPath(message: string): never {
   throw new Error(`INVALID_PATH: ${message}`);
@@ -89,7 +89,7 @@ export class McpVault {
     private app: AppLike,
     private isReference: (path: string) => boolean = () => false,
     private configDir = DEFAULT_CONFIG_DIR,
-    private pathGuard: (path: string, allowMissing: boolean) => Promise<void> = async () => undefined
+    private pathGuard: (path: string, allowMissing: boolean) => Promise<string | undefined> = async () => undefined
   ) {}
 
   private safe(raw: string): string {
@@ -105,6 +105,13 @@ export class McpVault {
     const path = this.safe(raw);
     await this.pathGuard(path, allowMissing);
     return path;
+  }
+
+  /** The vault-relative path after symlinks are resolved (the lexical path when no guard knows better),
+   *  so two aliases of one note compare equal. */
+  async canonicalPath(raw: string, allowMissing: boolean): Promise<string> {
+    const path = this.safe(raw);
+    return (await this.pathGuard(path, allowMissing)) ?? path;
   }
 
   mutate<T>(job: () => Promise<T>): Promise<T> {

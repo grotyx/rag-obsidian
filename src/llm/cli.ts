@@ -137,7 +137,7 @@ export function spawnInvocation(bin: string, args: string[], shell: boolean): { 
 
 /** `settings.cliPath` syncs between devices inside `data.json`, so it must not be able to name
  *  an arbitrary program: the file name has to be the selected provider's CLI. */
-export function cliBinaryAllowed(provider: "codex" | "opencode", bin: string): boolean {
+export function cliBinaryAllowed(provider: "codex" | "opencode" | "pandoc", bin: string): boolean {
   const name = (bin.split(/[\\/]/).pop() ?? "").toLowerCase().replace(/\.(exe|cmd)$/, "");
   return name === provider;
 }
@@ -159,6 +159,33 @@ let vaultRoot = "";
 /** main.ts hands over the vault's folder so `runCli` can refuse a CLI that lives inside it. */
 export function setCliVaultRoot(root: string): void {
   vaultRoot = root;
+}
+
+/** The checks every settings-chosen executable (codex, opencode, pandoc) passes before it runs:
+ *  the file name must be the expected program, and it must not live inside the vault (even
+ *  behind a symlink) — both settings sync through `data.json` and a vault can come from elsewhere. */
+export async function assertExecutableAllowed(
+  provider: "codex" | "opencode" | "pandoc",
+  bin: string,
+  settingLabel: string
+): Promise<void> {
+  if (!cliBinaryAllowed(provider, bin)) {
+    throw new Error(
+      `Refusing to run "${bin}": the "${settingLabel}" setting (Settings → Refwright) must point to a file named ${provider}.`
+    );
+  }
+  if (!vaultRoot) return;
+  const fsp = nodeRequire<FsPromisesLike>("node:fs/promises");
+  const resolve = async (p: string): Promise<string> => {
+    try { return await fsp.realpath(p); } catch { return p; }
+  };
+  const insensitive = process.platform === "win32";
+  const root = await resolve(vaultRoot);
+  if (cliInsideVault(bin, root, insensitive) || cliInsideVault(await resolve(bin), root, insensitive)) {
+    throw new Error(
+      `Refusing to run "${bin}": it is inside this vault. Point "${settingLabel}" (Settings → Refwright) at a ${provider} installed outside the vault.`
+    );
+  }
 }
 
 const ENV_EXACT = new Set([
@@ -220,24 +247,7 @@ export async function runCli(
     );
   }
 
-  if (!cliBinaryAllowed(provider, bin)) {
-    throw new Error(
-      `Refusing to run "${bin}": the "CLI executable" setting (Settings → Refwright) must point to a file named ${provider}.`
-    );
-  }
-
-  if (vaultRoot) {
-    const resolve = async (p: string): Promise<string> => {
-      try { return await fsp.realpath(p); } catch { return p; }
-    };
-    const insensitive = process.platform === "win32";
-    const root = await resolve(vaultRoot);
-    if (cliInsideVault(bin, root, insensitive) || cliInsideVault(await resolve(bin), root, insensitive)) {
-      throw new Error(
-        `Refusing to run "${bin}": it is inside this vault. Point "CLI executable" (Settings → Refwright) at a ${provider} installed outside the vault.`
-      );
-    }
-  }
+  await assertExecutableAllowed(provider, bin, "CLI executable");
 
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "rag-obsidian-cli-"));
   try {

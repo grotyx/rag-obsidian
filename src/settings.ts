@@ -9,7 +9,7 @@ import {
 } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
 import type ScholarRagPlugin from "../main";
-import { DEFAULT_SETTINGS, EmbeddingProviderId, LLMProviderId, CiteStyle } from "./types";
+import { DEFAULT_SETTINGS, isOpenRouter, EmbeddingProviderId, LLMProviderId, CiteStyle } from "./types";
 import { BUNDLED_STYLES } from "./cite/csl";
 import { LLMClient } from "./llm/client";
 
@@ -419,7 +419,7 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         "Uses OpenRouter's rerank endpoint to reorder search-pane and chat results by each paper's " +
           "title and abstract; replaces the LLM reranker above. The default model costs about $0.0002 " +
           "per search and adds under a second.",
-        () => s.openaiBaseUrl.includes("openrouter.ai")
+        () => isOpenRouter(s.openaiBaseUrl.trim() || DEFAULT_SETTINGS.openaiBaseUrl)
       ),
       text("rerankModel", "Rerank model", undefined, DEFAULT_SETTINGS.rerankModel, undefined, () => s.hostedRerank),
       toggle(
@@ -656,8 +656,8 @@ export class ScholarRagSettingTab extends PluginSettingTab {
         toggle(
           "mcpNoteTools",
           "Allow note editing tools",
-          "Off = MCP clients get only the library, PubMed and manuscript tools (12), and cannot list, " +
-            "read, create, edit, move or trash other notes. Start a new client session to see the change.",
+          "Off = MCP clients get only the library, PubMed and writing-helper tools (13), and cannot list, " +
+            "read, create, edit, move, trash or compile other notes. Start a new client session to see the change.",
           () => s.mcpEnabled
         ),
         {

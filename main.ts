@@ -72,6 +72,8 @@ export default class ScholarRagPlugin extends Plugin {
   citationGraph!: CitationGraph;
   citeEngine!: CiteEngine;
   private mcpServer: McpHttpServer | null = null;
+  /** Set by onunload: a start that was waiting on the index restore must not open a listener afterwards. */
+  private unloaded = false;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -95,7 +97,7 @@ export default class ScholarRagPlugin extends Plugin {
         this.app,
         (path) => path.startsWith(this.library.folder() + "/"),
         this.app.vault.configDir,
-        (path, allowMissing) => assertVaultPath(vaultPath, path, allowMissing)
+        (path, allowMissing) => assertVaultPath(vaultPath, path, allowMissing, this.app.vault.configDir)
       );
       const service = new McpService(this, mcpVault, {
         vaultPath,
@@ -502,6 +504,7 @@ export default class ScholarRagPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.unloaded = true;
     this.citationGraph?.dispose();
     this.pokeEditors.cancel();
     this.rerenderReadingViews.cancel();
@@ -529,7 +532,7 @@ export default class ScholarRagPlugin extends Plugin {
   }
 
   async startMcp(): Promise<void> {
-    if (!this.mcpServer) return;
+    if (!this.mcpServer || this.unloaded) return;
     try {
       await this.mcpServer.start();
     } catch (error) {
@@ -539,7 +542,7 @@ export default class ScholarRagPlugin extends Plugin {
   }
 
   async restartMcp(): Promise<void> {
-    if (!this.mcpServer) return;
+    if (!this.mcpServer || this.unloaded) return;
     try {
       await this.mcpServer.restart();
     } catch (error) {

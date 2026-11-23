@@ -131,13 +131,12 @@ export async function compileMcpManuscript(
   }
   const sourceNote = await vault.readFullNote(path);
   const target = outputPath || path.replace(/\.md$/i, "") + " (compiled).md";
-  // Lexical equality misses e.g. "Draft.md" vs "./Draft.md" — the same file, different strings —
-  // which would otherwise pass this guard and let a client with the source's hash overwrite it
-  // via output_path. normalizePath is what Obsidian itself uses to key vault lookups, so it's the
-  // right canonical form to compare, not a full realpath (the target need not exist yet).
-  if (normalizePath(target) === normalizePath(path)) {
-    throw new Error("INVALID_PATH: compiled output must differ from its source");
-  }
+  // Lexical equality misses "Draft.md" vs "./Draft.md" and two links to one file, so an existing
+  // target is compared by its resolved path too (a target that does not exist yet cannot alias the source).
+  const existing = plugin.app.vault.getAbstractFileByPath(target);
+  const sameFile = normalizePath(target) === normalizePath(path) ||
+    (!!existing && (await vault.canonicalPath(target, false))=== (await vault.canonicalPath(path, false)));
+  if (sameFile) throw new Error("INVALID_PATH: compiled output must differ from its source");
   const rendered = await renderCompiledManuscript({
     content: sourceNote.content,
     styleId: plugin.styleForNote(source),
@@ -145,7 +144,6 @@ export async function compileMcpManuscript(
     getItem: (key) => plugin.library.getItem(key),
     renderStyle: (style, keys, getItem, clusters) => plugin.citeEngine.renderNote(style, keys, getItem, clusters),
   });
-  const existing = plugin.app.vault.getAbstractFileByPath(target);
   let mutation;
   if (existing) {
     if (!expectedOutputHash) throw new Error("EXPECTED_OUTPUT_HASH_REQUIRED: read the existing output before replacing it");

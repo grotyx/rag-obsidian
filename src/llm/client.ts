@@ -39,7 +39,7 @@ export async function requestWithRetry(
     wait = await backoff(wait, res);
   }
 }
-import { ScholarRagSettings, effective } from "../types";
+import { ScholarRagSettings, effective, isOpenRouter } from "../types";
 import { runCli } from "./cli";
 
 export interface ChatMessage {
@@ -121,7 +121,7 @@ export class LLMClient {
     if (opts.reasoningEffort && /(^|\/)(o\d|gpt-5)/i.test(this.settings.llmModel)) {
       body.reasoning_effort = opts.reasoningEffort;
     }
-    if (opts.noReasoning && /openrouter\.ai/i.test(effective(this.settings, "openaiBaseUrl"))) {
+    if (opts.noReasoning && isOpenRouter(effective(this.settings, "openaiBaseUrl"))) {
       body.reasoning = { enabled: false };
     }
     const res = await requestWithRetry({

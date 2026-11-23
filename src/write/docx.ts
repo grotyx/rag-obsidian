@@ -1,5 +1,6 @@
 /* global process -- desktop-only, runs in Electron's Node.js context */
 import { Platform } from "obsidian";
+import { assertExecutableAllowed, buildCliEnv } from "../llm/cli";
 import template from "../../styles/manuscript-reference.docx";
 import { pandocCandidates, pandocSuperscripts } from "./pandoc";
 import {
@@ -56,7 +57,10 @@ export async function exportDocx(
   resourceDir?: string
 ): Promise<void> {
   if (!Platform.isDesktopApp) throw new Error("Export to Word needs Obsidian desktop");
+  // `pandocPath` syncs through data.json: it must be a pandoc outside the vault, run with a scrubbed environment.
+  await assertExecutableAllowed("pandoc", pandocPath, "Pandoc path");
   const { cp, fs, os, pathApi } = loadDesktopNode();
+  const hostPath = Object.entries(process.env).find(([k]) => k.toUpperCase() === "PATH")?.[1] ?? "";
   const tmp = await fs.mkdtemp(pathApi.join(os.tmpdir(), "rag-obsidian-docx-"));
   try {
     const inPath = pathApi.join(tmp, "in.md");
@@ -70,7 +74,7 @@ export async function exportDocx(
           inPath, "-f", "markdown", "-t", "docx", "--reference-doc", templatePath, "-o", outAbsPath,
           ...(resourceDir ? ["--resource-path", resourceDir] : []),
         ],
-        { timeout: 2 * 60 * 1000, ...(resourceDir ? { cwd: resourceDir } : {}) },
+        { timeout: 2 * 60 * 1000, env: buildCliEnv(process.env, hostPath), ...(resourceDir ? { cwd: resourceDir } : {}) },
         (error, _stdout, stderr) => {
           if (error) reject(new Error(stderr.toString().trim().slice(-500) || error.message));
           else resolve();
