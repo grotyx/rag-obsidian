@@ -142,7 +142,7 @@ Coloque o estilo do periódico nas propriedades da nota (`csl: spine`) e execute
 ## 7. Busca semântica
 
 Encontra trechos de significado semelhante, mesmo quando as palavras são diferentes. Abra-a com **Search**
-no painel da biblioteca. Clique em **Rebuild index** uma vez antes (menos de um minuto para cerca de 50 artigos).
+no painel da biblioteca. Clique em **Update index** uma vez antes (menos de um minuto para cerca de 50 artigos); as atualizações seguintes só processam notas novas ou alteradas.
 
 ![Painel Search com trechos sobre dural tears](img/en/09-search.png)
 

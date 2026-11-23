@@ -142,7 +142,7 @@ Indiquez le style de la revue dans les propriétés de la note (`csl: spine`), p
 ## 7. Recherche sémantique
 
 Trouve des passages de sens proche, même lorsque les mots diffèrent. Ouvrez-la avec **Search**
-dans le panneau de la bibliothèque. Cliquez d'abord une fois sur **Rebuild index** (moins d'une minute pour environ 50 articles).
+dans le panneau de la bibliothèque. Cliquez d'abord une fois sur **Update index** (moins d'une minute pour environ 50 articles) ; les mises à jour suivantes n'intègrent que les notes nouvelles ou modifiées.
 
 ![Panneau Search avec des passages sur les brèches durales](img/en/09-search.png)
 

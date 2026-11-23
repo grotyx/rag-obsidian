@@ -6,6 +6,43 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.11.4] — 2026-11-23
+
+### Changed — search index
+- **"Rebuild search index" is now "Update search index"** and re-embeds only notes that are new or changed since the last run; deleted notes are dropped. An update with nothing to do takes seconds and costs nothing (a 24,000-note library no longer re-sends ~7,000 embedding requests). The Search pane button reads "Update index".
+- New command **"Rebuild search index from scratch"** re-embeds every note. Changing the embedding model or endpoint switches to it automatically.
+- **One failed embedding request no longer throws away the whole run**: only the notes in that request are skipped (they keep their old entry and are retried by the next update). After 5 failures in a row the run stops, saves what it finished and says so. A 200 response with a missing or short embedding list is retried.
+- Small edits no longer rewrite the whole index on disk each time: changes are saved at most every 5 minutes and when Obsidian closes.
+- On start, notes deleted while Obsidian was closed (e.g. on another device) leave search, and notes added meanwhile are indexed; changing the references folder does the same.
+- An index built against one endpoint is not mixed with vectors from another endpoint serving the same model name.
+- A malformed embedding response no longer drops a note from search; moving the index between the vault and local storage keeps the old copy if the move fails; the first note added after start no longer briefly doubles the index memory.
+- A `tags:` value written as a single string is now usable in search filters.
+
+### Fixed — notes
+- **"Extract PDF highlights" deleted the section after `## Highlights`** (usually the extracted PDF text). It now replaces only the highlights.
+- Summary backfill writes each note as soon as its summary arrives, so a failed note or a cancelled run keeps everything already paid for.
+- Saving the same chat question twice ("…?") no longer overwrites the first answer.
+- A summary directly followed by another heading, or a note with Windows line endings, no longer loses that heading or gets a second summary.
+- "Update bibliography" leaves the note unchanged (and asks to run again) if citations were added while it rendered.
+- Merging duplicates moves every kind of link to the removed notes (including markdown links and embeds) and keeps a removed note when a link to it could not be moved. Groups matched by title alone are no longer pre-selected; different OpenAlex ids mean different papers.
+- Importing a large library no longer rescans the whole library for every new note.
+
+### Fixed — security
+- Chat answers no longer render HTML that loads remote content (images, frames, styled elements), on screen or in a saved note.
+- The pandoc path for Word export must name a `pandoc` program outside the vault, and pandoc runs without the host's environment secrets.
+- With MCP note tools off, `compile_manuscript` is off too; MCP path checks apply to the resolved file behind a symlink; screening writes from MCP check for concurrent edits atomically; the MCP server cannot be left listening after it is turned off.
+- The hosted reranker and OpenRouter-only request fields are used only for an https `openrouter.ai` address.
+- A notice appears when an API key cannot be stored in the system keychain.
+
+### Fixed — other
+- PRISMA counts only decided records as screened and counts two notes with the same citekey as a duplicate.
+- A PDF is matched to a reference by DOI or PMID only when the reference's title is also in the PDF, so an erratum is not attached to the original paper.
+- PDF reading always releases pdf.js resources; highlight extraction has the same timeout as text extraction.
+- The citation graph follows corrected OpenAlex ids and drops papers OpenAlex no longer finds.
+- The citation style locale is cached, so citations render offline after a restart.
+- Reading view refreshes citation labels when a reference changes; screening shortcuts work in pop-out windows and screening always writes to the note on screen; clearing the chat during an answer no longer brings it back.
+- Findings with bracketed values (`[ci:: [0.52, 0.91]]`) and citations inside double-backtick code are read correctly.
+
 ## [0.11.3] — 2026-11-07
 
 Fixes from a full code review (all of `src/` and `main.ts`).

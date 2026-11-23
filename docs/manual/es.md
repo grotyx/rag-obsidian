@@ -114,7 +114,7 @@ Pon el estilo de la revista en las propiedades de la nota (`csl: spine`) y ejecu
 
 ## 7. Búsqueda semántica
 
-Encuentra pasajes con un significado similar, incluso cuando las palabras son distintas. Ábrela con **Search** en el panel de biblioteca. Haz clic una vez en **Rebuild index** primero (menos de un minuto para unos 50 artículos).
+Encuentra pasajes con un significado similar, incluso cuando las palabras son distintas. Ábrela con **Search** en el panel de biblioteca. Haz clic una vez en **Update index** primero (menos de un minuto para unos 50 artículos); las actualizaciones posteriores solo procesan las notas nuevas o modificadas.
 
 ![Panel Search con pasajes sobre desgarros durales](img/es/09-search.png)
 

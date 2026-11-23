@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Téléchargements Obsidian" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.3-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.4-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="licence" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -217,7 +217,7 @@ simplement le vault synchronisé et activez le plugin — sans Node, sans compil
    le style de revue choisi.
 
 > Le flux de travail de citation ne nécessite **aucun embedding**. La recherche sémantique et le chat sont
-> facultatifs et demandent un unique **Rebuild search index**.
+> facultatifs et demandent un unique **Update search index** (les mises à jour suivantes n'intègrent que les notes nouvelles ou modifiées).
 
 ### Connecter Claude Code ou Codex
 
@@ -227,7 +227,7 @@ vault ouvert pendant l'utilisation des outils. Consultez le [guide MCP complet](
 le flux d'édition sécurisé, des exemples de prompts, le modèle de sécurité et le dépannage.
 
 MCP délègue le raisonnement et la rédaction à Claude Code ou Codex. Il n'appelle ni **Chat with library**,
-ni le résumé d'articles, ni le reranker LLM ; seuls la recherche dans la bibliothèque et la reconstruction de l'index
+ni le résumé d'articles, ni le reranker LLM ; seuls la recherche dans la bibliothèque et la mise à jour de l'index
 peuvent utiliser le fournisseur d'embeddings configuré.
 
 Pour un import complet, demandez au client d'ajouter et de résumer l'article. Il suivra
@@ -379,7 +379,7 @@ csl: springer-basic-brackets
 | **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Download open-access PDF files for references without one · Link PDF files in a folder to references · Extract PDF highlights · Index linked PDF files · Index this note's PDF · Open reference online |
 | **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Snowball from included records · Risk-of-bias summary table · Export evidence table (CSV) · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
 | **Write** | `@` autocomplete · Suggest citations for selection · Find unsupported claims · Update bibliography · Choose citation style… · Check references in this manuscript · Compile manuscript · Export manuscript to Word (.docx) · Copy citation · Export annotated bibliography · Save latest chat answer as note |
-| **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Rebuild search index |
+| **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Update search index · Rebuild search index from scratch |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |
 
 ---

@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.3-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.4-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -205,7 +205,7 @@ vault를 열고 활성화만 — Node·빌드 불필요.
    `## References` 생성.
 
 > 인용 워크플로는 **임베딩이 필요 없습니다.** 의미 검색·챗은 선택이며, 한 번
-> **Rebuild search index**가 필요합니다.
+> **Update search index**가 필요합니다(이후에는 새로 생기거나 바뀐 노트만 임베딩합니다).
 
 ### Claude Code 또는 Codex 연결
 
@@ -215,7 +215,7 @@ vault를 열어 두어야 합니다. 도구 목록, 안전한 수정 흐름, 예
 [MCP 전체 안내서](docs/MCP.ko.md)를 참고하세요.
 
 MCP에서 판단과 글쓰기는 Claude Code/Codex가 담당합니다. 플러그인의 **Chat with library**,
-논문 요약, LLM reranker는 호출하지 않으며 라이브러리 검색·인덱스 재구축만 설정된 임베딩
+논문 요약, LLM reranker는 호출하지 않으며 라이브러리 검색·인덱스 갱신만 설정된 임베딩
 provider를 사용할 수 있습니다.
 
 논문을 완전히 등록하려면 외부 AI에 “찾아서 추가하고 요약까지 저장해줘”라고 요청하십시오.
@@ -360,7 +360,7 @@ csl: springer-basic-brackets
 | **독서** | 읽기 상태(unread / reading / read) · Reading queue · OA PDF 찾기 · OA PDF 다운로드 · OA PDF 일괄 다운로드 · 폴더의 PDF 연결 · PDF 형광펜 추출 · 링크된 PDF 본문 색인 · 이 노트의 PDF 색인 · 온라인으로 열기 |
 | **정리** | 요약·태그 일괄 채우기 · 이 참고문헌 요약·태그 채우기 · 폴더/태그 범위로 요약·태그 채우기… · 이 참고문헌 다시 요약 · 옛 모델로 만든 요약 다시 생성 · 스크리닝 창 · PRISMA 흐름도 · Snowball from included records · Risk-of-bias summary table · Export evidence table (CSV) · 대시보드 · 중복 찾기 · 중복 병합… · 인용수 채우기 · 철회 확인(이 노트 / 전체) · 태그 변경 · 메타데이터 보강 · 관련 논문 추천 · 인용 네트워크 내보내기 |
 | **집필** | `@` 자동완성 · 선택 문단에 인용 추천 · 근거 없는 주장 찾기 · Update bibliography · 인용 스타일 선택 · 원고 참고문헌 점검 · Compile manuscript · Word(.docx)로 내보내기 · 인용 복사 · 주석 참고문헌 · 최근 챗 답변을 노트로 저장 |
-| **검색** | 의미 검색 · 챗 · 관련 논문 · 인용 그래프 만들기 · 인덱스 재생성 |
+| **검색** | 의미 검색 · 챗 · 관련 논문 · 인용 그래프 만들기 · Update search index · Rebuild search index from scratch |
 | **내보내기** | 라이브러리 → BibTeX / RIS / CSL-JSON |
 
 ---

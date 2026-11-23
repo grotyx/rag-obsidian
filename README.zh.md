@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.3-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.4-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -211,7 +211,7 @@ npm run deploy              # builds + copies the plugin into your vault
    生成 `## References` 列表。
 
 > 引用工作流**无需 embedding**。语义检索与对话为可选功能，
-> 需要一次性的 **Rebuild search index**。
+> 需要一次性的 **Update search index**（之后的更新只会嵌入新增或已更改的笔记）。
 
 ### 连接 Claude Code 或 Codex
 
@@ -221,7 +221,7 @@ vault 处于打开状态。工具列表、安全编辑工作流、示例提示�
 请参见[完整的 MCP 指南](docs/MCP.md)。
 
 MCP 将推理和文字撰写交给 Claude Code 或 Codex。它不会调用 **Chat with library**、
-论文摘要或 LLM 重排序；只有文献库检索 / 索引重建可能使用已配置的
+论文摘要或 LLM 重排序；只有文献库检索 / 索引更新可能使用已配置的
 embedding 提供商。
 
 如需完整导入，请让客户端添加并摘要论文。它会依次执行
@@ -372,7 +372,7 @@ csl: springer-basic-brackets
 | **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Download open-access PDF files for references without one · Link PDF files in a folder to references · Extract PDF highlights · Index linked PDF files · Index this note's PDF · Open reference online |
 | **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Snowball from included records · Risk-of-bias summary table · Export evidence table (CSV) · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
 | **Write** | `@` autocomplete · Suggest citations for selection · Find unsupported claims · Update bibliography · Choose citation style… · Check references in this manuscript · Compile manuscript · Export manuscript to Word (.docx) · Copy citation · Export annotated bibliography · Save latest chat answer as note |
-| **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Rebuild search index |
+| **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Update search index · Rebuild search index from scratch |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |
 
 ---

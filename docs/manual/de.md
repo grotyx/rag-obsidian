@@ -153,8 +153,8 @@ Sie dann <kbd>Cmd/Ctrl</kbd>+<kbd>P</kbd> → **Update bibliography in current n
 ## 7. Semantische Suche
 
 Findet Passagen mit ähnlicher Bedeutung, auch wenn die Wörter abweichen. Öffnen Sie sie über
-**Search** im Bibliotheksfenster. Klicken Sie zuvor einmal auf **Rebuild index** (bei etwa
-50 Artikeln dauert das weniger als eine Minute).
+**Search** im Bibliotheksfenster. Klicken Sie zuvor einmal auf **Update index** (bei etwa
+50 Artikeln dauert das weniger als eine Minute); spätere Updates betten nur neue oder geänderte Notizen ein.
 
 ![Suchfenster mit Passagen zu Duraläsionen](img/en/09-search.png)
 

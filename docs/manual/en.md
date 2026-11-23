@@ -142,7 +142,7 @@ Put the journal style in the note's properties (`csl: spine`), then run
 ## 7. Semantic search
 
 Finds passages with a similar meaning, even when the words differ. Open it with **Search**
-in the library pane. Click **Rebuild index** once first (under a minute for about 50 papers).
+in the library pane. Click **Update index** once first (under a minute for about 50 papers); later updates only embed new or changed notes.
 
 ![Search pane with passages about dural tears](img/en/09-search.png)
 

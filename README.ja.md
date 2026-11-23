@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.3-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.4-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -208,7 +208,7 @@ Vaultの**中**（`<vault>/.obsidian/plugins/academic-paper-citation-manager/`�
    `## References` リストが作られます。
 
 > 引用ワークフローに**embeddingは不要**です。セマンティック検索とチャットは任意で、
-> 一度だけ **Rebuild search index** が必要です。
+> 一度だけ **Update search index** が必要です（以降の更新では、新規または変更されたノートだけをembeddingします）。
 
 ### Claude CodeまたはCodexに接続する
 
@@ -219,7 +219,7 @@ Vaultを開いたままにしてください。ツール一覧、安全な編集
 
 MCPは推論と文章作成をClaude CodeまたはCodexに任せます。**Chat with library**、
 論文の要約、LLMリランカーは呼び出されません。設定済みのembeddingプロバイダが使われうるのは、
-ライブラリ検索とインデックス再構築だけです。
+ライブラリ検索とインデックス更新だけです。
 
 論文を完全にインポートするには、クライアントに論文の追加と要約を依頼します。クライアントは
 `add_reference` → `get_reference_source` → `save_reference_summary` の順に進みます。PMC全文が優先され、
@@ -368,7 +368,7 @@ csl: springer-basic-brackets
 | **Read** | Mark unread / reading / read · Reading queue · Find open-access PDF · Download open-access PDF · Download open-access PDF files for references without one · Link PDF files in a folder to references · Extract PDF highlights · Index linked PDF files · Index this note's PDF · Open reference online |
 | **Organize** | Summarize and tag references (fill gaps) · Summarize and tag this reference · Summarize and tag references in a folder or tag… · Re-summarize this reference · Re-summarize references made by an older model · Open screening pane · Create PRISMA flow diagram · Snowball from included records · Risk-of-bias summary table · Export evidence table (CSV) · Library dashboard · Find duplicates · Merge duplicates… · Backfill citation counts · Check retraction (this note / all) · Rename tag · Enrich metadata · Suggest related papers · Export citation network |
 | **Write** | `@` autocomplete · Suggest citations for selection · Find unsupported claims · Update bibliography · Choose citation style… · Check references in this manuscript · Compile manuscript · Export manuscript to Word (.docx) · Copy citation · Export annotated bibliography · Save latest chat answer as note |
-| **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Rebuild search index |
+| **Search** | Search library (semantic) · Chat with library · Show related papers · Build citation graph · Update search index · Rebuild search index from scratch |
 | **Export** | Library → BibTeX / RIS / CSL-JSON |
 
 ---
