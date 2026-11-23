@@ -1,6 +1,6 @@
 import { TFile } from "obsidian";
 import type ScholarRagPlugin from "../../main";
-import { joinNote, planMerge, renameWikilinks, splitNote, WikilinkRename } from "../data/merge";
+import { joinNote, LinkRef, moveLinks, planMerge, splitNote } from "../data/merge";
 import { renameCiteKeys } from "../cite/bibliography";
 
 export interface MergeGroupPlan {
@@ -18,7 +18,7 @@ export interface MergeResult {
   skipped: number;
   /** Groups abandoned because a file changed between reading it and writing the merge. */
   skippedChanged: number;
-  /** Losers kept (not trashed) because they were edited after their content was merged. */
+  /** Losers kept (not trashed): edited after their content was merged, or still linked from a spelling the merge could not rewrite. */
   losersKept: number;
 }
 
@@ -53,9 +53,8 @@ export async function mergeDuplicateGroups(
   );
 
   const citeMap: Record<string, string> = {};
-  const wikiRenames: WikilinkRename[] = [];
   /** Each loser with the exact text that was merged into its keeper. */
-  const allLosers: { file: TFile; snapshot: string }[] = [];
+  const allLosers: { file: TFile; keeper: TFile; snapshot: string }[] = [];
   let groupsMerged = 0;
   let skippedChanged = 0;
 
@@ -109,28 +108,50 @@ export async function mergeDuplicateGroups(
     // (c) one combined citekey map and one combined wikilink-rename list, across all groups.
     losers.forEach((l, j) => {
       if (l.citekey && keeperCitekey) citeMap[l.citekey] = keeperCitekey;
-      wikiRenames.push({ path: l.file.path.replace(/\.md$/, ""), keeperBasename: plan.keeperFile.basename });
-      allLosers.push({ file: l.file, snapshot: loserTexts[j] });
+      allLosers.push({ file: l.file, keeper: plan.keeperFile, snapshot: loserTexts[j] });
     });
     groupsMerged++;
   }
 
-  // (d) one pass over the vault for citations + wikilinks, counting only real changes.
+  // (d) one pass over the vault for citations + links, counting only real changes. Links are
+  // found through the metadata cache and resolved from the note that holds them (so `[[x]]`,
+  // `[[x.md]]`, `[text](x.md)` and embeds all count, and a same-named note elsewhere does not);
+  // a loser with a link that could not be moved is kept, never trashed into a dangling link.
   let notesRewritten = 0;
-  if (Object.keys(citeMap).length || wikiRenames.length) {
-    const resolvedLinks = plugin.app.metadataCache.resolvedLinks;
-    const loserPaths = new Set(allLosers.map((l) => l.file.path));
+  const keepLosers = new Set<string>();
+  if (Object.keys(citeMap).length || allLosers.length) {
+    const { metadataCache } = plugin.app;
+    const resolvedLinks = metadataCache.resolvedLinks;
+    const keeperByLoser = new Map(allLosers.map((l) => [l.file.path, l.keeper]));
     for (const file of plugin.app.vault.getMarkdownFiles()) {
-      if (loserPaths.has(file.path)) continue; // about to be trashed; rewriting would break its snapshot check
+      if (keeperByLoser.has(file.path)) continue; // about to be trashed; rewriting would break its snapshot check
       const text = await plugin.app.vault.cachedRead(file);
       const hasCiteCandidate = Object.keys(citeMap).some((k) => text.includes("@" + k));
-      const linksHere = resolvedLinks[file.path] ?? {};
-      const hasWikiCandidate = Object.keys(linksHere).some((t) => loserPaths.has(t));
-      if (!hasCiteCandidate && !hasWikiCandidate) continue;
+      const linksHere = Object.keys(resolvedLinks[file.path] ?? {}).filter((t) => keeperByLoser.has(t));
+      if (!hasCiteCandidate && !linksHere.length) continue;
 
+      const cache = metadataCache.getFileCache(file);
+      const refs: LinkRef[] = [...(cache?.links ?? []), ...(cache?.embeds ?? [])].map((l) => ({
+        link: l.link,
+        original: l.original,
+        start: l.position.start.offset,
+      }));
+      for (const l of cache?.frontmatterLinks ?? []) refs.push({ link: l.link, original: l.original, start: -1 });
+      const loserOf = (target: string): string | null => {
+        const dest = metadataCache.getFirstLinkpathDest(target, file.path);
+        return dest && keeperByLoser.has(dest.path) ? dest.path : null;
+      };
+      const keeperOf = (loserPath: string) => {
+        const k = keeperByLoser.get(loserPath)!;
+        return { basename: k.basename, path: k.path };
+      };
       let changed = false;
       await plugin.app.vault.process(file, (c) => {
-        const next = renameWikilinks(renameCiteKeys(c, citeMap), wikiRenames);
+        const r = linksHere.length ? moveLinks(c, refs, loserOf, keeperOf) : { text: c, moved: [], failed: [] };
+        // A link the vault says exists but the cache could not show us is as unmoved as a failed one.
+        for (const t of linksHere) if (!r.moved.includes(t)) keepLosers.add(t);
+        for (const t of r.failed) keepLosers.add(t);
+        const next = renameCiteKeys(r.text, citeMap);
         changed = next !== c;
         return next;
       });
@@ -143,7 +164,7 @@ export async function mergeDuplicateGroups(
   let losersKept = 0;
   for (const { file, snapshot } of allLosers) {
     const cur = plugin.app.vault.getAbstractFileByPath(file.path);
-    if (!(cur instanceof TFile) || (await plugin.app.vault.read(file)) !== snapshot) {
+    if (!(cur instanceof TFile) || keepLosers.has(file.path) || (await plugin.app.vault.read(file)) !== snapshot) {
       losersKept++;
       continue;
     }

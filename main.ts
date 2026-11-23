@@ -472,7 +472,7 @@ export default class ScholarRagPlugin extends Plugin {
           this.citeCache.clear(); // reference data changed
           this.pokeEditors(); // editors re-read labels and titles (debounced: imports write hundreds)
           this.rerenderReadingViews();
-          this.library.invalidateKeyCache();
+          this.library.invalidateKeyCache(file.path);
         } else void this.refreshCitations(file.path); // style or numbering in this note may have changed
       })
     );

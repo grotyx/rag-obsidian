@@ -1,6 +1,6 @@
 import { App, Modal, Notice, Setting, TFile } from "obsidian";
 import type ScholarRagPlugin from "../../main";
-import { duplicateGroups } from "../data/library";
+import { duplicateGroups, sharesStrongId } from "../data/library";
 import { pickKeeper, MergeNote } from "../data/merge";
 import { mergeDuplicateGroups, MergeGroupPlan } from "../commands/merge";
 
@@ -60,7 +60,7 @@ export class MergeDuplicatesModal extends Modal {
             bodyLength: (await this.app.vault.cachedRead(entries[i].file)).length,
           }))
         );
-        return { title: g[0].title, entries, keeperIdx: pickKeeper(notes), merge: true };
+        return { title: g[0].title, entries, keeperIdx: pickKeeper(notes), merge: sharesStrongId(g) };
       })
     );
     this.render();
@@ -117,7 +117,7 @@ export class MergeDuplicatesModal extends Modal {
     const skippedNotice =
       (result.skipped ? ` · ${result.skipped} group(s) skipped (changed since opening)` : "") +
       (result.skippedChanged ? ` · ${result.skippedChanged} group(s) skipped (changed during merge)` : "") +
-      (result.losersKept ? ` · ${result.losersKept} note(s) kept, edited during merge — merge them again` : "");
+      (result.losersKept ? ` · ${result.losersKept} note(s) kept, edited during merge or still linked from a place the merge could not rewrite — merge them again` : "");
     new Notice(
       `Merged ${result.groupsMerged} group(s) · ${result.notesTrashed} note(s) trashed · ` +
         `citations rewritten in ${result.notesRewritten} note(s)${skippedNotice}`

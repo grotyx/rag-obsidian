@@ -106,11 +106,23 @@ export class Library {
   uniqueCitekey(base: string, also: Iterable<string> = []): string {
     const set = this.knownCitekeys();
     for (const k of also) set.add(k);
-    if (!set.has(base)) return base;
-    for (const s of "abcdefghijklmnopqrstuvwxyz") {
-      if (!set.has(base + s)) return base + s;
-    }
-    return base + Date.now();
+    return pickKey(base, set);
+  }
+
+  /** Every known citekey (parsed notes, this session's creates, notes the cache has not parsed),
+   *  built once and then grown by each create. `createReference` used to rebuild it per insert —
+   *  a full scan, sort and file read per note, so a 24k-record import was quadratic. Dropped by
+   *  `invalidateKeyCache()` on any change that is not the first parse of a note created here. */
+  private keySet: Set<string> | null = null;
+  private keyEpoch = 0;
+
+  private async knownKeysForCreate(): Promise<Set<string>> {
+    if (this.keySet) return this.keySet;
+    const epoch = this.keyEpoch;
+    const set = this.knownCitekeys();
+    for (const k of await this.unparsedCitekeys()) set.add(k);
+    if (epoch === this.keyEpoch) this.keySet = set; // an invalidation during the read: use it once, don't keep it
+    return set;
   }
 
   private fileExists(name: string): boolean {
@@ -150,19 +162,22 @@ export class Library {
 
   private async createReferenceNow(item: CSLItem, opts: BuildNoteOpts): Promise<TFile> {
     await this.ensureFolder();
-    const unparsed = await this.unparsedCitekeys();
+    const known = await this.knownKeysForCreate();
     // The caller's own findDuplicate ran before it waited for earlier creates in the chain; one of
     // them may have added this very work since. Hand back that note instead of a second copy.
     const dup = this.findDuplicate(item);
     const existing = dup ? this.getFile(dup) : null;
     if (existing) return existing;
-    const citekey = this.uniqueCitekey(generateCitekey(item, this.settings), unparsed);
+    const citekey = pickKey(generateCitekey(item, this.settings), known);
+    known.add(citekey);
     const filename = this.uniqueFilename(generateFilename(item));
     const path = normalizePath(`${this.folder()}/${filename}.md`);
     this.createdCitekeys.set(citekey, { path, item });
     this.rememberIds(item, citekey, path);
+    this.createdPaths.add(path); // its first metadata-cache parse is expected, not an outside change
     const content = buildNote(item, citekey, opts);
-    this.invalidateKeyCache();
+    // No cache drop: `known` already holds the key, and findDuplicate finds this note through the
+    // session registry until the identifier map is next rebuilt.
     return this.app.vault.create(path, content);
   }
 
@@ -181,10 +196,18 @@ export class Library {
    *  calls it once per cited key. */
   private citekeyPathCache: Map<string, string> | null = null;
 
-  /** Drop the `getFile` cache; call when notes are created, changed, moved, or deleted. */
-  invalidateKeyCache(): void {
+  /** Notes created here whose first metadata-cache parse has not been seen yet. */
+  private createdPaths = new Set<string>();
+
+  /** Drop the `getFile`, identifier and citekey caches; call when notes are changed, moved, or
+   *  deleted. Pass the changed note's `path` from the metadata-cache event: the first parse of a
+   *  note this library just created changes nothing the caches do not already know. */
+  invalidateKeyCache(path?: string): void {
+    if (path && this.createdPaths.delete(path)) return;
     this.citekeyPathCache = null;
     this.idMap = null;
+    this.keySet = null;
+    this.keyEpoch++;
   }
 
   /** match key → first note (in vault scan order, `order`) carrying it; built lazily in one pass
@@ -329,6 +352,15 @@ export class Library {
   }
 }
 
+/** `base`, or `base` + the first free letter (then number), not in `taken`. */
+function pickKey(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  for (const s of "abcdefghijklmnopqrstuvwxyz") {
+    if (!taken.has(base + s)) return base + s;
+  }
+  for (let n = 2; ; n++) if (!taken.has(`${base}_${n}`)) return `${base}_${n}`;
+}
+
 /** Identifiers a note can be matched on — the ones `findDuplicate` compares, in the same
  *  normalized form. A short title is not an identifier ("Editorial" would group unrelated notes). */
 export function matchKeys(item: { DOI?: unknown; PMID?: unknown; title?: unknown; openalex_id?: unknown }): string[] {
@@ -343,15 +375,32 @@ export function matchKeys(item: { DOI?: unknown; PMID?: unknown; title?: unknown
   return keys;
 }
 
-/** Two works that each carry a DOI (or a PMID) and the values differ are different works,
- *  whatever their titles say. Only a title match consults this; a shared identifier still wins. */
-export function idsConflict(a: { DOI?: unknown; PMID?: unknown }, b: { DOI?: unknown; PMID?: unknown }): boolean {
+/** Two works that each carry a DOI (or a PMID, or an OpenAlex id) and the values differ are
+ *  different works, whatever their titles say. Only a title match consults this; a shared
+ *  identifier still wins. */
+export function idsConflict(
+  a: { DOI?: unknown; PMID?: unknown; openalex_id?: unknown },
+  b: { DOI?: unknown; PMID?: unknown; openalex_id?: unknown }
+): boolean {
   const da = normDoi(a.DOI);
   const db = normDoi(b.DOI);
   if (da && db && da !== db) return true;
   const pa = text(a.PMID);
   const pb = text(b.PMID);
-  return !!pa && !!pb && pa !== pb;
+  if (pa && pb && pa !== pb) return true;
+  const oa = normOpenAlex(a.openalex_id);
+  const ob = normOpenAlex(b.openalex_id);
+  return !!oa && !!ob && oa !== ob;
+}
+
+/** True when every note in the group shares a DOI, PMID or OpenAlex id with another member.
+ *  A group joined by title alone is a guess (errata, "Reply to…", same-title different works),
+ *  so the merge dialog leaves it unchecked. */
+export function sharesStrongId(group: { item: { DOI?: unknown; PMID?: unknown; openalex_id?: unknown } }[]): boolean {
+  const count = new Map<string, number>();
+  const keys = group.map((e) => matchKeys(e.item).filter((k) => !k.startsWith("title:")));
+  for (const ks of keys) for (const k of ks) count.set(k, (count.get(k) ?? 0) + 1);
+  return keys.every((ks) => ks.some((k) => (count.get(k) ?? 0) > 1));
 }
 
 /** Group notes that are the same work. Two notes belong together when they share **any**

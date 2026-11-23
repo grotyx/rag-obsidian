@@ -887,6 +887,7 @@ async function main() {
     const before = new TFile("References/older.md");
     freshFiles.set(before.path, before);
     freshText.set(before.path, `---\ncitekey: ${generateCitekey(sameKeyItem("Spine outcomes alpha"), settings)}\n---\n`);
+    freshLibrary.invalidateKeyCache(); // a note synced in from outside: the plugin's metadata-cache handler drops the key caches
     const [fa, fb] = await Promise.all([
       freshLibrary.createReference(sameKeyItem("Spine outcomes alpha two")),
       freshLibrary.createReference(sameKeyItem("Spine outcomes alpha three")),
@@ -904,15 +905,17 @@ async function main() {
     // note without a frontmatter citekey is never offered as a duplicate (getFile could not find it).
     {
       const files = new Map<string, TFile>();
+      const createdText = new Map<string, string>();
       const fms = new Map<string, Record<string, unknown>>(); // parsed frontmatter per path; absent = not parsed yet
       const app2: any = {
         vault: {
           getAbstractFileByPath: (p: string) => files.get(p) ?? null,
           getMarkdownFiles: () => [...files.values()],
           createFolder: async () => undefined,
-          create: async (p: string) => {
+          create: async (p: string, content?: string) => {
             const f = new TFile(p);
             files.set(p, f);
+            createdText.set(p, content ?? "");
             return f;
           },
           cachedRead: async () => "",
@@ -935,6 +938,7 @@ async function main() {
       ok(lib2.findDuplicate(item) === "newkey", "registry: a duplicate reports the current citekey");
 
       fms.set(f.path, { ...item, citekey: "newkey", DOI: "10.5/corrected" });
+      lib2.invalidateKeyCache(); // a real edit fires the metadata-cache "changed" handler
       ok(lib2.findDuplicate({ type: "article-journal", DOI: "10.5/old" }) === null, "registry: a corrected DOI frees the old one");
       ok(lib2.findDuplicate({ type: "article-journal", DOI: "10.5/corrected" }) === "newkey", "registry: the new DOI matches");
       ok(lib2.findDuplicate({ type: "article-journal", PMID: "424242" }) === "newkey", "registry: unchanged PMID still matches");
@@ -1043,6 +1047,39 @@ async function main() {
           lib7.createReference({ type: "article-journal", title: "Race two second", DOI: "10.9/race3" }),
         ]);
         ok(s1 !== s2, "concurrent createReference of different works makes two notes");
+
+        // A batch of creates does not rescan the library per insert (review #26): the full
+        // scans run once, keys stay unique, and a note created here parsing for the first time
+        // does not drop the caches, while an outside change does.
+        const lib8 = new Library(app2, settings);
+        const realGet = app2.vault.getMarkdownFiles;
+        let scans = 0;
+        app2.vault.getMarkdownFiles = () => {
+          scans++;
+          return realGet();
+        };
+        const batchKeys: string[] = [];
+        const N = 200;
+        for (let i = 0; i < N; i++) {
+          const it: CSLItem = {
+            type: "article-journal",
+            title: `Batch import paper number ${i} with a long distinct title`,
+            author: [{ family: "Batch", given: "A" }],
+            issued: { "date-parts": [[2020]] },
+            DOI: `10.8/batch${i}`,
+          };
+          if (lib8.findDuplicate(it)) continue;
+          const bf = await lib8.createReference(it);
+          lib8.invalidateKeyCache(bf.path); // metadataCache "changed" for the note's first parse
+          batchKeys.push(String(/^citekey: (\S+)/m.exec(String(createdText.get(bf.path)))?.[1]));
+        }
+        ok(batchKeys.length === N && new Set(batchKeys).size === N, `${N} batch creates keep citekeys unique (${new Set(batchKeys).size} distinct)`);
+        ok(scans <= 6, `${N} batch creates run the full vault scans a handful of times, not per insert (${scans} getMarkdownFiles calls)`);
+        const scansBefore = scans;
+        lib8.invalidateKeyCache("References/someone-else.md");
+        await lib8.createReference({ type: "article-journal", title: "One after an outside change", DOI: "10.8/after" });
+        ok(scans > scansBefore, "an outside change drops the caches so the next create rescans");
+        app2.vault.getMarkdownFiles = realGet;
       }
     }
 

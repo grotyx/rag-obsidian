@@ -63,6 +63,8 @@ import { referenceProblems, refcheckReport, problemSeverity, PROBLEM_UNCHECKED, 
 import { parseStyleIndex } from "../src/cite/styleIndex";
 import {
   duplicateGroups,
+  idsConflict,
+  sharesStrongId,
   inScope,
   matchKeys,
   normDoi,
@@ -79,7 +81,8 @@ import {
   mergeFrontmatter,
   mergeBodies,
   planMerge,
-  renameWikilinks,
+  rewriteLinkText,
+  moveLinks,
   splitNote,
   MergeNote,
   MergeSourceNote,
@@ -720,6 +723,14 @@ AID - 10.1000/xyz123 [doi]
   check(duplicateGroups([t3, t4]).length === 0, "duplicateGroups: same title, different PMIDs → not duplicates");
   check(duplicateGroups([t1, t3]).length === 1, "duplicateGroups: same title, DOI on one and PMID on the other → still a group");
   check(duplicateGroups([t1, t5]).length === 1, "duplicateGroups: same title, one side without ids → still a group");
+  const o1: E = { item: { openalex_id: "W1", title: gt } };
+  const o2: E = { item: { openalex_id: "https://openalex.org/W2", title: gt } };
+  check(idsConflict(o1.item, o2.item), "idsConflict: different OpenAlex ids conflict");
+  check(!idsConflict(o1.item, { openalex_id: "https://openalex.org/w1" }), "idsConflict: same OpenAlex id (URL / case) does not conflict");
+  check(duplicateGroups([o1, o2]).length === 0, "duplicateGroups: same title, different OpenAlex ids → not duplicates");
+  check(sharesStrongId(duplicateGroups([t1, { item: { DOI: "10.1/X", title: "Another title" } }, t5])[0] ?? []) === false, "sharesStrongId: a title-only member (no shared id) → not preselected");
+  check(sharesStrongId(duplicateGroups([{ item: { DOI: "10.1/x", PMID: "5" } }, { item: { PMID: "5" } }])[0]), "sharesStrongId: group joined by a shared PMID is preselected");
+  check(!sharesStrongId(duplicateGroups([t1, t5])[0]), "sharesStrongId: a group joined by title alone is not preselected");
   const chain = duplicateGroups([t1, t5, t2]);
   check(chain.length === 1 && chain[0].length === 2, "duplicateGroups: a generic title does not chain two different DOIs through a bare note");
 
@@ -1450,32 +1461,39 @@ check(
   );
 }
 
-// ---------- data/merge.ts: renameWikilinks ----------
+// ---------- data/merge.ts: rewriteLinkText / moveLinks ----------
 {
-  const renames = [{ path: "References/smith2020", keeperBasename: "jones2021" }];
-  check(renameWikilinks("[[smith2020]]", renames) === "[[jones2021]]", "renameWikilinks: bare basename form");
+  const k = { basename: "jones2021", path: "References/jones2021.md" };
+  check(rewriteLinkText("[[smith2020]]", k) === "[[jones2021]]", "rewriteLinkText: wikilink");
+  check(rewriteLinkText("[[References/smith2020.md]]", k) === "[[jones2021]]", "rewriteLinkText: wikilink spelled with folder and .md");
+  check(rewriteLinkText("[[smith2020#Results|see here]]", k) === "[[jones2021#Results|see here]]", "rewriteLinkText: heading + alias kept");
+  check(rewriteLinkText("![[smith2020]]", k) === "![[jones2021]]", "rewriteLinkText: embed marker kept");
+  check(rewriteLinkText("[Smith](References/smith2020.md#Results)", k) === "[Smith](References/jones2021.md#Results)", "rewriteLinkText: markdown link, heading kept");
+  check(rewriteLinkText("[S](<My Refs/smith 2020.md>)", { basename: "j", path: "My Refs/j k.md" }) === "[S](<My Refs/j k.md>)", "rewriteLinkText: angle-bracket markdown link");
+  check(rewriteLinkText("[S](a.md \"title\")", k) === null, "rewriteLinkText: a spelling it does not understand is null");
+
+  const keeperOf = () => k;
+  const loserOf = (t: string) => (t === "smith2020" || t === "References/smith2020.md" ? "References/smith2020.md" : null);
+  const t1 = "See [[smith2020]] and [x](References/smith2020.md#h) and `[[smith2020]]` and [[other]].";
+  const refs = (text: string) => {
+    const out: { link: string; original: string; start: number }[] = [];
+    // the cache skips the span in backticks
+    for (const [original, link] of [["[[smith2020]]", "smith2020"], ["[x](References/smith2020.md#h)", "References/smith2020.md#h"], ["[[other]]", "other"]] as const) {
+      out.push({ link, original, start: text.indexOf(original) });
+    }
+    return out;
+  };
+  const r1 = moveLinks(t1, refs(t1), loserOf, keeperOf);
   check(
-    renameWikilinks("[[References/smith2020]]", renames) === "[[jones2021]]",
-    "renameWikilinks: full vault path (no .md) form"
+    r1.text === "See [[jones2021]] and [x](References/jones2021.md#h) and `[[smith2020]]` and [[other]]." && r1.failed.length === 0,
+    `moveLinks: wikilink and markdown link moved by offset, code span and other note untouched (${r1.text})`
   );
-  check(
-    renameWikilinks("[[smith2020|Smith's paper]]", renames) === "[[jones2021|Smith's paper]]",
-    "renameWikilinks: alias suffix preserved"
-  );
-  check(
-    renameWikilinks("[[smith2020#Results]]", renames) === "[[jones2021#Results]]",
-    "renameWikilinks: heading suffix preserved"
-  );
-  check(
-    renameWikilinks("[[smith2020#Results|see here]]", renames) === "[[jones2021#Results|see here]]",
-    "renameWikilinks: heading + alias suffix preserved together"
-  );
-  check(renameWikilinks("![[smith2020]]", renames) === "![[jones2021]]", "renameWikilinks: leading ! embed marker preserved");
-  check(
-    renameWikilinks("[[smith2020b]]", renames) === "[[smith2020b]]",
-    "renameWikilinks: a different note whose name only starts with the loser's name is untouched"
-  );
-  check(renameWikilinks("no links here", []) === "no links here", "renameWikilinks: no-op with an empty rename list");
+  const stale = moveLinks("Intro line\n" + t1, refs(t1), loserOf, keeperOf); // offsets are off by 11
+  check(stale.moved.length === 1 && stale.text.includes("[[jones2021]]") && stale.failed.length === 0, "moveLinks: stale offsets fall back to the exact link text");
+  const bad = moveLinks("[a](References/smith2020.md \"t\")", [{ link: "References/smith2020.md", original: "[a](References/smith2020.md \"t\")", start: 0 }], loserOf, keeperOf);
+  check(bad.failed.join() === "References/smith2020.md", "moveLinks: an unparseable link marks its loser as failed");
+  const gone = moveLinks("nothing left", [{ link: "smith2020", original: "[[smith2020]]", start: -1 }], loserOf, keeperOf);
+  check(gone.failed.length === 1, "moveLinks: a link whose text cannot be found marks its loser as failed");
 }
 
 // ---------- cite/bibliography.ts: renameCiteKeys ----------
@@ -2568,6 +2586,66 @@ check(
     }) as never;
     const r3 = await mergeDuplicateGroups(h3.plugin as never, [h3.plan]);
     check(r3.skippedChanged === 1 && !h3.files.get(h3.keeper.path)!.text.includes("loser text") && h3.trashed.length === 0, "mergeDuplicateGroups: a loser edited after its text was copied abandons the group");
+  }
+
+  // ---------- commands/merge.ts: links to merged-away notes ----------
+  {
+    const mkf = (path: string) => Object.assign(new TFile(path), { stat: { mtime: 1 } });
+    const keeper = mkf("References/keep2020.md");
+    const loser = mkf("References/lose2020.md");
+    const other = mkf("Notes/draft.md");
+    const decoy = mkf("Notes/lose2020.md"); // same basename, different note: a short link from Notes/ means THIS one
+    const unclear = mkf("Notes/odd.md");
+    const texts = new Map<string, string>([
+      [keeper.path, "---\ncitekey: keep2020\n---\n\n## Notes\n\nk\n"],
+      [loser.path, "---\ncitekey: lose2020\n---\n\n## Notes\n\nl\n"],
+      [other.path, "A [[lose2020]] b [md](../References/lose2020.md#r) c ![[References/lose2020.md]] d `[[lose2020]]`\n"],
+      [decoy.path, "decoy\n"],
+      [unclear.path, "odd [x](../References/lose2020.md \"title\")\n"],
+    ]);
+    const all = [keeper, loser, other, decoy, unclear];
+    const lnk = (text: string, original: string, link: string) => ({ link, original, position: { start: { offset: text.indexOf(original) } } });
+    const t = texts.get(other.path)!;
+    const cacheLinks: Record<string, { links: unknown[]; embeds: unknown[] }> = {
+      [other.path]: {
+        // Obsidian resolves a bare [[lose2020]] from Notes/ to the same-folder decoy, not the loser
+        links: [lnk(t, "[[lose2020]]", "lose2020"), lnk(t, "[md](../References/lose2020.md#r)", "../References/lose2020.md#r")],
+        embeds: [lnk(t, "![[References/lose2020.md]]", "References/lose2020.md")],
+      },
+      [unclear.path]: { links: [lnk(texts.get(unclear.path)!, '[x](../References/lose2020.md "title")', "../References/lose2020.md")], embeds: [] },
+    };
+    const trashed: string[] = [];
+    const plugin = {
+      app: {
+        vault: {
+          getAbstractFileByPath: (p: string) => all.find((f) => f.path === p && texts.has(p)) ?? null,
+          read: async (f: TFile) => texts.get(f.path)!,
+          cachedRead: async (f: TFile) => texts.get(f.path)!,
+          process: async (f: TFile, fn: (c: string) => string) => {
+            texts.set(f.path, fn(texts.get(f.path)!));
+          },
+          getMarkdownFiles: () => all.filter((f) => texts.has(f.path)),
+        },
+        metadataCache: {
+          getFileCache: (f: TFile) => ({ frontmatter: { citekey: f.basename }, ...(cacheLinks[f.path] ?? {}) }),
+          resolvedLinks: { [other.path]: { [decoy.path]: 1, [loser.path]: 3 }, [unclear.path]: { [loser.path]: 1 } },
+          getFirstLinkpathDest: (target: string, from: string) => {
+            const norm = target.replace(/^\.\.\//, "").replace(/\.md$/, "");
+            const hit = all.find((f) => f.path.replace(/\.md$/, "") === norm) ?? all.find((f) => f.basename === norm && f.path.startsWith(from.replace(/[^/]*$/, "")));
+            return hit ?? null;
+          },
+        },
+        fileManager: { trashFile: async (f: TFile) => { trashed.push(f.path); texts.delete(f.path); } },
+      },
+    };
+    const plan = { keeperFile: keeper, loserFiles: [loser], expectedMtimes: new Map([[keeper.path, 1], [loser.path, 1]]) };
+    const r = await mergeDuplicateGroups(plugin as never, [plan]);
+    const after = texts.get(other.path)!;
+    check(
+      after === "A [[lose2020]] b [md](References/keep2020.md#r) c ![[keep2020]] d `[[lose2020]]`\n",
+      `mergeDuplicateGroups: markdown link and embed to the loser are moved; a bare link that resolves to another note and code are left (${JSON.stringify(after)})`
+    );
+    check(r.losersKept === 1 && r.notesTrashed === 0 && texts.has(loser.path) && trashed.length === 0, "mergeDuplicateGroups: a loser with a link it could not move is kept, not trashed");
   }
 
   // ---------- commands/merge.ts: one guarded write, evidence carried over ----------

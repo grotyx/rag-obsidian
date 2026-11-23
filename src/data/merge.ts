@@ -329,30 +329,83 @@ export function planMerge(keeper: MergeSourceNote, others: MergeSourceNote[]): M
   return { fm, body };
 }
 
-export interface WikilinkRename {
-  /** Vault path without the `.md` extension, e.g. `References/smith2020`. */
-  path: string;
-  keeperBasename: string;
+/** One link as the metadata cache reports it: `link` is the target as written (with any
+ *  `#heading`), `original` the exact source text, `start` its offset in the text the cache was
+ *  built from (-1 when unknown, as for frontmatter links). */
+export interface LinkRef {
+  link: string;
+  original: string;
+  start: number;
 }
 
-// `[[target]]`, `![[target]]`, with an optional `#heading` and/or `|alias` suffix kept verbatim.
-const WIKILINK_RE = /(!?\[\[)([^\]|#]+)((?:#[^\]|]*)?(?:\|[^\]]*)?)(\]\])/g;
+export interface LinkKeeper {
+  basename: string;
+  path: string;
+}
 
-/** Rewrite wikilinks to a trashed loser onto the keeper's basename, across one note's text.
- *  `renames` carries each loser's full vault path (no `.md`) and bare basename — both are valid
- *  link targets in Obsidian — mapped to exact strings, so `[[smith2020b]]` is an exact-match miss
- *  against `smith2020` and is left alone. The link's `#heading`/`|alias` suffix and a leading `!`
- *  embed marker are preserved verbatim. */
-export function renameWikilinks(text: string, renames: WikilinkRename[]): string {
-  if (!renames.length) return text;
-  const map = new Map<string, string>();
-  for (const r of renames) {
-    map.set(r.path, r.keeperBasename);
-    const base = r.path.split("/").pop();
-    if (base) map.set(base, r.keeperBasename);
+// `[[target]]` / `![[target]]` with an optional `#heading` and/or `|alias`, kept verbatim.
+const WIKILINK_ONE = /^(!?\[\[)([^\]|#]+)((?:#[^\]|]*)?(?:\|[^\]]*)?)(\]\])$/;
+// `[text](path.md#heading)` / `![alt](<path with spaces.md>)`; a link title makes it not match.
+const MDLINK_ONE = /^(!?\[[^\]]*\]\()(<?)([^)#>]*)(#[^)>]*)?(>?\))$/;
+
+/** The same link text pointing at `keeper`; `null` for a spelling this does not understand. */
+export function rewriteLinkText(original: string, keeper: LinkKeeper): string | null {
+  const w = WIKILINK_ONE.exec(original);
+  if (w) return `${w[1]}${keeper.basename}${w[3]}${w[4]}`;
+  const m = MDLINK_ONE.exec(original);
+  if (m && (m[2] || !/\s/.test(m[3]))) return `${m[1]}${m[2]}${m[2] ? keeper.path : encodeURI(keeper.path)}${m[4] ?? ""}${m[5]}`;
+  return null;
+}
+
+/** The target of a cache link without its `#heading`, URL-decoded when it is a markdown link. */
+export function linkTarget(link: string): string {
+  const t = link.split("#")[0].trim();
+  try {
+    return decodeURIComponent(t);
+  } catch {
+    return t;
   }
-  return text.replace(WIKILINK_RE, (whole, open: string, target: string, rest: string, close: string) => {
-    const keeper = map.get(target.trim());
-    return keeper ? `${open}${keeper}${rest}${close}` : whole;
-  });
+}
+
+/** Rewrite every link in `text` that resolves to a merged-away note so it points at the keeper.
+ *  `refs` come from the metadata cache (links, embeds, frontmatter links); `loserOf` says which
+ *  loser a link target resolves to from this note (null when none), `keeperOf` that loser's
+ *  keeper. Links are replaced by offset, so a link in a code span is never touched; when the
+ *  text no longer matches the cache at that offset, the exact link text is replaced instead.
+ *  `failed` lists the losers that still have a link which could not be moved. */
+export function moveLinks(
+  text: string,
+  refs: LinkRef[],
+  loserOf: (target: string) => string | null,
+  keeperOf: (loserPath: string) => LinkKeeper
+): { text: string; moved: string[]; failed: string[] } {
+  const moved = new Set<string>();
+  const failed = new Set<string>();
+  const edits: { start: number; end: number; to: string }[] = [];
+  const byText: { from: string; to: string; loser: string }[] = [];
+  const done = new Set<number>();
+  for (const ref of refs) {
+    const loser = loserOf(linkTarget(ref.link));
+    if (!loser) continue;
+    const to = rewriteLinkText(ref.original, keeperOf(loser));
+    if (to === null) {
+      failed.add(loser);
+      continue;
+    }
+    if (ref.start >= 0 && text.startsWith(ref.original, ref.start)) {
+      if (done.has(ref.start)) continue;
+      done.add(ref.start);
+      edits.push({ start: ref.start, end: ref.start + ref.original.length, to });
+      moved.add(loser);
+    } else byText.push({ from: ref.original, to, loser });
+  }
+  let out = text;
+  for (const e of edits.sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.to + out.slice(e.end);
+  for (const r of byText) {
+    if (out.includes(r.from)) {
+      out = out.split(r.from).join(r.to);
+      moved.add(r.loser);
+    } else if (!moved.has(r.loser)) failed.add(r.loser);
+  }
+  return { text: out, moved: [...moved], failed: [...failed] };
 }
