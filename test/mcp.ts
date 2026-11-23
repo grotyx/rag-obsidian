@@ -358,8 +358,13 @@ async function serviceChecks(): Promise<void> {
 
   assert.deepEqual(await service.callTool("library_status", {}), {
     pluginVersion: "0.5.0", vaultName: "Research", referenceFolder: "References",
-    vaultPath: "/vault/Research", indexReady: true, rebuilding: false, chunkCount: 10, embeddingModel: "test:embed",
+    vaultPath: "/vault/Research", indexReady: true, rebuilding: false, lastRun: null, chunkCount: 10, embeddingModel: "test:embed",
   });
+  // review 2 #21: library_status carries the last finished run, so a client can tell a failed update from a done one
+  plugin.indexManager.lastRun = { mode: "update", embedded: 3, removed: 1, failed: 2, unchanged: 7, error: "quota exhausted" };
+  assert.deepEqual(((await service.callTool("library_status", {})) as any).lastRun, { mode: "update", embedded: 3, removed: 1, failed: 2, unchanged: 7, error: "quota exhausted" });
+  assert.match(MCP_TOOLS.find((t) => t.name === "rebuild_search_index")!.description, /until rebuilding is false/, "the tool tells clients to poll rebuilding, not indexReady");
+  plugin.indexManager.lastRun = null;
   const search = await service.callTool("search_library", {
     query: "question", limit: 4, year_from: 2020, tags: ["Spine"],
   }) as any;

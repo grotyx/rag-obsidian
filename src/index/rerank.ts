@@ -250,13 +250,17 @@ export async function hostedRerank<T extends { text: string; title?: string }>(
     return null;
   };
   if (!hits.length) return null;
+  // Checked here, on the URL this call actually posts to (and the key rides along): a settings edit
+  // between the caller's eligibility check and this dispatch must not send text to another host.
+  const base = (api.baseUrl.trim() || DEFAULT_SETTINGS.openaiBaseUrl).replace(/\/+$/, "");
+  if (!isOpenRouter(base)) return fail("the base URL is not OpenRouter, which is the only host with a rerank endpoint");
   const maxChars = opts.maxChars ?? 1000;
   const documents = hits.map((h) => `${h.title ?? ""}\n${h.text}`.trim().slice(0, maxChars));
   let timer = 0;
   try {
     const res = await Promise.race([
       requestUrl({
-        url: `${api.baseUrl.replace(/\/+$/, "")}/rerank`,
+        url: `${base}/rerank`,
         method: "POST",
         contentType: "application/json",
         headers: { Authorization: `Bearer ${api.apiKey}` },

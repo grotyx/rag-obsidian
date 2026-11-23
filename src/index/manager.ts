@@ -1,4 +1,4 @@
-import { App, TFile, normalizePath, debounce, Platform, Notice } from "obsidian";
+import { App, TFile, normalizePath, debounce, Debouncer, Platform, Notice } from "obsidian";
 import { ScholarRagSettings, effective } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
@@ -26,17 +26,24 @@ function fingerprint(text: string): string {
   return (h >>> 0).toString(16);
 }
 
-/** Where an embedding provider sends its text: origin (loopback spellings folded together) + model.
- *  Never the key. Two endpoints serving one model alias can still disagree on the vectors. */
-export function endpointFingerprint(s: ScholarRagSettings): string {
+/** Where an embedding provider sends its text: the base URL it posts to (origin + path, trailing slash
+ *  trimmed, loopback spellings folded together) + model. Never the key. Two routes of one gateway, or two
+ *  hosts, can serve one model alias and still disagree on the vectors. */
+export function endpointFingerprint(s: ScholarRagSettings, legacy = false): string {
   const base = s.embeddingProvider === "openai" ? effective(s, "openaiBaseUrl") : effective(s, "ollamaUrl");
-  let origin = base.trim().toLowerCase();
+  let where = base.trim().toLowerCase();
   try {
     const u = new URL(base.trim());
     const host = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname) ? "localhost" : u.hostname;
-    origin = `${u.protocol}//${host}${u.port ? `:${u.port}` : ""}`;
+    where = `${u.protocol}//${host}${u.port ? `:${u.port}` : ""}${legacy ? "" : u.pathname.replace(/\/+$/, "")}`;
   } catch { /* not a URL: compare the raw text */ }
-  return `${origin}|${s.embeddingModel}`;
+  return `${where}|${s.embeddingModel}`;
+}
+
+/** A stored fingerprint names this endpoint. An index written before endpoints were recorded (empty)
+ *  accepts any; one from the origin-only era (0.11.4 candidates) matches on origin + model. */
+function endpointMatches(stored: string | undefined, s: ScholarRagSettings): boolean {
+  return !stored || stored === endpointFingerprint(s) || stored === endpointFingerprint(s, true);
 }
 
 /** Chunks pulled from the index before the per-reference cap thins them. */
@@ -66,7 +73,9 @@ export class IndexManager {
   vectorSliceBytes = VECTOR_SLICE_BYTES;
   private locationResolved = false;
   private reindexQueue = new Set<string>();
-  private flush: () => void;
+  private flush: Debouncer<[], void>;
+  /** Set by `dispose()` (plugin unload): nothing more is scheduled; the final flush is the last write. */
+  private closed = false;
   // Every index mutation (rebuild / debounced reindex / remove / relocate) is chained here, so
   // two of them can never interleave persist()'s write-tmp → remove → rename steps on the same files.
   private chain: Promise<unknown> = Promise.resolve();
@@ -142,7 +151,10 @@ export class IndexManager {
         await this.clearPersistedAt(failed.io, failed.dir).catch(() => undefined);
         throw e;
       }
-      await this.clearPersistedAt(oldIO, oldDir);
+      // The new generation is committed: the move happened. Leftovers of the old location (a file a sync
+      // client holds open) are only litter, and failing the move over them would point the setting back
+      // at a location with no index.
+      await this.clearPersistedAt(oldIO, oldDir).catch((e) => console.warn("[Refwright] could not clear the old index location", e));
     }
   }
 
@@ -208,7 +220,7 @@ export class IndexManager {
         if (!(await this.io.exists(metaFile))) return;
       }
       const meta = JSON.parse(await this.io.read(metaFile)) as StoredMeta;
-      if (meta.modelId !== this.modelId || (meta.endpoint && meta.endpoint !== endpointFingerprint(this.settings))) {
+      if (meta.modelId !== this.modelId || !endpointMatches(meta.endpoint, this.settings)) {
         console.debug("[Refwright] embedding model or endpoint changed since last build — rebuild required");
         return;
       }
@@ -259,7 +271,7 @@ export class IndexManager {
     if (this.reindexQueue.size) this.flush();
   }
 
-  private reconcileSoon = debounce(() => void this.serialized(() => this.reconcileNow()), 4000, true);
+  private reconcileSoon: Debouncer<[], void> = debounce(() => void this.serialized(() => this.reconcileNow()), 4000, true);
 
   /** `referencesFolder` changed: the index may hold the old folder's notes (debounced: the setting is
    *  edited key by key, and a half-typed folder must not look like an emptied library). */
@@ -291,7 +303,7 @@ export class IndexManager {
   }
 
   /** Counts of the last `rebuild()` (also set just before it throws, so a caller can report partial progress). */
-  lastRun: { mode: "update" | "fresh"; embedded: number; removed: number; failed: number; unchanged: number } | null = null;
+  lastRun: { mode: "update" | "fresh"; embedded: number; removed: number; failed: number; unchanged: number; error: string | null } | null = null;
 
   /** Bring the index in line with the vault: re-embed only new/changed notes and drop deleted ones
    *  (`update`, the default). `fresh` throws the index away and embeds every note. A different
@@ -314,9 +326,15 @@ export class IndexManager {
   }
 
   private async rebuildNow(onProgress?: (done: number, total: number) => void, opts?: { fresh?: boolean }): Promise<number> {
+    this.lastRun = null; // a client polling during the run must not read the previous one's outcome
+    // One snapshot for the whole run: the provider that embeds and the label the vectors get. Reading the
+    // settings again after the first request (a host switched mid-build) would label old vectors as new.
     const provider = this.getProvider();
+    const snap = { ...this.settings };
+    const fp = endpointFingerprint(snap);
     const files = this.files();
     const update = !opts?.fresh && this.store.ready && this.store.modelId === provider.id && !this.endpointChanged();
+    if (update && this.store.endpoint && this.store.endpoint !== fp) this.store.endpoint = fp; // origin-only label → full one
     // Streamed in windows of notes: embed a window, put its vectors straight into the store's
     // Float32 bank, drop it. Holding every chunk and every embedding (as number[]) until the end
     // peaked at ~1 GB of extra heap on a 19k-note vault and crashed Obsidian's renderer.
@@ -324,7 +342,7 @@ export class IndexManager {
     const batchSize = 32;
     const MAX_CONSECUTIVE_FAILS = 5;
     const seen = new Set<string>();
-    const run = { mode: update ? ("update" as const) : ("fresh" as const), embedded: 0, removed: 0, failed: 0, unchanged: 0 };
+    const run = { mode: update ? ("update" as const) : ("fresh" as const), embedded: 0, removed: 0, failed: 0, unchanged: 0, error: null as string | null };
     // Fresh: the old index is dropped first so two copies never sit in memory; if the build fails
     // the last persisted index is restored from disk below. Update keeps it (and search) live.
     if (!update) {
@@ -337,6 +355,7 @@ export class IndexManager {
     let consecutive = 0;
     let lastError: unknown = null;
     let fatal = false;
+    let dim = update ? this.store.dim : 0; // fresh: the first valid reply sets it
     try {
       let doneNotes = 0;
       for (let w = 0; w < files.length; w += WINDOW) {
@@ -351,6 +370,7 @@ export class IndexManager {
             if (tracked) {
               await this.store.removeCitekey(tracked);
               run.removed++;
+              this.dirty = true;
             }
             continue;
           }
@@ -377,6 +397,16 @@ export class IndexManager {
             async (batch) => {
               try {
                 const v = await provider.embed(batch.map((c) => c.embedText));
+                // Every vector checked before any note is touched: a short or odd-sized reply fails this
+                // batch (its notes keep their old entries) instead of deleting notes mid-run.
+                if (!Array.isArray(v) || v.length !== batch.length) throw new Error(`embedding reply has ${Array.isArray(v) ? v.length : "no"} vectors for ${batch.length} chunks`);
+                for (const x of v) {
+                  if (!x || !(x.length > 0)) throw new Error("embedding reply holds a vector that is not a number array");
+                  if (!dim) dim = x.length;
+                  if (x.length !== dim) {
+                    throw new Error(`Embedding dimension ${x.length} ≠ index dimension ${dim}${update ? " — rebuild the index from scratch" : ""}`);
+                  }
+                }
                 consecutive = 0;
                 return v;
               } catch (e) {
@@ -395,17 +425,13 @@ export class IndexManager {
             const r = results[i];
             for (let j = 0; j < b.length; j++) vecs.push(r?.[j] ?? undefined);
           });
-          const first = vecs.find((v): v is number[] => !!v);
-          if (update && first && first.length !== this.store.dim) {
-            throw new Error(`Embedding dimension ${first.length} ≠ index dimension ${this.store.dim} — rebuild the index from scratch.`);
-          }
           for (const o of owners) {
             const v = vecs.slice(o.from, o.to);
             if (v.some((x) => !x)) {
               run.failed++;
               continue;
             }
-            if (!this.store.ready) this.store.init(v[0]!.length, provider.id, endpointFingerprint(this.settings));
+            if (!this.store.ready) this.store.init(dim, provider.id, fp);
             if (update) {
               const old = this.store.citekeyForPath(o.path);
               if (old && old !== o.citekey) await this.store.removeCitekey(old);
@@ -414,6 +440,7 @@ export class IndexManager {
             await this.store.addChunks(chunks.slice(o.from, o.to), v as number[][]);
             this.store.setPath(o.path, o.citekey, o.hash);
             run.embedded++;
+            this.dirty = true; // in memory only until persist() commits it
           }
         }
         onProgress?.(doneNotes, files.length);
@@ -426,24 +453,31 @@ export class IndexManager {
       }
       if (update) {
         // Tracked notes whose file is gone (or moved out of the library) and whose key no live note holds.
-        run.removed += await this.dropMissing(new Set(files.map((f) => f.path)), seen);
+        const gone = await this.dropMissing(new Set(files.map((f) => f.path)), seen);
+        run.removed += gone;
+        if (gone) this.dirty = true;
       }
       if (!update && run.embedded === 0 && run.failed > 0) {
         throw new Error(`No note could be embedded (${run.failed} failed)`);
       }
     } catch (e) {
+      run.error = e instanceof Error ? e.message : String(e);
       this.lastRun = run;
-      if (!update) {
+      // Update: what was embedded so far stays and is written, so the next run resumes from it. A fresh
+      // build that got somewhere does the same unless the disk still holds a usable index of this model
+      // and endpoint — that one is restored (below) rather than overwritten by half a library.
+      const keep = update || (run.embedded > 0 && !(await this.diskIndexUsable(provider.id, snap)));
+      if (!keep) {
         this.store.reset();
         await this.restoreNow(); // back to the last persisted index (it never throws); we are inside the queue, so not restore()
+        if (this.store.ready) this.markClean(); // memory is the disk copy again
         throw e;
       }
-      // Update: what was embedded so far stays, and is written so the next run resumes from it.
       if (run.embedded || run.removed) {
         this.dirty = true;
-        await this.persist();
+        try { await this.persist(); } catch (pe) { console.error("[Refwright] could not save the partial index — kept in memory, retried on the next update", pe); }
       }
-      if (fatal) throw new Error(`${e instanceof Error ? e.message : String(e)} — progress saved: ${run.embedded} notes embedded, ${run.removed} removed`);
+      if (fatal) throw new Error(`${run.error} — progress saved: ${run.embedded} notes embedded, ${run.removed} removed`);
       throw e;
     } finally {
       this.rebuilding = false;
@@ -456,9 +490,30 @@ export class IndexManager {
       return 0;
     }
     // An update with nothing to do must not rewrite a multi-GB index.
-    if (!update || run.embedded > 0 || run.removed > 0 || this.dirty) await this.persist();
+    if (!update || run.embedded > 0 || run.removed > 0 || this.dirty) {
+      try {
+        await this.persist();
+      } catch (e) {
+        run.error = e instanceof Error ? e.message : String(e); // `dirty` stays set: the next update or unload retries the write
+        throw e;
+      }
+    }
     if (this.reindexQueue.size) this.flush();
     return this.store.count;
+  }
+
+  /** The persisted index (if any) was built by this model at this endpoint and has the current format,
+   *  so a failed fresh build can fall back to it. */
+  private async diskIndexUsable(modelId: string, at: ScholarRagSettings): Promise<boolean> {
+    try {
+      await this.ensureLocation();
+      for (const f of [this.metaPath, `${this.metaPath}.tmp`]) {
+        if (!(await this.io.exists(f))) continue;
+        const meta = JSON.parse(await this.io.read(f)) as StoredMeta;
+        return meta.modelId === modelId && endpointMatches(meta.endpoint, at) && (meta.schema ?? 1) === INDEX_SCHEMA;
+      }
+    } catch { /* unreadable: not usable */ }
+    return false;
   }
 
   /** Incremental: re-embed a single note (on edit/create). No-op until first build.
@@ -476,7 +531,7 @@ export class IndexManager {
       // Another note already holds this citekey: removing + re-adding under it would
       // delete that note's chunks (removeCitekey clears every path with the key).
       // Keep the first note's chunks — rebuild() skips later duplicates the same way.
-      const holder = Object.entries(this.store.paths).find(([p, ck]) => ck === citekey && p !== file.path);
+      const holder = this.store.pathsOf(citekey).find((p) => p !== file.path);
       if (holder) {
         console.warn(`[Refwright] duplicate citekey "${citekey}" — skipping reindex of ${file.path}`);
         return false;
@@ -533,9 +588,21 @@ export class IndexManager {
     });
   }
 
-  /** Plugin unload: run what the debounce has not yet (a reindex burst, a delete burst's persist). */
+  /** Final flush: run what the debounce has not yet (a reindex burst, a delete burst's persist). Always
+   *  queued behind the running mutation — a reindex in flight has cleared the queue and sets `dirty` only
+   *  when it finishes, so checking the flags here would miss it. */
   flushPending(): Promise<void> {
-    return this.reindexQueue.size || this.dirty ? this.flushReindex(true) : Promise.resolve();
+    return this.flushReindex(true);
+  }
+
+  /** Plugin unload: stop every timer, schedule nothing more, then write what is pending. */
+  dispose(): Promise<void> {
+    this.closed = true;
+    this.flush.cancel();
+    this.reconcileSoon.cancel();
+    if (this.persistTimer !== null) window.clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+    return this.flushPending();
   }
 
   /** Incremental edits write the index (a whole new generation, ~1.3 GB at 212k chunks) at most this
@@ -545,7 +612,7 @@ export class IndexManager {
 
   private schedulePersist(): void {
     this.dirty = true;
-    if (this.persistTimer !== null) return;
+    if (this.closed || this.persistTimer !== null) return;
     this.persistTimer = window.setTimeout(() => {
       this.persistTimer = null;
       void this.serialized(async () => {
@@ -566,7 +633,7 @@ export class IndexManager {
   /** Queue a file for debounced incremental reindexing. */
   enqueue(file: TFile): void {
     const prefix = this.library.folder() + "/";
-    if (!file.path.startsWith(prefix)) return;
+    if (this.closed || !file.path.startsWith(prefix)) return;
     this.reindexQueue.add(file.path);
     this.flush();
   }
@@ -576,7 +643,10 @@ export class IndexManager {
       // No index yet (restore not run, or nothing built): keep the paths; `restoreNow` and a finished
       // rebuild flush again. Dropping them lost every edit made while the index was loading.
       if (!this.store.ready) return;
-      const paths = [...this.reindexQueue];
+      // Only what is in the references folder now: the folder may have changed since a path was queued, and
+      // re-adding an old folder's note would undo the reconcile that dropped it.
+      const prefix = this.library.folder() + "/";
+      const paths = [...this.reindexQueue].filter((p) => p.startsWith(prefix));
       this.reindexQueue.clear();
       let changed = false;
       for (const p of paths) {
@@ -704,7 +774,7 @@ export class IndexManager {
   /** The live settings point at a different embedding endpoint than the one that built the index
    *  (an index from before endpoints were recorded accepts any). */
   private endpointChanged(): boolean {
-    return !!this.store.endpoint && this.store.endpoint !== endpointFingerprint(this.settings);
+    return !endpointMatches(this.store.endpoint, this.settings);
   }
 
   /** Rerank a 3k pool and score each hit's *paper* (title + abstract, one document per paper): on the

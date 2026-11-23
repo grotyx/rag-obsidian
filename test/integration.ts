@@ -1900,10 +1900,12 @@ async function main() {
     let embFailMarker = "";
     let embFailAfter = Infinity;
     let embShortNext = 0;
+    let embOddDim = ""; // a text holding this gets a 4-d vector among the 16-d ones
+    let embHold: Promise<void> | null = null; // answers wait for it (a request in flight)
     const embSrv = http.createServer((req, res) => {
       let body = "";
       req.on("data", (d) => (body += d));
-      req.on("end", () => {
+      req.on("end", async () => {
         const b = JSON.parse(body || "{}") as { model: string; input: string[] };
         embedCalls.push({ auth: String(req.headers.authorization ?? ""), model: b.model });
         embUrls.push(req.url ?? "");
@@ -1923,6 +1925,7 @@ async function main() {
         }
         embReqs++;
         embTexts += b.input.length;
+        if (embHold) await embHold;
         if (embReqs > embFailAfter || (embFailMarker && b.input.some((t) => t.includes(embFailMarker)))) {
           res.statusCode = 400;
           res.end("{}");
@@ -1933,7 +1936,7 @@ async function main() {
           res.end(JSON.stringify({ data: b.input.slice(1).map((t, index) => ({ index, embedding: hashEmbed(t, 16) })) }));
           return;
         }
-        res.end(JSON.stringify({ data: b.input.map((t, index) => ({ index, embedding: hashEmbed(t, 16) })) }));
+        res.end(JSON.stringify({ data: b.input.map((t, index) => ({ index, embedding: hashEmbed(t, embOddDim && t.includes(embOddDim) ? 4 : 16) })) }));
       });
     });
     await new Promise<void>((r) => embSrv.listen(0, "127.0.0.1", () => r()));
@@ -2558,13 +2561,13 @@ async function main() {
     const hashHits = await mgr.search("abstract", { tags: ["plain"] }, 5, { translate: false });
     ok(hashHits.some((h) => h.citekey === "keya"), "#36 a #-prefixed tag is stored without the #");
 
-    // #10 the restored bank has spare rows
+    // #10 the restored bank is exactly sized (a second copy would double the peak)
     {
       const m = fresh();
       await m.restore();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const st = (m as any).store as { bankCapacity: number; dim: number };
-      ok(st.bankCapacity > m.count * st.dim, `#10 a restored bank keeps spare rows (${st.bankCapacity} floats for ${m.count * st.dim} used)`);
+      ok(st.bankCapacity === m.count * st.dim, `#10 a restored bank is the read buffer, not a grown copy (${st.bankCapacity} floats for ${m.count * st.dim} used)`);
     }
 
     // #9 incremental changes persist on a window, not per burst; unload persists at once
@@ -2660,7 +2663,8 @@ async function main() {
     // #16 the index remembers the endpoint (never the key); another endpoint is a model change
     {
       const fp = endpointFingerprint;
-      ok(fp({ ...mset, openaiBaseUrl: "http://localhost:1234/v1" }) === fp({ ...mset, openaiBaseUrl: "http://127.0.0.1:1234" }), "#16 localhost and 127.0.0.1 are one endpoint");
+      ok(fp({ ...mset, openaiBaseUrl: "http://localhost:1234/v1" }) === fp({ ...mset, openaiBaseUrl: "http://127.0.0.1:1234/v1/" }), "#16 localhost and 127.0.0.1 (and a trailing slash) are one endpoint");
+      ok(fp({ ...mset, openaiBaseUrl: "https://gw.example/route-a/v1" }) !== fp({ ...mset, openaiBaseUrl: "https://gw.example/route-b/v1" }), "review2 #7 two routes of one gateway are different endpoints");
       ok(fp({ ...mset, openaiBaseUrl: "https://openrouter.ai/api/v1" }) !== fp({ ...mset, openaiBaseUrl: "https://api.openai.com/v1" }), "#16 different hosts differ");
       ok(!fp({ ...mset, openaiApiKey: "sekrit" }).includes("sekrit") && fp({ ...mset, openaiApiKey: "a" }) === fp({ ...mset, openaiApiKey: "b" }), "#16 the key is not part of it");
       const meta = JSON.parse(disk.get(`${dir}/meta.json`) as string) as { endpoint?: string };
@@ -2729,6 +2733,189 @@ async function main() {
       pm.resolveLocation = async () => ({ io: adapter, dir: "plugin/index-moved" });
       await m.relocate();
       ok(disk.has("plugin/index-moved/meta.json") && !disk.has(`${dir}/meta.json`) && pm.dir === "plugin/index-moved", "#14 a good move writes the new location and clears the old one");
+    }
+
+
+    // ---- 28. review 2: update safety (#2 #5 #6 #7 #9 #10 #12 #13) ----
+    log("\n[28] Index update safety (review 2)");
+    {
+      const savedNotes28 = new Map(notes);
+      const savedSet = { m: mset.embeddingModel, k: mset.openaiApiKey, u: mset.openaiBaseUrl };
+      mset.embeddingModel = "model-a";
+      mset.openaiApiKey = "key-one";
+      mset.openaiBaseUrl = `http://127.0.0.1:${embPort}`;
+      let folder28 = "References";
+      const mk = (plugin: string) => new IndexManager(app as never, { folder: () => folder28, getItem: () => undefined } as never, mset, plugin);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pv = (m: IndexManager) => m as any;
+      const rn = (k: string, extra = "") => ({ fm: { citekey: k, title: k, abstract: `abstract ${k} ${extra}` }, body: `body ${k} ${extra}` });
+      const quiet = async <T,>(fn: () => Promise<T>): Promise<T> => {
+        const w = console.warn;
+        const e = console.error;
+        console.warn = () => undefined;
+        console.error = () => undefined;
+        try { return await fn(); } finally { console.warn = w; console.error = e; }
+      };
+      const found = async (m: IndexManager, word: string, key: string) => (await m.search(word, {}, 40, { translate: false })).some((h) => h.citekey === key && h.text.toLowerCase().includes(word));
+
+      // #5 a failed save is retried by the next update even though nothing needs re-embedding
+      {
+        notes.clear();
+        for (const k of ["a", "b"]) notes.set(`References/${k}.md`, rn(k, `old5${k}`));
+        const m = mk("plugin28a");
+        await m.rebuild();
+        notes.set("References/a.md", rn("a", "edited5"));
+        const good = pv(m).io;
+        pv(m).io = { ...good, write: async (p: string, d: string) => { if (p.includes("/docs-")) throw new Error("disk full"); return good.write(p, d); } };
+        let err = "";
+        await quiet(async () => { try { await m.rebuild(); } catch (e) { err = e instanceof Error ? e.message : String(e); } });
+        ok(/disk full/.test(err) && m.lastRun?.embedded === 1 && /disk full/.test(m.lastRun?.error ?? ""), `#5 a failed save throws and the run reports it (${err})`);
+        pv(m).io = good;
+        embTexts = 0;
+        await m.rebuild();
+        ok(embTexts === 0 && m.lastRun?.embedded === 0, `#5 the retry embeds nothing again (${embTexts} texts)`);
+        const again = mk("plugin28a");
+        await again.restore();
+        ok(await found(again, "edited5", "a"), "#5 ...yet it wrote the edit to disk");
+      }
+
+      // #6 one bad vector fails its batch; no note is dropped or half-replaced
+      {
+        notes.clear();
+        for (const k of ["n1", "n2", "n3"]) notes.set(`References/${k}.md`, rn(k, `old6${k}`));
+        const m = mk("plugin28b");
+        await m.rebuild();
+        const c0 = m.count;
+        for (const k of ["n1", "n2"]) notes.set(`References/${k}.md`, rn(k, `new6${k}`));
+        notes.set("References/n3.md", rn("n3", "new6n3 ODDDIM"));
+        embOddDim = "ODDDIM";
+        await quiet(() => m.rebuild());
+        embOddDim = "";
+        ok(m.lastRun?.embedded === 0 && m.lastRun.failed === 3 && m.count === c0, `#6 the batch with an odd-sized vector fails whole (${JSON.stringify(m.lastRun)}, ${m.count}/${c0} chunks)`);
+        ok((await found(m, "old6n1", "n1")) && (await found(m, "old6n2", "n2")) && (await found(m, "old6n3", "n3")), "#6 every note keeps its old entry");
+        await m.rebuild();
+        ok(m.lastRun?.embedded === 3 && (await found(m, "new6n3", "n3")), `#6 the next update replaces them (${JSON.stringify(m.lastRun)})`);
+      }
+
+      // #7 a fresh build is labelled with the endpoint it started on, not the one the settings hold when the first reply lands
+      {
+        notes.clear();
+        notes.set("References/e1.md", rn("e1"));
+        const fp0 = endpointFingerprint(mset);
+        const m = mk("plugin28c");
+        let release!: () => void;
+        embHold = new Promise<void>((r) => { release = r; });
+        const run = m.rebuild();
+        await sleep(300);
+        mset.openaiBaseUrl = `http://127.0.0.1:${embPort}/other-route`;
+        release();
+        embHold = null;
+        await run;
+        ok(pv(m).store.endpoint === fp0 && fp0 !== endpointFingerprint(mset), `#7 the new index carries the starting endpoint (${pv(m).store.endpoint})`);
+        mset.openaiBaseUrl = `http://127.0.0.1:${embPort}`;
+      }
+
+      // #9 a fresh build that dies halfway keeps its work unless a usable index is on disk
+      {
+        notes.clear();
+        for (let i = 1; i <= 300; i++) notes.set(`References/p${i}.md`, rn(`p${i}`, "bulk9"));
+        const m = mk("plugin28d");
+        embFailAfter = embReqs + 2;
+        let err = "";
+        await quiet(async () => { try { await m.rebuild(); } catch (e) { err = e instanceof Error ? e.message : String(e); } });
+        embFailAfter = Infinity;
+        const partial = m.count;
+        ok(/saved/.test(err) && partial > 0 && m.ready, `#9 no previous index: the partial build is kept and saved (${partial} chunks; ${err})`);
+        const reread = mk("plugin28d");
+        await reread.restore();
+        ok(reread.count === partial, `#9 ...and restores after a restart (${reread.count})`);
+        embTexts = 0;
+        await m.rebuild();
+        ok(m.lastRun?.mode === "update" && m.count === 600 && embTexts < 600, `#9 the next update resumes: only the missing notes are embedded (${embTexts} of 600 texts, ${m.count} chunks)`);
+        // now a complete index is on disk: a failing from-scratch build goes back to it
+        embFailAfter = embReqs + 2;
+        err = "";
+        await quiet(async () => { try { await m.rebuild(undefined, { fresh: true }); } catch (e) { err = e instanceof Error ? e.message : String(e); } });
+        embFailAfter = Infinity;
+        ok(err !== "" && !/saved/.test(err) && m.ready && m.count === 600, `#9 a compatible index on disk is restored after a failed fresh build (${m.count} chunks)`);
+      }
+
+      // #10 the final flush waits for a reindex in flight; unload stops the timers
+      {
+        notes.clear();
+        for (const k of ["f1", "f2"]) notes.set(`References/${k}.md`, rn(k, `old10${k}`));
+        const m = mk("plugin28e");
+        await m.rebuild();
+        notes.set("References/f1.md", rn("f1", "edited10"));
+        pv(m).reindexQueue.add("References/f1.md");
+        let release!: () => void;
+        embHold = new Promise<void>((r) => { release = r; });
+        const inflight = pv(m).flushReindex();
+        await sleep(200);
+        const last = m.dispose(); // unload while the embedding is still in flight
+        release();
+        embHold = null;
+        await inflight;
+        await last;
+        const again = mk("plugin28e");
+        await again.restore();
+        ok(await found(again, "edited10", "f1"), "#10 the edit made just before unload is on disk");
+        ok(pv(m).persistTimer === null, "#10 no persist timer is left running");
+        pv(m).schedulePersist();
+        pv(m).enqueue({ path: "References/f2.md" });
+        ok(pv(m).persistTimer === null && pv(m).reindexQueue.size === 0, "#10 an unloaded manager schedules nothing more");
+      }
+
+      // #12 once the new location holds the index, the move is done even if the old files cannot be deleted
+      {
+        notes.clear();
+        notes.set("References/r1.md", rn("r1"));
+        const m = mk("plugin28f");
+        await m.rebuild();
+        const old = pv(m).io;
+        pv(m).io = { ...old, remove: async () => { throw new Error("locked by sync"); } };
+        pv(m).resolveLocation = async () => ({ io: adapter, dir: "plugin28f/index-moved" });
+        let err = "";
+        await quiet(async () => { try { await m.relocate(); } catch (e) { err = e instanceof Error ? e.message : String(e); } });
+        ok(err === "" && disk.has("plugin28f/index-moved/meta.json") && pv(m).dir === "plugin28f/index-moved", `#12 a stuck old file does not undo the move (${err})`);
+      }
+
+      // #13 a path queued before a folder change is not re-added afterwards
+      {
+        notes.clear();
+        notes.set("References/q1.md", rn("q1"));
+        const m = mk("plugin28g");
+        await m.rebuild();
+        notes.set("References/q2.md", rn("q2", "late13"));
+        pv(m).reindexQueue.add("References/q2.md");
+        folder28 = "Elsewhere";
+        await pv(m).flushReindex();
+        folder28 = "References";
+        ok(!pv(m).store.citekeyForPath("References/q2.md"), "#13 a queued note outside the references folder is dropped, not indexed");
+        ok(pv(m).reindexQueue.size === 0, "#13 ...and the queue is empty");
+      }
+
+      // #2 the host is checked where the request is sent: a base URL switched during the search gets nothing
+      {
+        notes.clear();
+        notes.set("References/s1.md", rn("s1", "rerank2 text"));
+        notes.set("References/s2.md", rn("s2", "rerank2 text"));
+        const lset: ScholarRagSettings = { ...DEFAULT_SETTINGS, embeddingProvider: "openai", llmProvider: "openai", openaiBaseUrl: OPENROUTER, openaiApiKey: "k", embeddingModel: "model-a", queryExpansion: false, indexLocal: false, hostedRerank: true };
+        const un = redirectOpenRouter(`http://127.0.0.1:${embPort}/openrouter.ai`);
+        const m = new IndexManager(app as never, { folder: () => "References", getItem: () => undefined } as never, lset, "plugin28h");
+        await m.rebuild();
+        embUrls.length = 0;
+        const outcome = { asked: false, ok: false, reason: undefined as string | undefined };
+        const hits = await m.search("rerank2", {}, 5, { translate: false, rerank: true, outcome, eligible: async () => { lset.openaiBaseUrl = "https://evil.example/v1"; return true; } });
+        un();
+        ok(hits.length > 0 && !embUrls.some((u) => u.includes("rerank")) && /not OpenRouter/.test(outcome.reason ?? ""), `#2 a host switched mid-search receives no rerank request (${embUrls.filter((u) => u.includes("rerank")).length}; ${outcome.reason})`);
+      }
+
+      notes.clear();
+      for (const [k, v] of savedNotes28) notes.set(k, v);
+      mset.embeddingModel = savedSet.m;
+      mset.openaiApiKey = savedSet.k;
+      mset.openaiBaseUrl = savedSet.u;
     }
 
     embSrv.close();

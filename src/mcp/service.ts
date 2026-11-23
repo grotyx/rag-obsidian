@@ -70,7 +70,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "rebuild_search_index",
-    description: "Start an update of Obsidian's private search index in the background (re-embeds only new or changed notes and drops deleted ones; a changed embedding model re-embeds everything) and return at once ({status: started | already-running}); poll library_status until indexReady is true. Use after INDEX_NOT_READY, an embedding-model change, or notes added outside Obsidian's own editing. Uses embeddings, never a chat or summary LLM.",
+    description: "Start an update of Obsidian's private search index in the background (re-embeds only new or changed notes and drops deleted ones; a changed embedding model re-embeds everything) and return at once ({status: started | already-running}); poll library_status until rebuilding is false, then check lastRun (error, failed) — indexReady is true during an update, before the new notes are in. Use after INDEX_NOT_READY, an embedding-model change, or notes added outside Obsidian's own editing. Uses embeddings, never a chat or summary LLM.",
     inputSchema: objectSchema({}), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   {
@@ -391,7 +391,10 @@ export class McpService {
       vaultPath: this.deps.vaultPath ?? null,
       referenceFolder: this.plugin.library.folder(),
       indexReady: this.plugin.indexManager.ready,
+      // True from the request until the run settles (an update keeps the index searchable, so indexReady alone says nothing).
       rebuilding: !!(this.plugin.indexManager.rebuilding || this.plugin.indexManager.rebuildPending),
+      // Outcome of the last finished run (null before one finishes): `error` is set when it failed or its save did.
+      lastRun: this.plugin.indexManager.lastRun ?? null,
       chunkCount: this.plugin.indexManager.count,
       embeddingModel: this.plugin.indexManager.indexedModelId || null,
     };

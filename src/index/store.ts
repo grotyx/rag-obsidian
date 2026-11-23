@@ -101,6 +101,8 @@ export class VectorStore {
   chunkIds: Record<string, string[]> = {};
   /** note path → citekey, so deletes/renames can resolve chunks even when filename ≠ citekey. */
   paths: Record<string, string> = {};
+  /** Reverse of `paths` (citekey → note paths), built on first use: a bulk update asks once per note. */
+  private byKey: Map<string, Set<string>> | null = null;
   /** note path → chunk-text hash, so a frontmatter-only write doesn't re-embed the note. */
   hashes: Record<string, string> = {};
 
@@ -184,6 +186,7 @@ export class VectorStore {
     this.endpoint = endpoint;
     this.chunkIds = {};
     this.paths = {};
+    this.byKey = null;
     this.hashes = {};
     this.clearBank();
     this.ti = new TextIndex();
@@ -233,17 +236,36 @@ export class VectorStore {
       this.freeRow(id);
     }
     delete this.chunkIds[citekey];
-    for (const [p, ck] of Object.entries(this.paths)) {
-      if (ck === citekey) {
-        delete this.paths[p];
-        delete this.hashes[p];
+    for (const p of this.pathsOf(citekey)) {
+      delete this.paths[p];
+      delete this.hashes[p];
+    }
+    this.byKey?.delete(citekey);
+  }
+
+  /** Note paths currently holding this citekey's chunks (empty for a key the index has never seen). */
+  pathsOf(citekey: string): string[] {
+    if (!this.byKey) {
+      this.byKey = new Map();
+      for (const [p, ck] of Object.entries(this.paths)) {
+        const set = this.byKey.get(ck);
+        if (set) set.add(p);
+        else this.byKey.set(ck, new Set([p]));
       }
     }
+    return [...(this.byKey.get(citekey) ?? [])];
   }
 
   /** Record which note path holds a citekey's chunks (and the hash of the text embedded). */
   setPath(path: string, citekey: string, hash?: string): void {
+    const prev = this.paths[path];
+    if (prev !== citekey) this.byKey?.get(prev)?.delete(path);
     this.paths[path] = citekey;
+    if (this.byKey) {
+      const set = this.byKey.get(citekey);
+      if (set) set.add(path);
+      else this.byKey.set(citekey, new Set([path]));
+    }
     if (hash) this.hashes[path] = hash;
   }
 
@@ -253,6 +275,8 @@ export class VectorStore {
     if (!ck) return false;
     delete this.paths[from];
     this.paths[to] = ck;
+    this.byKey?.get(ck)?.delete(from);
+    this.byKey?.get(ck)?.add(to);
     if (this.hashes[from]) this.hashes[to] = this.hashes[from];
     delete this.hashes[from];
     return true;
@@ -447,17 +471,8 @@ export class VectorStore {
     }
     this.init(meta.dim, meta.modelId, meta.endpoint ?? "");
     const ti = this.ti as TextIndex;
-    // ~5% spare rows, so the first note added after a restore does not copy the whole bank (a
-    // second 1.3 GB array). `transfer` grows the loaded buffer without a second live copy where it
-    // exists (it detaches `vectors`); elsewhere one copy happens here instead of at the first add.
-    const spare = Math.max(1, Math.ceil(docs.length * 0.05)) * meta.dim * 4;
-    const grown = (vectors as ArrayBuffer & { transfer?: (n: number) => ArrayBuffer }).transfer?.(vectors.byteLength + spare);
-    let view: Float32Array;
-    if (grown) view = new Float32Array(grown);
-    else {
-      view = new Float32Array((vectors.byteLength + spare) / 4);
-      view.set(new Float32Array(vectors));
-    }
+    // The loaded buffer is the bank (normalized in place): a second 1.3 GB array would double the peak.
+    const view = new Float32Array(vectors);
     this.bank = view;
     for (let i = 0; i < docs.length; i++) {
       const d = docs[i] as TextDoc;
@@ -472,6 +487,7 @@ export class VectorStore {
     this.seenEpoch = ti.epoch;
     this.chunkIds = meta.chunkIds || {};
     this.paths = meta.paths || {};
+    this.byKey = null;
     this.hashes = meta.hashes || {};
   }
 }

@@ -32,7 +32,7 @@ import { CitationGraph } from "../src/graph/citations";
 import { itemMemo } from "../src/cite/itemMemo";
 import { inTextLabel } from "../src/cite/bibliography";
 import { parseCitingPage, titlesMatch, resolveWork } from "../src/graph/openalex";
-import { rerankHttpReason, mmr, parseRerankResponse, canHostedRerank } from "../src/index/rerank";
+import { rerankHttpReason, mmr, parseRerankResponse, canHostedRerank, hostedRerank } from "../src/index/rerank";
 import { isOpenRouter } from "../src/types";
 import { requestWithRetry } from "../src/llm/client";
 import { mergeDuplicateGroups } from "../src/commands/merge";
@@ -3021,7 +3021,7 @@ check(
   const s2 = new VectorStore();
   await s2.load(ser.docs, ser.vectors.slice(0), ser.meta);
   const cap0 = s2.bankCapacity;
-  check(cap0 === 10 * DIM, `store.load: bank has ~5% spare rows, so the first add need not copy it (${cap0} floats for 9 rows)`);
+  check(cap0 === 9 * DIM, `store.load adopts the read buffer as-is — no spare rows, no second copy (${cap0} floats for 9 rows)`);
   await s2.removeCitekey("b");
   await s2.addChunks(mkc("b", 3), vecs(3));
   check(s2.bankCapacity === cap0, `re-embedding one note after load does not grow the bank (${s2.bankCapacity} vs ${cap0})`);
@@ -3031,6 +3031,24 @@ check(
   const cap1 = s2.bankCapacity;
   await s2.addChunks(mkc("b", 7), vecs(7));
   check(s2.bankCapacity > cap1 && s2.count === 13, "a note that grows still gets rows (the bank grows only then)");
+  // review 2 #11: removing by citekey goes through a reverse map, not a scan of every path
+  {
+    const st = new VectorStore();
+    st.init(DIM, "m");
+    const N = 8000;
+    for (let i = 0; i < N; i++) st.setPath(`References/n${i}.md`, `k${i}`, `h${i}`);
+    st.setPath("References/dup.md", "k5", "hd");
+    check(st.pathsOf("k5").sort().join() === "References/dup.md,References/n5.md", "store.pathsOf: every path holding a key");
+    st.movePath("References/n5.md", "References/moved.md");
+    st.setPath("References/dup.md", "k6", "hd2"); // the path now holds another key
+    check(st.pathsOf("k5").join() === "References/moved.md" && st.pathsOf("k6").sort().join() === "References/dup.md,References/n6.md", "store.pathsOf: follows movePath and setPath");
+    const t0 = Date.now();
+    for (let i = 0; i < N; i++) await st.removeCitekey(`unknown${i}`); // a key that was never indexed
+    for (let i = 0; i < N; i++) await st.removeCitekey(`k${i}`);
+    const ms = Date.now() - t0;
+    check(Object.keys(st.paths).length === 0 && Object.keys(st.hashes).length === 0, "store.removeCitekey: every path and hash of the key goes");
+    check(ms < 1500, `store.removeCitekey: ${2 * N} removals over ${N} paths are not quadratic (${ms} ms)`);
+  }
   // the loaded vectors are normalized into the bank
   const raw = new Float32Array([3, 0, 0, 4]).buffer;
   const s3 = new VectorStore();
@@ -3079,6 +3097,27 @@ check(
     "isOpenRouter: look-alike hosts, a URL that only contains the text, plain http and junk are refused"
   );
   check(!canHostedRerank({ ...hs, llmProvider: "openai", openaiBaseUrl: "https://openrouter.ai.evil.test/v1" }), "canHostedRerank: a look-alike host never gets the rerank request");
+  // review 2 #2: hostedRerank checks the URL it posts to, so a settings edit after the caller's check sends nothing
+  {
+    const urls: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ results: [{ index: 0, relevance_score: 0.9 }] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const why: string[] = [];
+      const docs = [{ text: "private passage" }];
+      const bad = await hostedRerank({ baseUrl: "https://evil.example/v1", apiKey: "secret", model: "m" }, "q", docs, { onFail: (r) => why.push(r) });
+      check(bad === null && urls.length === 0 && /not OpenRouter/.test(why[0] ?? ""), `hostedRerank: another host gets neither text nor key (${urls.length} requests, ${why[0]})`);
+      const lookalike = await hostedRerank({ baseUrl: "https://openrouter.ai.evil.test/v1", apiKey: "secret", model: "m" }, "q", docs);
+      check(lookalike === null && urls.length === 0, "hostedRerank: a look-alike host is refused too");
+      const good = await hostedRerank({ baseUrl: "https://openrouter.ai/api/v1/", apiKey: "k", model: "m" }, "q", docs);
+      check(good?.scores[0] === 0.9 && urls.join() === "https://openrouter.ai/api/v1/rerank", `hostedRerank: OpenRouter still works (${urls.join()})`);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  }
 }
 
 // ---------- cite/csl.ts: a fetched locale is cached for offline use (review #33) ----------

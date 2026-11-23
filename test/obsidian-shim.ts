@@ -132,14 +132,23 @@ export const MarkdownRenderer = {};
 
 /** Obsidian's debounce(cb, timeout, resetTimer): fires on the trailing edge; a further call
  *  restarts the timer, which is the only mode the plugin uses. */
-export function debounce<T extends unknown[]>(
-  fn: (...args: T) => unknown,
+export interface Debouncer<T extends unknown[], V> {
+  (...args: T): Debouncer<T, V>;
+  cancel(): Debouncer<T, V>;
+  run(): V | void;
+}
+export function debounce<T extends unknown[], V = unknown>(
+  fn: (...args: T) => V,
   wait = 0,
   _resetTimer = false
-): (...args: T) => void {
+): Debouncer<T, V> {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  return (...args: T) => {
+  const d = ((...args: T) => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => fn(...args), wait);
-  };
+    return d;
+  }) as Debouncer<T, V>;
+  d.cancel = () => { if (timer) clearTimeout(timer); timer = null; return d; };
+  d.run = () => undefined;
+  return d;
 }

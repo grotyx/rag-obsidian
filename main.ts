@@ -454,6 +454,9 @@ export default class ScholarRagPlugin extends Plugin {
       void this.initReviewTools();
     });
 
+    // Quit: Obsidian waits for these tasks (best effort), which `onunload` cannot make it do.
+    this.registerEvent(this.app.workspace.on("quit", (tasks) => tasks.add(() => this.indexManager.flushPending())));
+
     // Incremental index maintenance.
     // The search vocabulary is a JSON file (no metadata events): rebuild the expander when it changes.
     this.registerEvent(
@@ -514,7 +517,7 @@ export default class ScholarRagPlugin extends Plugin {
     this.pokeEditors.cancel();
     this.rerenderReadingViews.cancel();
     void this.mcpServer?.stop();
-    void this.indexManager?.flushPending();
+    void this.indexManager?.dispose();
   }
 
   mcpStatus(): McpServerStatus {
