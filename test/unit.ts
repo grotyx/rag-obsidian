@@ -3069,7 +3069,7 @@ check(
   check(s6.endpoint === "", "store: a meta without endpoint loads as unknown");
 
   // NodeFileIO.readBinary: whole buffer handed over, and the chunked path for big files
-  const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "refwright-rb-"));
+  const tmp = fs.mkdtempSync(path.join(nodeOs.tmpdir(), "refwright-rb-"));
   const nio = new NodeFileIO();
   const payload = new Uint8Array(1000).map((_, i) => i % 251);
   fs.writeFileSync(`${tmp}/v.f32`, payload);
