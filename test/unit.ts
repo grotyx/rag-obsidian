@@ -131,7 +131,11 @@ import { applyScreening, dedupeKq, hasKq, kqChipIds, kqChoices, kqKey, toggleKq 
 import { robMarkdown, RobRecord, toRobRecord } from "../src/data/rob";
 import { prismaCounts, prismaMarkdown, PrismaRecord, toPrismaRecord } from "../src/data/prisma";
 import { aggregateSnowball, pickSnowballCandidates, snowballMarkdown, SnowballRecord, SnowballWork } from "../src/data/snowball";
-import { sanitizeModelMarkdown, safeFileName } from "../src/util/sanitize";
+import { sanitizeModelMarkdown, safeFileName, chatNotePath } from "../src/util/sanitize";
+import { FilterRow } from "../src/ui/FilterRow";
+import { backfillSummaries } from "../src/commands/backfill";
+import { MIN_TAGS } from "../src/ingest/pubmedSearch";
+import type { CSLItem } from "../src/types";
 import { searchLogNote, suffixedPath, parseSearchLog, searchLogTotals, countedSearchLogs } from "../src/data/searchLog";
 
 let passed = 0;
@@ -3340,6 +3344,152 @@ check(
     }) as never;
     await updateBibliography(b.plugin as never);
     check(b.state.text === "Text [@a] and [@b].\n", `updateBibliography: keys changed meanwhile -> note left unchanged (${JSON.stringify(b.state.text)})`);
+  }
+
+  // ---- library fixes ----
+  {
+    // Fake vault: a few reference notes with a counting getMarkdownFiles().
+    const mkApp = () => {
+      const files = new Map<string, TFile>();
+      const fms = new Map<string, Record<string, unknown>>();
+      const scans = { n: 0 };
+      const app = {
+        vault: {
+          getMarkdownFiles: () => { scans.n++; return [...files.values()]; },
+          getAbstractFileByPath: (p: string) => files.get(p) ?? null,
+          createFolder: async () => undefined,
+          create: async (p: string) => { const f = new TFile(p); files.set(p, f); return f; },
+        },
+        metadataCache: {
+          getFileCache: (f: TFile) => (fms.has(f.path) ? { frontmatter: fms.get(f.path) } : null),
+          getFirstLinkpathDest: () => null,
+        },
+      };
+      const add = (path: string, fm: Record<string, unknown>) => { files.set(path, new TFile(path)); fms.set(path, fm); };
+      return { app, add, scans };
+    };
+    const au = (...f: string[]) => f.map((family) => ({ family }));
+    const v = mkApp();
+    v.add("References/a.md", { citekey: "a2024", title: "Spine fusion outcomes", author: au("Smith", "Park", "Ohtori"), issued: { "date-parts": [[2024]] }, tags: ["biportal-endoscopy"] });
+    const lib = new Library(v.app as never, { ...DEFAULT_SETTINGS, referencesFolder: "References" });
+    const [row] = lib.entries();
+    check(row.authors === "Smith et al.", `RefEntry.authors display unchanged (${row.authors})`);
+    check(row.authorsAll === "Smith Park Ohtori", `RefEntry.authorsAll lists every family name (${row.authorsAll})`);
+    check(filterAndSort([row], { text: "ohtori", sort: "year-desc", chips: {} }).length === 1, "Library filter: a senior author beyond 'et al.' matches");
+    check(filterAndSort([row], { text: "biportal", sort: "year-desc", chips: {} }).length === 1, "Library filter: tags are searched");
+    check(filterAndSort([row], { text: "nomatch", sort: "year-desc", chips: {} }).length === 0, "Library filter: a non-match still filters out");
+
+    // N keystrokes -> one scan; a metadata change (invalidate) -> a fresh one.
+    v.scans.n = 0;
+    for (let i = 0; i < 5; i++) lib.cachedEntries();
+    check(v.scans.n === 1, `cachedEntries: 5 keystrokes scan once (${v.scans.n} scans)`);
+    v.add("References/b.md", { citekey: "b2024", title: "Another", author: au("Lee"), issued: { "date-parts": [[2024]] } });
+    check(lib.cachedEntries().length === 1, "cachedEntries: stays put until invalidated");
+    lib.invalidateKeyCache("References/b.md");
+    check(lib.cachedEntries().length === 2 && v.scans.n === 2, "cachedEntries: the metadata-change hook drops it");
+
+    // Registries must not hand back a note from the folder the library has left.
+    const v2 = mkApp();
+    const settings2 = { ...DEFAULT_SETTINGS, referencesFolder: "A" };
+    const lib2 = new Library(v2.app as never, settings2);
+    const item = { type: "article-journal", title: "A sufficiently long unique title", DOI: "10.1/zzz", author: au("Kim") } as CSLItem;
+    await lib2.createReference(item);
+    const ck = lib2.findDuplicate(item);
+    check(!!ck && !!lib2.getFile(ck), "session registry: found in the folder it was created in");
+    settings2.referencesFolder = "B";
+    lib2.invalidateKeyCache();
+    check(lib2.findDuplicate(item) === null, "session registry: no duplicate hit from the old folder after a folder change");
+    check(ck !== null && lib2.getFile(ck) === null, "session registry: getFile does not return the old folder's note");
+  }
+
+  // ---- library fixes: FilterRow pending text ----
+  {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mkEl = (): any => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const el: any = { value: "", children: [] as any[], listeners: {} as Record<string, ((e: unknown) => void)[]> };
+      el.addEventListener = (t: string, f: (e: unknown) => void) => ((el.listeners[t] ??= []).push(f));
+      el.fire = (t: string, e: unknown = {}) => (el.listeners[t] ?? []).forEach((f: (e: unknown) => void) => f(e));
+      el.createEl = (_tag: string, o: Record<string, unknown> = {}) => { const c = mkEl(); Object.assign(c, o); el.children.push(c); return c; };
+      el.createDiv = (o?: Record<string, unknown>) => el.createEl("div", o);
+      el.createSpan = (o?: Record<string, unknown>) => el.createEl("span", o);
+      el.setAttr = () => undefined;
+      el.setAttribute = () => undefined;
+      el.empty = () => { el.children = []; };
+      return el;
+    };
+    const host = mkEl();
+    const fr = new FilterRow(host, { library: { cachedEntries: () => [], entries: () => [] } } as never);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inputs = host.children[0].children.filter((c: any) => c.placeholder) as any[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const by = (ph: string) => inputs.find((i: any) => i.placeholder === ph);
+    by("Tag").value = "  Spine ";
+    by("Author").value = "Kim";
+    by("From").value = "2019";
+    let f = fr.filters();
+    check(f.tags?.join() === "Spine", `FilterRow: tag text not Enter-committed is applied on read (${JSON.stringify(f)})`);
+    check(by("Tag").value === "", "FilterRow: the tag box is emptied once the chip exists");
+    check(f.author === "Kim" && f.yearFrom === 2019, "FilterRow: author and year read without a change event");
+    by("Tag").value = "Fusion";
+    by("Tag").fire("change");
+    check(host.children[1].children.length === 2 && by("Tag").value === "", "FilterRow: the change event itself makes the chip");
+    f = fr.filters();
+    check(f.tags?.join() === "Spine,Fusion", `FilterRow: a change event (datalist pick) commits the tag (${JSON.stringify(f.tags)})`);
+    fr.clear();
+    check(Object.keys(fr.filters()).length === 0, "FilterRow: clear() empties everything");
+  }
+
+  // ---- library fixes: chat note path ----
+  {
+    const p = chatNotePath("Chat", "2026-01-02", "L4/5 stenosis?");
+    check(p === "Chat/2026-01-02 L4-5 stenosis-.md", `chatNotePath: a slash in the question is not a folder (${p})`);
+    check(safeFileName(p) === p && p.split("/").length === 2, "chatNotePath: stays directly inside the folder");
+    check(chatNotePath("Chat", "d", "ODI/VAS: scores").split("/").length === 2, "chatNotePath: ODI/VAS");
+    check(chatNotePath("Chat", "d", "   ") === "Chat/d answer.md", "chatNotePath: empty question");
+  }
+
+  // ---- library fixes: backfill guards a summary saved meanwhile ----
+  {
+    const run = async (meddle: (s: { content: string; fm: Record<string, unknown> }) => void) => {
+      const file = new TFile("References/a.md");
+      const fm: Record<string, unknown> = {
+        citekey: "a2024", title: "T", abstract: "An abstract.", tags: Array.from({ length: MIN_TAGS }, (_, i) => `t${i}`),
+      };
+      const s = { content: "---\ncitekey: a2024\n---\n\n# T\n", fm };
+      const origFetch = globalThis.fetch;
+      let release!: (r: Response) => void;
+      let called = false;
+      globalThis.fetch = (() => { called = true; return new Promise<Response>((res) => (release = res)); }) as never;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mkSpan = (): any => ({ createSpan: () => mkSpan(), setAttr() {}, setText() {}, remove() {} });
+      const plugin = {
+        settings: { ...DEFAULT_SETTINGS, llmProvider: "openai", openaiApiKey: "k" },
+        addStatusBarItem: () => mkSpan(),
+        library: { entries: () => [{ citekey: "a2024", item: { ...fm }, file, year: "", authors: "", title: "T" }] },
+        app: {
+          vault: {
+            cachedRead: async () => s.content,
+            process: async (_f: TFile, fn: (c: string) => string) => { s.content = fn(s.content); },
+          },
+          fileManager: { processFrontMatter: async (_f: TFile, fn: (m: Record<string, unknown>) => void) => fn(s.fm) },
+        },
+      };
+      const done = backfillSummaries(plugin as never);
+      for (let i = 0; i < 50 && !called; i++) await new Promise((r) => setTimeout(r, 5));
+      meddle(s);
+      release(new Response(JSON.stringify({ choices: [{ message: { content: "=== BACKGROUND ===\nmodel text\n=== RESULTS ===\nmodel results\n=== KR ===\nkr" } }] }), { status: 200 }));
+      await done;
+      globalThis.fetch = origFetch;
+      return s;
+    };
+    const userBlock = "\n## Summary\n\n**Results**\nsurgeon reviewed\n";
+    const a = await run(() => undefined);
+    check(a.content.includes("model text") && a.fm.summary_source === "pubmed-abstract", "backfill: untouched note gets the model summary and provenance");
+    const b = await run((s) => { s.content += userBlock; s.fm.summary_source = "manual"; });
+    check(b.content.includes("surgeon reviewed") && !b.content.includes("model text") && b.fm.summary_source === "manual", "backfill: provenance saved meanwhile -> the saved summary stays");
+    const c = await run((s) => { s.content += userBlock; });
+    check(c.content.includes("surgeon reviewed") && !c.content.includes("model text") && c.fm.summary_source === undefined, `backfill: summary text saved meanwhile -> kept, no provenance stamped (${JSON.stringify(c.fm)})`);
   }
 }
 

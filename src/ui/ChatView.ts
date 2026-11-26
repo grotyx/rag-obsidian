@@ -8,7 +8,8 @@ import { FilterRow } from "./FilterRow";
 import { activatable } from "./RelatedView";
 import { formatCitation } from "../cite/format";
 import { rec, arr } from "../util/json";
-import { sanitizeModelMarkdown, safeFileName } from "../util/sanitize";
+import { sanitizeModelMarkdown, chatNotePath } from "../util/sanitize";
+import { localDate } from "../data/reference";
 
 export const VIEW_TYPE_CHAT = "rag-obsidian-chat";
 
@@ -268,12 +269,10 @@ export class ChatView extends ItemView {
     if (!this.app.vault.getAbstractFileByPath(folder)) {
       await this.app.vault.createFolder(folder).catch(() => {});
     }
-    const date = new Date().toISOString().slice(0, 10);
-    const stem = question.replace(/\s+/g, " ").trim().slice(0, 40).trim() || "answer";
     const out = `## Question\n\n${question}\n\n## Answer\n\n${sanitizeModelMarkdown(anchorsToCitekeys(text, citekeys))}\n`;
     // Never overwrite an earlier answer to the same question: -2, -3 … until the name is free.
     // Check the name writeAndOpen will really use (it rewrites `?` `:` etc.), not the raw one.
-    const path = safeFileName(`${folder}/${date} ${stem}.md`);
+    const path = chatNotePath(folder, localDate(), question); // local date, not the UTC one
     let n = 1;
     while (this.app.vault.getAbstractFileByPath(normalizePath(suffixedPath(path, n)))) n++;
     await this.plugin.writeAndOpen(suffixedPath(path, n), out);

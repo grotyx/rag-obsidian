@@ -51,14 +51,14 @@ const SORTERS: Record<SortKey, (a: RefEntry, b: RefEntry) => number> = {
   "added-desc": (a, b) => missingLast(a.added, b.added) ?? b.added!.localeCompare(a.added!),
 };
 
-/** Text filter (title/authors/year/citekey/journal, case-insensitive) → quick-filter chips
+/** Text filter (title/authors/year/citekey/journal/tags, case-insensitive) → quick-filter chips
  *  (AND'd together) → sort. Pure, so LibraryView just calls this on every keystroke/toggle. */
 export function filterAndSort(entries: RefEntry[], opts: FilterOptions): RefEntry[] {
   const text = opts.text.trim().toLowerCase();
   const { chips } = opts;
   const out = entries.filter((e) => {
     if (text) {
-      const hay = `${e.title} ${e.authors} ${e.year} ${e.citekey} ${e.journal ?? ""}`.toLowerCase();
+      const hay = `${e.title} ${e.authors} ${e.authorsAll ?? ""} ${e.year} ${e.citekey} ${e.journal ?? ""} ${(e.tags ?? []).join(" ")}`.toLowerCase();
       if (!hay.includes(text)) return false;
     }
     if (chips.hasPdf && !e.hasPdf) return false;

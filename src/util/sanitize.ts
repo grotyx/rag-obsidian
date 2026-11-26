@@ -14,13 +14,23 @@ export function sanitizeModelMarkdown(text: string): string {
   return out;
 }
 
+/** One file-name component: characters Obsidian rejects (and `[]#^|` that would break links to
+ *  the note) become `-`, so a `/` can never open a sub-folder. */
+export function safeFileComponent(name: string): string {
+  return name.replace(/[\\/:*?"<>|#^[\]]+/g, "-").replace(/^\.+/, "");
+}
+
 /** Replace characters Obsidian rejects in file names (and `[]#^|` that would break links to the
  *  note) in the basename of a vault path. Folders are left alone. */
 export function safeFileName(rawPath: string): string {
   const slash = rawPath.lastIndexOf("/");
-  const base = rawPath
-    .slice(slash + 1)
-    .replace(/[\\/:*?"<>|#^[\]]+/g, "-")
-    .replace(/^\.+/, "");
+  const base = safeFileComponent(rawPath.slice(slash + 1));
   return rawPath.slice(0, slash + 1) + (base || "untitled.md");
+}
+
+/** `<folder>/<date> <question>.md` for "Save as note": the question is one file-name component,
+ *  so "L4/5 stenosis?" stays in `folder` instead of becoming `folder/<date> L4/5 stenosis-.md`. */
+export function chatNotePath(folder: string, date: string, question: string): string {
+  const stem = question.replace(/\s+/g, " ").trim().slice(0, 40).trim() || "answer";
+  return `${folder}/${safeFileComponent(`${date} ${stem}`)}.md`;
 }

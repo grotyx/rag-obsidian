@@ -9,6 +9,11 @@ export interface RefEntry {
   citekey: string;
   title: string;
   authors: string;
+  /** Every author's family name (or literal), space-joined: what text filters match, since
+   *  `authors` shows only "First et al." for three or more. */
+  authorsAll?: string;
+  /** Frontmatter tags, for the Library pane's text filter. */
+  tags?: string[];
   year: string;
   /** container-title (journal/venue). */
   journal?: string;
@@ -84,6 +89,8 @@ export class Library {
     path: string,
     carries: (fm: Record<string, unknown>) => boolean
   ): { file: TFile; fm: Record<string, unknown> | undefined } | null {
+    // A note from a folder the library has since left is not this library's (settings change).
+    if (!path.startsWith(this.folder() + "/")) return null;
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!(file instanceof TFile)) return null;
     const fm: Record<string, unknown> | undefined = this.app.metadataCache.getFileCache(file)?.frontmatter;
@@ -219,6 +226,7 @@ export class Library {
    *  deleted. Pass the changed note's `path` from the metadata-cache event: the first parse of a
    *  note this library just created changes nothing the caches do not already know. */
   invalidateKeyCache(path?: string): void {
+    this.entriesCache = null; // even a created note's first parse adds a row the list lacks
     if (path && this.createdPaths.delete(path)) return;
     this.citekeyPathCache = null;
     this.idMap = null;
@@ -328,6 +336,13 @@ export class Library {
     return this.mapDuplicate(keys, item);
   }
 
+  /** `entries()` memoized until the next `invalidateKeyCache()` (metadata change, create, delete,
+   *  rename, folder change) — for per-keystroke callers (the `@` autocomplete). Read-only. */
+  private entriesCache: (RefEntry & { item: CSLItem })[] | null = null;
+  cachedEntries(): readonly (RefEntry & { item: CSLItem })[] {
+    return (this.entriesCache ??= this.entries());
+  }
+
   /** Same scan as `entries()`, without the parsed CSL item. */
   list(): RefEntry[] {
     return this.entries();
@@ -353,6 +368,8 @@ export class Library {
         file,
         year: extractYear(fm.issued),
         authors: formatAuthors(fm.author),
+        authorsAll: authorNames(fm.author).join(" "),
+        tags: tagsOf(fm.tags),
         title: String(fm.title ?? file.basename),
         journal: fm["container-title"] ? String(fm["container-title"]) : undefined,
         added: fm.added ? String(fm.added) : undefined,
@@ -566,9 +583,9 @@ export function normTitle(t: unknown): string {
     .trim();
 }
 
-export function formatAuthors(author: unknown): string {
-  if (!Array.isArray(author)) return "";
-  const names = author
+function authorNames(author: unknown): string[] {
+  if (!Array.isArray(author)) return [];
+  return author
     .map((a) => {
       if (a && typeof a === "object") {
         const o = a as Record<string, unknown>;
@@ -577,6 +594,10 @@ export function formatAuthors(author: unknown): string {
       return text(a);
     })
     .filter(Boolean);
+}
+
+export function formatAuthors(author: unknown): string {
+  const names = authorNames(author);
   if (names.length === 0) return "";
   if (names.length === 1) return names[0];
   if (names.length === 2) return `${names[0]} & ${names[1]}`;

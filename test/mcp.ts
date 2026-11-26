@@ -340,7 +340,7 @@ async function serviceChecks(): Promise<void> {
     },
     library: {
       folder: () => "References",
-      entries: () => [{ citekey: "smith2024", item, file, year: "2024", authors: "Smith", title: "Trial" }],
+      entries: () => [{ citekey: "smith2024", item, file, year: "2024", authors: "Smith et al.", authorsAll: "Smith Park Ohtori", title: "Trial" }],
       getFile: (citekey: string) => citekey === "outside2020" ? { path: "Elsewhere/x.md" } : citekey === "smith2024" ? file : citekey === "jones2023" ? fake.files.get("References/ev.md")?.file : null,
       getItem: (citekey: string) => citekey === "smith2024" ? item : citekey === "jones2023" ? { ...item, title: "Cages", issued: { "date-parts": [[2023]] } } : null,
       findDuplicate: (candidate: Record<string, unknown>) => candidate.PMID === "123" ? "smith2024" : null,
@@ -470,6 +470,9 @@ async function serviceChecks(): Promise<void> {
   }
   assert.deepEqual(gSeen, ["References/B.md", "References/a.md", "References/c.md"], "paging returns every allowed entry exactly once");
 
+  // Carbon B6: the author filter sees every author, not just "First et al."
+  const byLast = await service.callTool("list_references", { author: "ohtori" }) as any;
+  assert.equal(byLast.references[0]?.citekey, "smith2024", "list_references: author filter matches a non-first author");
   const refs = await service.callTool("list_references", { tags: ["Spine"] }) as any;
   assert.equal(refs.references[0].citekey, "smith2024");
   // review 2 #19: a leading # on a tag argument means the same tag, in list_references and search filters

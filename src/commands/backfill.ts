@@ -4,7 +4,7 @@ import { SummarySections } from "../types";
 import { fetchPubmedRecord, fetchPmcFullText, buildTags, MIN_TAGS } from "../ingest/pubmedSearch";
 import { summarizeSource, suggestMeshTerms } from "../ingest/summarize";
 import { summaryBlock } from "../data/reference";
-import { replaceSummaryBlock } from "../cite/bibliography";
+import { replaceSummaryBlock, extractSummaryBlock } from "../cite/bibliography";
 import { BackfillScope, inScope } from "../data/library";
 import { LLMClient } from "../llm/client";
 import { mapPool, poolWidth } from "../util/pool";
@@ -49,6 +49,7 @@ export async function backfillSummaries(
   let summarized = 0;
   let tagged = 0;
   let failed = 0;
+  let edited = 0; // summary skipped: the note was summarized or edited while the model worked
   let outcome = "Filling gaps failed (see console)";
   interface Prepared {
     entry: (typeof todo)[number];
@@ -56,6 +57,9 @@ export async function backfillSummaries(
     sourceTag: string;
     tags: string[];
     meshTried: boolean;
+    /** The note's summary block when the work began; a different one at write time means the user
+     *  (or MCP) saved a summary meanwhile, and the model's must not replace it. */
+    summaryBefore: string | null;
     error: unknown;
   }
   let chain: Promise<void> = Promise.resolve();
@@ -70,14 +74,28 @@ export async function backfillSummaries(
     }
     if (!r.summary && !r.tags.length && !r.meshTried) return;
     let wroteProvenance = false;
+    let skipSummary = false;
+    const takeBackProvenance = () =>
+      // summary_source says "summarized": take it back so the next run retries this note.
+      wroteProvenance
+        ? plugin.app.fileManager.processFrontMatter(r.entry.file, (fm: Record<string, unknown>) => {
+            delete fm.summary_source;
+            delete fm.summary_model;
+          }).catch(() => undefined)
+        : Promise.resolve();
     try {
       // Frontmatter first: processFrontMatter rewrites the file from its own copy, so a body
       // appended before it is silently dropped.
       await plugin.app.fileManager.processFrontMatter(r.entry.file, (fm: Record<string, unknown>) => {
         if (r.summary && r.sourceTag) {
-          fm.summary_source = r.sourceTag;
-          fm.summary_model = plugin.settings.llmModel;
-          wroteProvenance = true;
+          // Checked against the note as it is now, in this same write: a summary saved while the
+          // model worked has set summary_source already.
+          if (fm.summary_source) skipSummary = true;
+          else {
+            fm.summary_source = r.sourceTag;
+            fm.summary_model = plugin.settings.llmModel;
+            wroteProvenance = true;
+          }
         }
         if (r.tags.length) {
           // Merge into the tags as they are now: r.tags is a snapshot from batch start, and the
@@ -92,21 +110,26 @@ export async function backfillSummaries(
         if (r.meshTried) fm.mesh_backfilled = true;
       });
       if (r.tags.length) tagged++;
-      if (r.summary) {
+      if (r.summary && skipSummary) edited++;
+      else if (r.summary) {
         const block = summaryBlock(r.summary);
+        let changed = false;
         try {
-          await plugin.app.vault.process(r.entry.file, (c) => replaceSummaryBlock(c, block));
+          await plugin.app.vault.process(r.entry.file, (c) => {
+            if (extractSummaryBlock(c) !== r.summaryBefore) {
+              changed = true;
+              return c;
+            }
+            return replaceSummaryBlock(c, block);
+          });
         } catch (err) {
-          // summary_source says "summarized": take it back so the next run retries this note.
-          if (wroteProvenance) {
-            await plugin.app.fileManager.processFrontMatter(r.entry.file, (fm: Record<string, unknown>) => {
-              delete fm.summary_source;
-              delete fm.summary_model;
-            }).catch(() => undefined);
-          }
+          await takeBackProvenance();
           throw err;
         }
-        summarized++;
+        if (changed) {
+          await takeBackProvenance();
+          edited++;
+        } else summarized++;
       }
     } catch (err) {
       failed++;
@@ -139,7 +162,9 @@ export async function backfillSummaries(
 
         let summary: SummarySections | null = null;
         let sourceTag = "";
+        let summaryBefore: string | null = null;
         if (!e.item.summary_source && abstract) {
+          summaryBefore = extractSummaryBlock(await plugin.app.vault.cachedRead(e.file));
           let src = abstract;
           let label = "PubMed abstract (not open access — full text not retrieved)";
           sourceTag = "pubmed-abstract";
@@ -186,10 +211,10 @@ export async function backfillSummaries(
           }
           if (merged.length > existing.length) tags = merged;
         }
-        return enqueue({ entry: e, summary, sourceTag, tags, meshTried, error: null });
+        return enqueue({ entry: e, summary, sourceTag, tags, meshTried, summaryBefore, error: null });
       } catch (err) {
         failed++;
-        return enqueue({ entry: e, summary: null, sourceTag: "", tags: [], meshTried: false, error: err });
+        return enqueue({ entry: e, summary: null, sourceTag: "", tags: [], meshTried: false, summaryBefore: null, error: err });
       } finally {
         batch.tick(++fetched, failed);
       }
@@ -200,6 +225,7 @@ export async function backfillSummaries(
     const skipped = todo.length - fetched;
     outcome =
       `Summaries added: ${summarized} · tags added: ${tagged}` +
+      (edited ? ` · kept ${edited} summaries saved meanwhile` : "") +
       (failed ? ` · failed: ${failed} (see console)` : "") +
       (skipped ? ` · cancelled, ${skipped} not started` : "");
   } finally {

@@ -30,8 +30,8 @@ export class CitationSuggest extends EditorSuggest<RefEntry> {
   getSuggestions(ctx: EditorSuggestContext): RefEntry[] {
     const q = ctx.query.toLowerCase();
     return this.plugin.library
-      .list()
-      .filter((e) => `${e.citekey} ${e.title} ${e.authors}`.toLowerCase().includes(q))
+      .cachedEntries()
+      .filter((e) => `${e.citekey} ${e.title} ${e.authorsAll ?? e.authors}`.toLowerCase().includes(q))
       .slice(0, 20);
   }
 

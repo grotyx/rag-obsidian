@@ -542,7 +542,7 @@ export class McpService {
     const candidates = this.plugin.library.entries()
       .filter((entry) => entry.file.path > cursor)
       .filter((entry) => yearOf(entry.item) >= from && yearOf(entry.item) <= to)
-      .filter((entry) => !author || entry.authors.toLowerCase().includes(author))
+      .filter((entry) => !author || (entry.authorsAll ?? entry.authors).toLowerCase().includes(author))
       .filter((entry) => !status || (typeof entry.item.status === "string" && entry.item.status.toLowerCase() === status))
       .filter((entry) => tags.every((tag) => tagsOf(entry.item.tags).includes(tag)))
       .filter((entry) => !kq || hasKq(entry.item.kq, kq))
