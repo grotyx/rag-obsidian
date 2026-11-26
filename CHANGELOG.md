@@ -6,8 +6,47 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
-### Fixed
+## [0.11.5] — 2026-11-26
+
+Fixes from two more outside reviews (GPT-6.2 Astra and Gemini 4 Carbon), each checked against the code with a failing test first.
+
+### Fixed — notes and reviews
+- **Merging duplicates kept only the keeper's text below the extracted PDF text.** A section the other note had after its `## Full text (extracted)` (your own `## Reviewer notes`, `## Highlights`) was dropped; it now moves into the merged note.
+- Merging links the keeper to a PDF the other note had only as `PDFs/<its citekey>.pdf`, instead of leaving the PDF orphaned. Merged findings written in the fenced format stay inside the fence, and "1 finding" is recounted.
+- Merging no longer re-reads every note in the vault uncached (on OneDrive Files On-Demand that downloaded every online-only note).
+- **PRISMA: "Records after duplicates removed" showed the screened count.** It now shows identified minus duplicates (= screened + awaiting decision). Two different DOIs that share a citekey with a sparse copy are never counted as one record, whatever order the notes are read in.
+- Risk of bias: a record with only the tool chosen is listed as not yet assessed, not counted as assessed. AMSTAR 2 "critically low" is accepted.
+- Screening pane: key questions written as `1` / `3` (e.g. by Claude Code) light up the `01` / `03` chips and are not duplicated; key questions outside 01–13 get their own chip. Moving between records no longer rescans the library.
+- "Summarize and tag (fill gaps)" no longer overwrites a summary you (or MCP) saved while the model was answering.
+
+### Fixed — search index
+- An edit that failed to embed (network down, no key) is retried, and an edit made while Obsidian was closed is noticed on the next start; before, the old text could stay in search until a manual update.
+- Many new notes found on start (e.g. synced from another computer) are embedded in batches with a progress notice and stop after 5 failures in a row, instead of one request per note with no way to stop.
+- **A first build that stopped part-way is marked incomplete**: the Search pane says so, Claude Code / Codex see `indexComplete: false` in `library_status`, and the next "Update search index" finishes it.
+- A reference with only a title (no abstract, no notes) is now findable in search, marked as metadata only so chat does not treat it as evidence.
+- Two computers sharing a synced index folder no longer delete each other's index files.
+- Adding the first new note after start no longer copies the whole restored index in memory.
 - The Search pane no longer says "Index not built" after a search when it was opened while the index was still loading.
+
+### Fixed — network and lookups
+- **Korean titles now match in OpenAlex**, and a title that reduces to a short code (e.g. "L4-5") no longer matches an unrelated paper and writes the wrong OpenAlex id.
+- A server's "retry after" wait is respected (up to 2 minutes) instead of retrying too early. OpenAlex, Crossref and Unpaywall requests retry on rate limits; Crossref requests carry your contact e-mail.
+- "Build citation graph" shows progress, can be cancelled, saves as it goes and stops when OpenAlex keeps refusing; "Backfill citation counts" only rewrites notes whose count changed.
+- An Unpaywall or PMC outage is reported as a failed lookup, not as "no open-access copy" / "not open access". PMC full text keeps table captions and cells.
+- A model that returns an empty answer (token cap, reasoning model) now shows an error instead of a blank chat bubble.
+- Claude Code / Codex: slow tool calls get 2 minutes before the bridge gives up, and the message no longer claims Obsidian is closed.
+- "Rename tag" works on tags written as a single value, with `#`, or as numbers, and lists only tags used by references. "Find open-access PDF" no longer writes into a note that is not a reference.
+
+### Fixed — library, writing and import
+- **Library filter, `@` citation suggestions and `list_references` match every author**, not only the first ("Park" finds papers where Park is the last author). The Library filter also matches tags. `@` suggestions no longer rescan the library on every keystroke.
+- After changing the references folder, adding a paper no longer reports a duplicate from the old folder.
+- Search / Chat filters: a tag typed (or picked from the list) but not confirmed with Enter is now applied.
+- "Save as note" in chat: a question containing `/` ("L4/5 stenosis?") no longer creates a subfolder, and the date is your local date.
+- **Reading view and Live Preview render a citation group as one citation** (`[@a; @b; @c]` → ¹⁻³, APA `(A, 2020; B, 2021)`), keeping `see …`, page locators and `-@`.
+- Citations inside `%% … %%` or `<!-- … -->` comments are no longer added to the reference list.
+- Export to Word: `L4~5` no longer becomes subscript, `![[figure.png]]` embeds become images and `[[links]]` become plain text; the terminal script does the same.
+- BibTeX import reads quoted values containing accents (`"M{\"u}ller"`) and keeps PMID / PMCID; BibTeX and RIS export write them.
+- Windows: the copied Claude Code setup command is quoted for PowerShell, and Pandoc is found in more install locations (WinGet, Scoop, Chocolatey, Program Files (x86)).
 
 ## [0.11.4] — 2026-11-23
 

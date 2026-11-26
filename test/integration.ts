@@ -2953,6 +2953,7 @@ async function main() {
                 },
               },
               vault: {
+                cachedRead: async (f: TFile) => files.get(f.path)!.body,
                 process: async (f: TFile, fn: (c: string) => string) => {
                   if (f.path.includes(failBody ?? "\0")) throw new Error("body boom");
                   const e = files.get(f.path)!;

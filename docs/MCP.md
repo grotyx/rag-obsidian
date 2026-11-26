@@ -152,7 +152,7 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 
 | Tool | Purpose | Effect |
 |---|---|---|
-| `library_status` | Vault, plugin, and index status (`indexReady`, `rebuilding`) | Local read |
+| `library_status` | Vault, plugin, and index status (`indexReady`, `rebuilding`, `indexComplete` — false when the last run stopped part-way) | Local read |
 | `search_findings` | Individual results (effect size, p, CI, verbatim quote) from the notes' `## Evidence (extracted)` sections of the best-matching papers, reranked against the question | Embeddings + rerank call; read-only |
 | `search_library` | Search the same BM25+vector index as Obsidian (keyword half expanded with the library's synonyms). Query in English; pass `rerank: true` for the hosted cross-encoder (recommended for evidence) | Embeddings; rerank call when asked; read-only |
 | `rebuild_search_index` | Start an index update in the background (re-embeds only new or changed notes, drops deleted ones; a first run or a changed embedding model builds everything) and return at once (`started` / `already-running`); poll `library_status` until `indexReady` | Embeddings possible; index write |
