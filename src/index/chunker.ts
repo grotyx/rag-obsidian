@@ -23,6 +23,8 @@ export interface ChunkInput {
   /** Author family names as written; lowercased on the way into the chunk. */
   authors?: string[];
   abstract?: string;
+  /** Journal / container title, for the metadata-only passage. */
+  journal?: string;
   /** Markdown body with frontmatter already stripped. */
   body: string;
 }
@@ -99,6 +101,19 @@ export function chunkReference(input: ChunkInput, maxChars: number): Chunk[] {
     .replace(/^##\s*(Notes|Highlights)\s*$/gim, "")
     .trim();
   if (body) sections.push({ section: "notes", text: body });
+  // No abstract and no notes (old trials, letters, imported citations): index one labeled row so the
+  // paper is still found by title / author / journal, and say plainly that it carries no evidence.
+  if (!sections.length) {
+    const authorsShown = (input.authors ?? []).map((a) => a.trim()).filter(Boolean).join(", ");
+    const lines = [
+      `Title: ${title}`,
+      authorsShown && `Authors: ${authorsShown}`,
+      year && `Year: ${year}`,
+      input.journal?.trim() && `Journal: ${input.journal.trim()}`,
+      "[Metadata only: this record has no abstract or notes, so it is not evidence for any finding.]",
+    ].filter(Boolean);
+    sections.push({ section: "metadata", text: lines.join("\n") });
+  }
 
   const chunks: Chunk[] = [];
   let n = 0;

@@ -81,6 +81,7 @@ export default class ScholarRagPlugin extends Plugin {
     const pluginDir = this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`;
     this.library = new Library(this.app, this.settings);
     this.indexManager = new IndexManager(this.app, this.library, this.settings, pluginDir);
+    this.indexManager.notify = (message) => new Notice(message, 10000);
     // Non-English searches → English before embedding (search pane and chat; MCP opts out).
     this.indexManager.translator = (query) =>
       new LLMClient(this.settings).chat(
@@ -446,6 +447,7 @@ export default class ScholarRagPlugin extends Plugin {
         const indexErr = this.indexManager.restoreError;
         const graphErr = this.citationGraph.restoreError;
         if (indexErr) new Notice(`Search index not restored (${indexErr}) — rebuild it from the search pane.`);
+        else if (this.indexManager.ready && !this.indexManager.complete) new Notice("The search index is incomplete — run “Update search index” to add the notes it is missing.", 10000);
         if (graphErr) new Notice(`Citation graph cache ignored (${graphErr}) — rebuild it from the command palette.`);
         // Load the search vocabulary + MeSH synonyms now, not on the first search (~seconds).
         if (this.settings.queryExpansion) void this.indexManager.ensureExpander().catch(() => undefined);
@@ -711,8 +713,9 @@ export default class ScholarRagPlugin extends Plugin {
     } catch (e) {
       console.error("[Refwright] rebuild failed", e);
       const r = m.lastRun as IndexManager["lastRun"];
-      const part = r ? ` (${r.embedded.toLocaleString()} embedded, ${r.removed.toLocaleString()} removed, ${r.failed.toLocaleString()} failed)` : "";
-      new Notice(`Index update failed: ${e instanceof Error ? e.message : String(e)}${part}`, 15000);
+      const part = r ? ` (${r.embedded.toLocaleString()} embedded, ${r.removed.toLocaleString()} removed, ${r.failed.toLocaleString()} failed${r.remaining ? `, ${r.remaining.toLocaleString()} not reached` : ""})` : "";
+      const left = r && r.remaining > 0 && m.ready ? " The index is incomplete: run “Update search index” again to finish it." : "";
+      new Notice(`Index update failed: ${e instanceof Error ? e.message : String(e)}${part}.${left}`, 15000);
     } finally {
       notice.hide();
     }

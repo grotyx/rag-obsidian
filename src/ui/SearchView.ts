@@ -69,7 +69,7 @@ export class SearchView extends ItemView {
     const m = this.plugin.indexManager;
     this.statusEl.setText(
       m.ready
-        ? `${m.count} chunks indexed · ${m.modelId}`
+        ? `${m.count} chunks indexed · ${m.modelId}${m.complete ? "" : " · incomplete — run “Update search index” to index the rest"}`
         : "Index not built — click “Update index”."
     );
   }

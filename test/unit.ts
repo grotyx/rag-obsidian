@@ -60,9 +60,10 @@ import {
   winQuote,
 } from "../src/llm/cli";
 import { windowsCliShimChecks } from "./windows";
-import { cacheRoot, legacyCacheRoot, NodeFileIO } from "../src/index/localFiles";
+import { cacheRoot, legacyCacheRoot, NodeFileIO, staleIndexFiles } from "../src/index/localFiles";
+import { IndexManager } from "../src/index/manager";
 import { pandocCandidates, pandocPrepare } from "../src/write/pandoc";
-import { stripFrontmatter, chunkReference, yearFromIssued } from "../src/index/chunker";
+import { stripFrontmatter, chunkReference, yearFromIssued, chunkHash } from "../src/index/chunker";
 import { parseFindings, findingText, isRestated, Finding } from "../src/data/findings";
 import { evidenceCsv, collectEvidenceRows } from "../src/commands/evidenceExport";
 import { referenceProblems, refcheckReport, problemSeverity, PROBLEM_UNCHECKED, PROBLEM_THIN, PROBLEM_PREPRINT } from "../src/write/refcheck";
@@ -3856,6 +3857,206 @@ check(
     check(bridgeSource().includes("took longer than 120 s") && /timeout: (120_?000|12e4)/.test(bridgeSource()), "network: bridge timeout is 120 s with its own message");
   } finally {
     globalThis.fetch = realFetch;
+  }
+}
+
+// ---- index fixes ----
+// metadata-only paper (Astra B10), cleanup decision (Astra B7), restored bank never copied (Astra B9),
+// failed / offline edits stay pending (Astra B8), startup catch-up (Carbon B1), incomplete first build (Carbon B3)
+{
+  // B10: a reference with a title and nothing else still gets one labeled passage
+  const bare = chunkReference({ citekey: "old1", title: "Lumbar fusion in 1985", year: 1985, tags: [], authors: ["Smith", "Lee"], journal: "Spine", body: "# Lumbar fusion in 1985\n\n## Notes\n\n## Highlights\n" }, 800);
+  check(bare.length === 1 && bare[0].section === "metadata", `metadata-only note: one metadata chunk (${bare.length})`);
+  check(/Lumbar fusion in 1985/.test(bare[0].text) && /Smith, Lee/.test(bare[0].text) && /1985/.test(bare[0].text) && /Spine/.test(bare[0].text), "metadata chunk carries title, authors, year, journal");
+  check(/not evidence/.test(bare[0].text), "metadata chunk says it is not evidence (chat sees this text)");
+  const withAbs = chunkReference({ citekey: "old1", title: "Lumbar fusion in 1985", year: 1985, tags: [], abstract: "Fusion outcomes.", body: "" }, 800);
+  check(withAbs.length === 1 && withAbs[0].section === "abstract", "a note with an abstract gets no metadata chunk");
+  check(chunkHash(bare) !== chunkHash(withAbs), "adding an abstract changes the hash, so the metadata row is replaced");
+
+  // B7: the cleanup deletes only this process's superseded generations and pre-generation files
+  {
+    const names = ["meta.json", "meta.json.tmp", "docs-new1.json", "vectors-new1.f32", "docs-mine0.json", "vectors-mine0.f32", "docs-theirs.json", "vectors-theirs.f32", "docs.json", "vectors.f32", "orama.json", "notes.md"];
+    const doomed = staleIndexFiles(names, new Set(["meta.json", "docs-new1.json", "vectors-new1.f32"]), new Set(["new1", "mine0"])).sort();
+    check(doomed.join() === ["docs-mine0.json", "docs.json", "orama.json", "vectors-mine0.f32", "vectors.f32"].join(), `cleanup: own superseded + legacy only (${doomed.join()})`);
+    check(!doomed.some((n) => n.includes("theirs")), "cleanup never deletes a generation this process did not write");
+    check(!doomed.includes("meta.json.tmp"), "cleanup leaves meta.json.tmp (another computer's commit in flight)");
+  }
+
+  // B9 / B3: the restored bank buffer is never copied; completeness + mtimes round trip
+  {
+    const DIM = 4;
+    const mkc = (ck: string, n: number) => Array.from({ length: n }, (_, i) => ({
+      id: `${ck}#${i}`, citekey: ck, title: ck, section: "abstract", year: 2020, tags: [] as string[], authors: [] as string[], text: `word${i} ${ck}`, embedText: "",
+    }));
+    const vecs = (n: number) => Array.from({ length: n }, (_, i) => [1, i + 1, 2, 3]);
+    const a = new VectorStore();
+    a.init(DIM, "m");
+    for (const ck of ["a", "b"]) await a.addChunks(mkc(ck, 3), vecs(3));
+    a.setPath("References/a.md", "a", "h", 111);
+    a.complete = false;
+    const ser = await a.serialize();
+    const buf = ser.vectors.slice(0);
+    const b = new VectorStore();
+    await b.load(ser.docs, buf, ser.meta);
+    check(b.complete === false && b.mtimeForPath("References/a.md") === 111, "store: complete flag and mtimes survive a save and load");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bankBefore = (b as any).bank as Float32Array;
+    await b.addChunks(mkc("fresh", 2), vecs(2));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    check((b as any).bank === bankBefore && bankBefore.buffer === buf, "restore → add a new note: the restored bank is not reallocated or copied");
+    const hits = await b.search([1, 1, 2, 3], "word1 fresh", 20);
+    check(hits.some((h) => h.citekey === "fresh") && hits.length === 8, `...and the new note is searchable alongside the old ones (${hits.length})`);
+    const ser2 = await b.serialize();
+    const c = new VectorStore();
+    await c.load(ser2.docs, ser2.vectors, ser2.meta);
+    const again = await c.search([1, 2, 2, 3], "word1 fresh", 20);
+    check(c.count === 8 && again.some((h) => h.citekey === "fresh" && h.id === "fresh#1"), "...and survives a save/load round trip");
+  }
+
+  // Manager-level: an in-memory vault + a scripted embedder
+  {
+    const disk = new Map<string, string | ArrayBuffer>();
+    const adapter = {
+      exists: async (p: string) => disk.has(p) || [...disk.keys()].some((k) => k.startsWith(`${p}/`)),
+      mkdir: async () => undefined,
+      read: async (p: string) => disk.get(p) as string,
+      write: async (p: string, d: string) => void disk.set(p, d),
+      append: async (p: string, d: string) => void disk.set(p, ((disk.get(p) as string | undefined) ?? "") + d),
+      readBinary: async (p: string) => (disk.get(p) as ArrayBuffer).slice(0),
+      writeBinary: async (p: string, d: ArrayBuffer) => void disk.set(p, d),
+      appendBinary: async (p: string, d: ArrayBuffer) => {
+        const old = (disk.get(p) as ArrayBuffer | undefined) ?? new ArrayBuffer(0);
+        const joined = new Uint8Array(old.byteLength + d.byteLength);
+        joined.set(new Uint8Array(old), 0);
+        joined.set(new Uint8Array(d), old.byteLength);
+        disk.set(p, joined.buffer);
+      },
+      list: async (dir: string) => ({ files: [...disk.keys()].filter((k) => k.startsWith(`${dir}/`) && !k.slice(dir.length + 1).includes("/")) }),
+      remove: async (p: string) => void disk.delete(p),
+      rename: async (a: string, b: string) => { disk.set(b, disk.get(a) as string); disk.delete(a); },
+    };
+    const notes = new Map<string, { fm: Record<string, unknown>; body: string; mtime: number }>();
+    const note = (k: string, abs: string, mtime = 100) => notes.set(`References/${k}.md`, { fm: { citekey: k, title: k, abstract: abs }, body: "", mtime });
+    const file = (p: string) => Object.assign(new TFile(p), { stat: { mtime: notes.get(p)?.mtime ?? 0 } });
+    const app = {
+      vault: {
+        adapter,
+        getMarkdownFiles: () => [...notes.keys()].map(file),
+        read: async (f: TFile) => `---\nx: 1\n---\n${notes.get(f.path)?.body ?? ""}`,
+        getAbstractFileByPath: (p: string) => (notes.has(p) ? file(p) : null),
+      },
+      metadataCache: { getFileCache: (f: TFile) => ({ frontmatter: notes.get(f.path)?.fm }) },
+    };
+    // The scripted embedder: a vector from the text; `failing` makes every request throw; `okCalls` lets that many through first.
+    const emb = { calls: 0, sizes: [] as number[], failing: false, okCalls: Infinity };
+    const provider = {
+      id: "fake:m",
+      embed: async (texts: string[]) => {
+        emb.calls++;
+        emb.sizes.push(texts.length);
+        if (emb.failing || emb.calls > emb.okCalls) throw new Error("provider down");
+        return texts.map((t) => [1, (t.length % 7) + 1, t.charCodeAt(t.length - 1) % 5, 2]);
+      },
+    };
+    const sets = { ...DEFAULT_SETTINGS, embeddingProvider: "openai" as const, embeddingModel: "m", openaiApiKey: "k", queryExpansion: false, indexLocal: false };
+    const mk = () => {
+      const m = new IndexManager(app as never, { folder: () => "References", getItem: () => undefined } as never, sets, "plugin");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const priv = m as any;
+      priv.getProvider = () => provider;
+      priv.flush.cancel();
+      return { m, priv };
+    };
+    const quiet = async <T,>(fn: () => Promise<T>): Promise<T> => {
+      const w = console.warn, er = console.error;
+      console.warn = console.error = () => undefined;
+      try { return await fn(); } finally { console.warn = w; console.error = er; }
+    };
+    const hasHit = async (m: IndexManager, q: string, ck: string) => (await m.search(q, {}, 10, { translate: false })).some((h) => h.citekey === ck);
+
+    // B8: a failed background embed keeps the note pending; a restart finds an edit made meanwhile
+    note("alpha", "alpha study of discs");
+    note("beta", "beta study of nerves");
+    {
+      const { m, priv } = mk();
+      await m.rebuild();
+      check(m.ready && m.complete && m.count === 2, `B8 setup: built (${m.count} chunks, complete ${m.complete})`);
+      note("alpha", "alpha study of discs plus zebrafish findings", 200);
+      emb.failing = true;
+      m.enqueue(file("References/alpha.md"));
+      priv.flush.cancel();
+      await quiet(() => m.flushPending());
+      check(priv.reindexQueue.has("References/alpha.md"), "B8: a background reindex that throws leaves the note queued");
+      emb.failing = false;
+      await m.flushPending();
+      check(await hasHit(m, "zebrafish", "alpha") && priv.reindexQueue.size === 0, "B8: the queued note is embedded on the next flush");
+      await m.dispose();
+    }
+    {
+      // offline: the file changes while the plugin is not running (no event), then Obsidian restarts
+      note("alpha", "alpha study of discs plus narwhal findings", 300);
+      const { m, priv } = mk();
+      await m.restore();
+      priv.flush.cancel();
+      check(priv.reindexQueue.has("References/alpha.md"), "B8: restore queues a known note whose file is newer than the indexed copy");
+      await m.flushPending();
+      check(await hasHit(m, "narwhal", "alpha"), "B8: the edit made while closed becomes searchable without another edit or a manual update");
+      check(!priv.reindexQueue.has("References/beta.md"), "B8: an untouched note is not queued");
+      await m.dispose();
+    }
+
+    // B1: a long queue is embedded in batches, a short one stops after MAX_CONSECUTIVE_FAILS failures
+    {
+      const { m, priv } = mk();
+      await m.restore();
+      priv.flush.cancel();
+      for (let i = 0; i < 80; i++) note(`bulk${i}`, `bulk paper number ${i} about knees`);
+      for (let i = 0; i < 80; i++) priv.reindexQueue.add(`References/bulk${i}.md`);
+      const told: string[] = [];
+      m.notify = (msg) => told.push(msg);
+      emb.calls = 0; emb.sizes.length = 0;
+      await m.flushPending();
+      check(m.count >= 82 && emb.calls <= 6, `B1: 80 queued notes → batched requests, not one per note (${emb.calls} requests, ${m.count} chunks)`);
+      check(told.some((t) => /80 new or changed notes/.test(t)), "B1: the user is told the catch-up started");
+      await m.dispose();
+    }
+    {
+      const { m, priv } = mk();
+      await m.restore();
+      priv.flush.cancel();
+      for (let i = 0; i < 12; i++) { note(`dead${i}`, `dead paper ${i} about hips`); priv.reindexQueue.add(`References/dead${i}.md`); }
+      emb.failing = true; emb.calls = 0;
+      await quiet(() => m.flushPending());
+      emb.failing = false;
+      check(emb.calls === 5, `B1: 5 notes failing in a row stop the flush (${emb.calls} requests for 12 notes)`);
+      check(priv.reindexQueue.size === 12, `B1: ...and every note is still pending (${priv.reindexQueue.size})`);
+      await m.dispose();
+    }
+
+    // B3: a first build that aborts is searchable but says it is incomplete
+    {
+      notes.clear();
+      disk.clear();
+      for (let i = 0; i < 900; i++) note(`n${i}`, `note ${i} about spinal fusion outcomes`);
+      const { m } = mk();
+      emb.calls = 0; emb.okCalls = 14; // the first window (13 batches) embeds, then the endpoint dies
+      let err = "";
+      await quiet(async () => { try { await m.rebuild(); } catch (e) { err = e instanceof Error ? e.message : String(e); } });
+      emb.okCalls = Infinity;
+      check(/progress saved/.test(err) && m.ready, `B3: the aborted first build keeps what it embedded (${err})`);
+      check(!m.complete && (m.lastRun?.remaining ?? 0) > 0, `B3: ...but is marked incomplete, with the notes it never reached (${m.lastRun?.remaining})`);
+      const { m: again, priv: pAgain } = mk();
+      await again.restore();
+      pAgain.flush.cancel();
+      check(again.ready && !again.complete, "B3: incompleteness survives a restart");
+      await again.rebuild();
+      check(again.complete && again.count > 800, `B3: finishing the build clears it (${again.count} chunks)`);
+      const { m: third, priv: pThird } = mk();
+      await third.restore();
+      pThird.flush.cancel();
+      check(third.complete, "B3: ...and that is saved");
+      await m.dispose(); await again.dispose(); await third.dispose();
+    }
   }
 }
 

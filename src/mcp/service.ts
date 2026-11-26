@@ -391,6 +391,8 @@ export class McpService {
       vaultPath: this.deps.vaultPath ?? null,
       referenceFolder: this.plugin.library.folder(),
       indexReady: this.plugin.indexManager.ready,
+      // False when the last run stopped early or left notes unembedded: searches work on what exists, but not on the whole library — call rebuild_search_index.
+      indexComplete: this.plugin.indexManager.complete,
       // True from the request until the run settles (an update keeps the index searchable, so indexReady alone says nothing).
       rebuilding: !!(this.plugin.indexManager.rebuilding || this.plugin.indexManager.rebuildPending),
       // Outcome of the last finished run (null before one finishes): `error` is set when it failed or its save did.

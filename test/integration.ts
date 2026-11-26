@@ -2146,10 +2146,14 @@ async function main() {
     ok(/edited abstract/.test(crashedText) && !/crash/.test(crashedText), "...with the OLD content of smith2024, not the unpersisted edit");
     // the old docs/vectors pair stays consistent (what the pre-generation layout got wrong)
     ok(await sameStore(snapBefore, mgrC), "...and every restored vector still belongs to its restored text");
-    // the next successful persist sweeps the orphans (and the stray tmp)
+    // the next successful persist sweeps this process's own crashed generation and the stray meta tmp, but not a
+    // generation it never wrote or loaded (another computer's live index, as far as it can tell)
     await priv.persist();
     const files3 = indexFiles();
-    ok(files3.length === 3 && !files3.some((f) => f.includes("orphan") || f.endsWith(".tmp")), `next persist sweeps orphans and tmp files: ${files3.join(", ")}`);
+    ok(files3.filter((f) => !f.includes("orphan")).length === 3 && !files3.includes("meta.json.tmp"), `next persist sweeps its own orphans and the tmp: ${files3.join(", ")}`);
+    ok(files3.includes("docs-orphan1.json"), "...and leaves a generation it does not know");
+    disk.delete(`${dir}/docs-orphan1.json`);
+    disk.delete(`${dir}/vectors-orphan1.f32.tmp`);
 
     // a recovered meta.json.tmp becomes the real meta.json at once; a later torn tmp write can't lose it
     {

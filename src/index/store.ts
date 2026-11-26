@@ -25,6 +25,10 @@ export interface StoredMeta {
   gen?: string;
   /** Endpoint fingerprint (origin + model, never a key) the vectors came from; absent in older metas. */
   endpoint?: string;
+  /** note path → file mtime (ms) when its chunks were embedded; a newer file on disk is stale (absent in older metas). */
+  mtimes?: Record<string, number>;
+  /** False when the run that wrote this stopped early or left notes unembedded (absent = complete). */
+  complete?: boolean;
 }
 
 export interface SearchHit {
@@ -86,8 +90,12 @@ export class VectorStore {
   /** Size of the vector arm's top slice (500; tests shrink it). */
   vectorArm = 500;
   private ti: TextIndex | null = null;
-  /** Row-major, L2-normalized (dot = cosine). Capacity grows ×1.5, or 5% once past 64 MB. */
+  /** Row-major, L2-normalized (dot = cosine): rows `0 … baseRows-1` live in `bank` — the buffer a restore
+   *  read, never copied or grown — and every later row in `tail`, which grows ×1.5 (5% past 64 MB). A
+   *  restored 1.3 GB bank therefore never has to be copied just to make room for one new paper. */
   private bank = new Float32Array(0);
+  private tail = new Float32Array(0);
+  private baseRows = 0;
   private rowOf = new Map<string, number>();
   private idAt: (string | null)[] = [];
   /** Rows whose text postings are gone (reusable) / not yet gone (see `TextIndex.epoch`). */
@@ -105,6 +113,10 @@ export class VectorStore {
   private byKey: Map<string, Set<string>> | null = null;
   /** note path → chunk-text hash, so a frontmatter-only write doesn't re-embed the note. */
   hashes: Record<string, string> = {};
+  /** note path → mtime of the file when it was embedded (0/absent = unknown, e.g. a pre-0.11.5 index). */
+  mtimes: Record<string, number> = {};
+  /** False once a run stopped early or left notes unembedded: the index answers, but not for the whole library. */
+  complete = true;
 
   get ready(): boolean {
     return this.ti !== null;
@@ -112,7 +124,7 @@ export class VectorStore {
 
   /** Floats the vector bank can hold (tests watch it to see that an edit did not reallocate it). */
   get bankCapacity(): number {
-    return this.bank.length;
+    return this.bank.length + this.tail.length;
   }
 
   /** Drop everything; store becomes not-ready until the next init/load. */
@@ -125,10 +137,14 @@ export class VectorStore {
     this.chunkIds = {};
     this.paths = {};
     this.hashes = {};
+    this.mtimes = {};
+    this.complete = true;
   }
 
   private clearBank(): void {
     this.bank = new Float32Array(0);
+    this.tail = new Float32Array(0);
+    this.baseRows = 0;
     this.rowOf = new Map();
     this.idAt = [];
     this.free = [];
@@ -148,20 +164,21 @@ export class VectorStore {
     if (row === undefined) {
       this.syncFree();
       row = this.free.pop();
-      // The bank is full (a restored one is sized exactly): rather than copy ~1 GB into a bigger
-      // one, take back a row freed a moment ago. Its vector slot is free at once; only its stale
-      // text postings are not, and `TextIndex.add` compacts them away on the row's re-add.
-      if (row === undefined && (this.idAt.length + 1) * this.dim > this.bank.length) row = this.pending.pop();
+      // Full (a restored bank is sized exactly): rather than grow the tail, take back a row freed a
+      // moment ago. Its vector slot is free at once; only its stale text postings are not, and
+      // `TextIndex.add` compacts them away on the row's re-add.
+      if (row === undefined && (this.idAt.length + 1) * this.dim > this.bank.length + this.tail.length) row = this.pending.pop();
       if (row === undefined) {
         row = this.idAt.length;
         this.idAt.push(null);
-        if ((row + 1) * this.dim > this.bank.length) {
-          const have = this.bank.length;
-          // Past ~64 MB, ×1.5 would be a 600 MB step on a 1.3 GB bank: grow by 5% (min 1024 rows).
+        const need = (row + 1 - this.baseRows) * this.dim;
+        if (need > this.tail.length) {
+          const have = this.tail.length;
+          // Past ~64 MB, ×1.5 would be a 600 MB step: grow by 5% (min 1024 rows).
           const next = have * 4 > BIG_BANK_BYTES ? have + Math.max(1024 * this.dim, Math.ceil(have * 0.05)) : Math.ceil(have * 1.5);
-          const grown = new Float32Array(Math.max((row + 1) * this.dim, next));
-          grown.set(this.bank);
-          this.bank = grown;
+          const grown = new Float32Array(Math.max(need, next));
+          grown.set(this.tail);
+          this.tail = grown;
         }
       }
       this.rowOf.set(id, row);
@@ -179,6 +196,16 @@ export class VectorStore {
     this.pending.push(row);
   }
 
+  /** The array holding a row's vector and where it starts there. */
+  private slot(row: number): [Float32Array, number] {
+    return row < this.baseRows ? [this.bank, row * this.dim] : [this.tail, (row - this.baseRows) * this.dim];
+  }
+
+  private vectorOf(row: number): Float32Array {
+    const [arr, at] = this.slot(row);
+    return arr.subarray(at, at + this.dim);
+  }
+
   /** Create a fresh DB for a given vector dimension + model id. Clears content. */
   init(dim: number, modelId: string, endpoint = ""): void {
     this.dim = dim;
@@ -188,6 +215,8 @@ export class VectorStore {
     this.paths = {};
     this.byKey = null;
     this.hashes = {};
+    this.mtimes = {};
+    this.complete = true;
     this.clearBank();
     this.ti = new TextIndex();
     this.seenEpoch = 0;
@@ -209,7 +238,8 @@ export class VectorStore {
     }
     chunks.forEach((c, i) => {
       const row = this.takeRow(c.id); // may reallocate the bank, so take the row first
-      unit(vectors[i], this.bank, row * this.dim);
+      const [arr, at] = this.slot(row);
+      unit(vectors[i], arr, at);
       ti.add(row, {
         id: c.id,
         citekey: c.citekey,
@@ -239,6 +269,7 @@ export class VectorStore {
     for (const p of this.pathsOf(citekey)) {
       delete this.paths[p];
       delete this.hashes[p];
+      delete this.mtimes[p];
     }
     this.byKey?.delete(citekey);
   }
@@ -257,7 +288,7 @@ export class VectorStore {
   }
 
   /** Record which note path holds a citekey's chunks (and the hash of the text embedded). */
-  setPath(path: string, citekey: string, hash?: string): void {
+  setPath(path: string, citekey: string, hash?: string, mtime?: number): void {
     const prev = this.paths[path];
     if (prev !== citekey) this.byKey?.get(prev)?.delete(path);
     this.paths[path] = citekey;
@@ -267,6 +298,7 @@ export class VectorStore {
       else this.byKey.set(citekey, new Set([path]));
     }
     if (hash) this.hashes[path] = hash;
+    if (mtime) this.mtimes[path] = mtime;
   }
 
   /** Re-key a tracked note path (rename/move) with its hash; false when `from` owns no chunks. */
@@ -279,6 +311,8 @@ export class VectorStore {
     this.byKey?.get(ck)?.add(to);
     if (this.hashes[from]) this.hashes[to] = this.hashes[from];
     delete this.hashes[from];
+    if (this.mtimes[from]) this.mtimes[to] = this.mtimes[from];
+    delete this.mtimes[from];
     return true;
   }
 
@@ -288,6 +322,11 @@ export class VectorStore {
 
   hashForPath(path: string): string | undefined {
     return this.hashes[path];
+  }
+
+  /** mtime of the note when its chunks were embedded; undefined when unknown. */
+  mtimeForPath(path: string): number | undefined {
+    return this.mtimes[path];
   }
 
   async search(
@@ -311,6 +350,7 @@ export class VectorStore {
     const q = new Float32Array(this.dim);
     unit(queryVec, q, 0);
     const dim = this.dim;
+    const base = this.baseRows;
     // Orama's hybrid gives *every* text hit its vector score too (its vector arm returns all docs
     // above `similarity: 0`), so score every row once and look scores up for text hits — keeping
     // only a top slice of the vector arm dropped that half for text-only hits and reordered results.
@@ -321,7 +361,8 @@ export class VectorStore {
     for (let row = 0; row < this.idAt.length; row++) {
       if (this.idAt[row] === null || (allowed && !allowed[row])) continue;
       let sc = 0;
-      for (let j = 0, o = row * dim; j < dim; j++) sc += q[j] * this.bank[o + j];
+      const arr = row < base ? this.bank : this.tail;
+      for (let j = 0, o = (row < base ? row : row - base) * dim; j < dim; j++) sc += q[j] * arr[o + j];
       sim[row] = sc;
       if (sc > maxVec) maxVec = sc;
       if (sc <= cut) continue;
@@ -358,7 +399,7 @@ export class VectorStore {
         year: Number(d.year) || 0,
         text: d.text,
         score,
-        vector: this.bank.subarray(row * dim, (row + 1) * dim),
+        vector: this.vectorOf(row),
       });
     }
     return out;
@@ -403,7 +444,7 @@ export class VectorStore {
       if (row === undefined || !ti.has(row)) throw new Error(`index/meta desync — rebuild required (missing doc ${id})`);
       rows[i] = row;
     });
-    const bank = this.bank;
+    const vectorOf = (row: number) => this.vectorOf(row);
     function* vectorSlices(maxBytes = VECTOR_SLICE_BYTES): Generator<ArrayBuffer> {
       const per = Math.max(1, Math.floor(maxBytes / (Math.max(dim, 1) * 4)));
       // do-while: an empty store still yields one (empty) buffer, so the file gets created
@@ -411,7 +452,7 @@ export class VectorStore {
       do {
         const to = Math.min(rows.length, from + per);
         const out = new Float32Array((to - from) * dim);
-        for (let i = from; i < to; i++) out.set(bank.subarray(rows[i] * dim, (rows[i] + 1) * dim), (i - from) * dim);
+        for (let i = from; i < to; i++) out.set(vectorOf(rows[i]), (i - from) * dim);
         yield out.buffer;
         from = to;
       } while (from < rows.length);
@@ -450,6 +491,8 @@ export class VectorStore {
       count: this.count,
       paths: this.paths,
       hashes: this.hashes,
+      mtimes: this.mtimes,
+      complete: this.complete,
       schema: INDEX_SCHEMA,
       endpoint: this.endpoint,
     };
@@ -474,6 +517,7 @@ export class VectorStore {
     // The loaded buffer is the bank (normalized in place): a second 1.3 GB array would double the peak.
     const view = new Float32Array(vectors);
     this.bank = view;
+    this.baseRows = docs.length;
     for (let i = 0; i < docs.length; i++) {
       const d = docs[i] as TextDoc;
       docs[i] = undefined; // let the parsed document go as soon as it is indexed
@@ -489,5 +533,7 @@ export class VectorStore {
     this.paths = meta.paths || {};
     this.byKey = null;
     this.hashes = meta.hashes || {};
+    this.mtimes = meta.mtimes || {};
+    this.complete = meta.complete !== false;
   }
 }

@@ -7,8 +7,8 @@ import { canHostedRerank, capPerReference, hostedRerank, mmr } from "./rerank";
 import { buildExpander, expandedTerm, Expander, Expansion, isForeignQuery, parseVocabulary } from "./expand";
 import { MeshThesaurus, MeshAddOptions } from "./thesaurus";
 import { mapPool } from "../util/pool";
-import { tagsOf } from "../util/json";
-import { FileIO, NodeFileIO, localIndexDir } from "./localFiles";
+import { tagsOf, text } from "../util/json";
+import { FileIO, NodeFileIO, localIndexDir, staleIndexFiles } from "./localFiles";
 
 import {
   chunkReference,
@@ -52,6 +52,21 @@ const OVERFETCH = 3;
 /** Embedding requests in flight during a full rebuild (a local Ollama just queues them). */
 const EMBED_WIDTH = 4;
 
+/** Embedding requests (or notes) failing in a row that mean the key or endpoint is broken: stop starting paid requests. */
+const MAX_CONSECUTIVE_FAILS = 5;
+
+/** A background reindex that throws is queued again this many times (each next flush); after that the note
+ *  waits for the next start, whose reconcile sees its newer mtime. */
+const MAX_REINDEX_RETRIES = 3;
+
+/** A queue longer than this is embedded in batches by the incremental rebuild (one request per note is too slow). */
+const CATCH_UP_BATCH = 50;
+
+/** The note's file mtime (0 when unknown — a test double without `stat`). */
+function mtimeOf(f: TFile): number {
+  return f.stat?.mtime ?? 0;
+}
+
 
 /** Orchestrates the embedding index: build, incremental update, persistence, search. */
 /** One search's rerank step (MCP reports it; `reason` when it was skipped). */
@@ -81,6 +96,13 @@ export class IndexManager {
   private chain: Promise<unknown> = Promise.resolve();
   private provider: EmbeddingProvider | null = null;
   private providerKey = "";
+  /** Index generations this process wrote or loaded: the only ones a persist may delete (the folder may be
+   *  shared with another computer's live generation). */
+  private ownGens = new Set<string>();
+  /** Failed background reindexes per path (see `MAX_REINDEX_RETRIES`). */
+  private retries = new Map<string, number>();
+  /** Set by the plugin: shows a message the user should see about background indexing. */
+  notify: ((message: string) => void) | null = null;
 
   constructor(
     private app: App,
@@ -168,6 +190,10 @@ export class IndexManager {
   get count(): number {
     return this.store.count;
   }
+  /** False when the last run stopped early or left notes unembedded: searches see only part of the library. */
+  get complete(): boolean {
+    return this.store.complete;
+  }
   get modelId(): string {
     return this.getProvider().id;
   }
@@ -233,6 +259,7 @@ export class IndexManager {
       const docs = await this.io.read(`${this.dir}/${meta.gen ? `docs-${meta.gen}.json` : "docs.json"}`);
       const vectors = await this.io.readBinary(`${this.dir}/${meta.gen ? `vectors-${meta.gen}.f32` : "vectors.f32"}`);
       await this.store.load(docs, vectors, meta);
+      if (meta.gen) this.ownGens.add(meta.gen); // the next persist supersedes it
       // The tmp was the only commit record, and the next persist stages its metadata in that same
       // file — make it the real meta.json before anything can overwrite it.
       if (metaFile !== this.metaPath) {
@@ -265,9 +292,16 @@ export class IndexManager {
 
   private async reconcileNow(): Promise<void> {
     if (!this.store.ready) return;
-    const live = new Set(this.files().map((f) => f.path));
+    const files = this.files();
+    const live = new Set(files.map((f) => f.path));
     if ((await this.dropMissing(live)) > 0) this.schedulePersist();
-    for (const p of live) if (!this.store.citekeyForPath(p)) this.reindexQueue.add(p);
+    for (const f of files) {
+      // Unknown to the index, or edited since it was embedded (a failed background embed, or an edit made
+      // while Obsidian was closed — neither raised an event). The mtime check reads nothing; `reindexNow`
+      // compares the content hash and skips what only had plugin-managed frontmatter written.
+      const was = this.store.mtimeForPath(f.path);
+      if (!this.store.citekeyForPath(f.path) || (was && mtimeOf(f) > was)) this.reindexQueue.add(f.path);
+    }
     if (this.reindexQueue.size) this.flush();
   }
 
@@ -295,6 +329,7 @@ export class IndexManager {
         year: yearFromIssued(fm.issued),
         tags: tagsOf(fm.tags),
         authors: authorNames(fm.author),
+        journal: text(fm["container-title"]),
         abstract: typeof fm.abstract === "string" ? fm.abstract : undefined,
         body: stripFrontmatter(content),
       },
@@ -303,7 +338,11 @@ export class IndexManager {
   }
 
   /** Counts of the last `rebuild()` (also set just before it throws, so a caller can report partial progress). */
-  lastRun: { mode: "update" | "fresh"; embedded: number; removed: number; failed: number; unchanged: number; error: string | null } | null = null;
+  lastRun: {
+    mode: "update" | "fresh"; embedded: number; removed: number; failed: number; unchanged: number; error: string | null;
+    /** Notes of the library the run never got to (it stopped early); 0 for a run that finished. */
+    remaining: number;
+  } | null = null;
 
   /** Bring the index in line with the vault: re-embed only new/changed notes and drop deleted ones
    *  (`update`, the default). `fresh` throws the index away and embeds every note. A different
@@ -340,9 +379,8 @@ export class IndexManager {
     // peaked at ~1 GB of extra heap on a 19k-note vault and crashed Obsidian's renderer.
     const WINDOW = 400;
     const batchSize = 32;
-    const MAX_CONSECUTIVE_FAILS = 5;
     const seen = new Set<string>();
-    const run = { mode: update ? ("update" as const) : ("fresh" as const), embedded: 0, removed: 0, failed: 0, unchanged: 0, error: null as string | null };
+    const run = { mode: update ? ("update" as const) : ("fresh" as const), embedded: 0, removed: 0, failed: 0, unchanged: 0, error: null as string | null, remaining: 0 };
     // Fresh: the old index is dropped first so two copies never sit in memory; if the build fails
     // the last persisted index is restored from disk below. Update keeps it (and search) live.
     if (!update) {
@@ -356,12 +394,13 @@ export class IndexManager {
     let lastError: unknown = null;
     let fatal = false;
     let dim = update ? this.store.dim : 0; // fresh: the first valid reply sets it
+    let doneNotes = 0;
     try {
-      let doneNotes = 0;
       for (let w = 0; w < files.length; w += WINDOW) {
         const chunks: Chunk[] = [];
-        const owners: { citekey: string; path: string; hash: string; from: number; to: number }[] = [];
+        const owners: { citekey: string; path: string; hash: string; mtime: number; from: number; to: number }[] = [];
         for (const f of files.slice(w, w + WINDOW)) {
+          const mtime = mtimeOf(f); // before the read: an edit during it leaves a newer mtime to be noticed
           const cs = await this.readChunks(f);
           const citekey = cs[0]?.citekey;
           if (!citekey) {
@@ -382,9 +421,10 @@ export class IndexManager {
           const hash = chunkHash(cs);
           if (update && this.store.citekeyForPath(f.path) === citekey && this.store.hashForPath(f.path) === hash) {
             run.unchanged++;
+            if (mtime) this.store.setPath(f.path, citekey, hash, mtime); // in memory only: the content is what is indexed
             continue;
           }
-          owners.push({ citekey, path: f.path, hash, from: chunks.length, to: chunks.length + cs.length });
+          owners.push({ citekey, path: f.path, hash, mtime, from: chunks.length, to: chunks.length + cs.length });
           chunks.push(...cs);
         }
         doneNotes = Math.min(files.length, w + WINDOW);
@@ -438,7 +478,8 @@ export class IndexManager {
               await this.store.removeCitekey(o.citekey);
             }
             await this.store.addChunks(chunks.slice(o.from, o.to), v as number[][]);
-            this.store.setPath(o.path, o.citekey, o.hash);
+            this.store.setPath(o.path, o.citekey, o.hash, o.mtime);
+            this.retries.delete(o.path);
             run.embedded++;
             this.dirty = true; // in memory only until persist() commits it
           }
@@ -462,6 +503,7 @@ export class IndexManager {
       }
     } catch (e) {
       run.error = e instanceof Error ? e.message : String(e);
+      run.remaining = Math.max(0, files.length - doneNotes);
       this.lastRun = run;
       // Update: what was embedded so far stays and is written, so the next run resumes from it. A fresh
       // build that got somewhere does the same unless the disk still holds a usable index of this model
@@ -473,6 +515,8 @@ export class IndexManager {
         if (this.store.ready) this.markClean(); // memory is the disk copy again
         throw e;
       }
+      // What is saved answers for only part of the library: say so, so Search / Chat / MCP do not take it for all of it.
+      this.store.complete = false;
       if (run.embedded || run.removed) {
         this.dirty = true;
         try { await this.persist(); } catch (pe) { console.error("[Refwright] could not save the partial index — kept in memory, retried on the next update", pe); }
@@ -488,6 +532,11 @@ export class IndexManager {
       this.store.reset();
       await this.clearPersisted();
       return 0;
+    }
+    // Complete means every note was attempted and none failed; a change of that flag is itself worth saving.
+    if (this.store.complete !== (run.failed === 0)) {
+      this.store.complete = run.failed === 0;
+      this.dirty = true;
     }
     // An update with nothing to do must not rewrite a multi-GB index.
     if (!update || run.embedded > 0 || run.removed > 0 || this.dirty) {
@@ -522,12 +571,16 @@ export class IndexManager {
    *  caller can skip embedding + persist. */
   private async reindexNow(file: TFile): Promise<boolean> {
     if (!this.store.ready) return false;
+    const mtime = mtimeOf(file); // before the read, as in rebuildNow
     const chunks = await this.readChunks(file);
     const oldCitekey = this.store.citekeyForPath(file.path);
     if (chunks.length) {
       const citekey = chunks[0].citekey;
       const hash = chunkHash(chunks);
-      if (oldCitekey === citekey && this.store.hashForPath(file.path) === hash) return false;
+      if (oldCitekey === citekey && this.store.hashForPath(file.path) === hash) {
+        if (mtime) this.store.setPath(file.path, citekey, hash, mtime); // same content: remember the newer mtime (memory only)
+        return false;
+      }
       // Another note already holds this citekey: removing + re-adding under it would
       // delete that note's chunks (removeCitekey clears every path with the key).
       // Keep the first note's chunks — rebuild() skips later duplicates the same way.
@@ -556,7 +609,7 @@ export class IndexManager {
       if (oldCitekey && oldCitekey !== citekey) await this.store.removeCitekey(oldCitekey);
       await this.store.removeCitekey(citekey);
       await this.store.addChunks(chunks, vecs);
-      this.store.setPath(file.path, citekey, hash);
+      this.store.setPath(file.path, citekey, hash, mtime);
       return true;
     }
     // Only a path the index tracks: a same-named note elsewhere must not delete this key's chunks.
@@ -649,13 +702,41 @@ export class IndexManager {
       const paths = [...this.reindexQueue].filter((p) => p.startsWith(prefix));
       this.reindexQueue.clear();
       let changed = false;
-      for (const p of paths) {
-        const f = this.app.vault.getAbstractFileByPath(p);
-        if (!(f instanceof TFile)) continue;
+      if (paths.length > CATCH_UP_BATCH && this.store.modelId === this.getProvider().id && !this.endpointChanged()) {
+        // One request per note would take hours (and never stops on a dead key): the update rebuild embeds
+        // in batches, reports progress and stops after MAX_CONSECUTIVE_FAILS failed requests. It saves
+        // for itself; whatever it did not reach is found again by the next start's reconcile.
+        this.notify?.(`Indexing ${paths.length.toLocaleString()} new or changed notes in the background…`);
         try {
-          if (await this.reindexNow(f)) changed = true;
+          await this.rebuildNow();
         } catch (e) {
-          console.error("[Refwright] reindex failed", p, e);
+          console.warn("[Refwright] background index update stopped", e);
+          this.notify?.(`Background indexing stopped: ${e instanceof Error ? e.message : String(e)} — run “Update search index” to finish.`);
+        }
+      } else {
+        let consecutive = 0;
+        for (let i = 0; i < paths.length; i++) {
+          const p = paths[i];
+          const f = this.app.vault.getAbstractFileByPath(p);
+          if (!(f instanceof TFile)) continue;
+          try {
+            if (await this.reindexNow(f)) changed = true;
+            consecutive = 0;
+            this.retries.delete(p);
+          } catch (e) {
+            console.error("[Refwright] reindex failed", p, e);
+            // Not lost: it stays pending for the next flush, a few times; after that its stale mtime in the
+            // index makes the next start's reconcile pick it up.
+            const n = (this.retries.get(p) ?? 0) + 1;
+            this.retries.set(p, n);
+            if (n <= MAX_REINDEX_RETRIES) this.reindexQueue.add(p);
+            if (++consecutive >= MAX_CONSECUTIVE_FAILS) {
+              // The key or endpoint is broken: leave the rest pending instead of failing each one after its retries.
+              for (const rest of paths.slice(i + 1)) this.reindexQueue.add(rest);
+              console.warn(`[Refwright] ${MAX_CONSECUTIVE_FAILS} reindexes failed in a row — the rest wait for the next flush`);
+              break;
+            }
+          }
         }
       }
       if (changed) this.dirty = true;
@@ -892,6 +973,7 @@ export class IndexManager {
     this.store.flush();
     const { parts, vectorSlices, meta } = await this.store.serializeStream();
     const gen = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    this.ownGens.add(gen); // from the first byte: a crash mid-write leaves an orphan this process may sweep
     const docsName = `docs-${gen}.json`;
     const vectorsName = `vectors-${gen}.f32`;
     let first = true;
@@ -919,25 +1001,28 @@ export class IndexManager {
     meta.gen = gen;
     await this.writeAtomicText(this.metaPath, JSON.stringify(meta));
     this.markClean();
-    // Committed. Everything else in the folder (previous generation, pre-generation docs.json /
-    // vectors.f32, orama.json, *.tmp, orphans of a crashed persist) is now dead weight; failing to
-    // delete it must not fail the persist.
+    // Committed. The generations this process wrote or loaded before this one, and the pre-generation
+    // files, are dead weight; another computer's generation is not ours to delete. Failing to delete
+    // must not fail the persist.
     try {
-      await this.sweep(this.io, this.dir, new Set(["meta.json", docsName, vectorsName]));
+      await this.sweep(this.io, this.dir, new Set(["meta.json", docsName, vectorsName]), this.ownGens);
     } catch (e) {
       console.warn("[Refwright] could not remove old index files", e);
     }
   }
 
   /** Remove index files in `dir` except the `keep` names: any `docs*.json`, `vectors*.f32`,
-   *  `meta.json`, pre-0.7 `orama.json`, and their `.tmp` stages. */
-  private async sweep(io: FileIO, dir: string, keep: Set<string>): Promise<void> {
+   *  `meta.json`, pre-0.7 `orama.json`, and their `.tmp` stages. With `own`, only what `staleIndexFiles`
+   *  allows (this process's superseded generations + pre-generation files), and `own` then forgets the
+   *  generations it removed. */
+  private async sweep(io: FileIO, dir: string, keep: Set<string>, own?: Set<string>): Promise<void> {
     if (!(await io.exists(dir))) return;
-    const own = /^(docs|vectors|meta|orama)(-[a-z0-9]+)?\.(json|f32)(\.tmp)?$/;
-    for (const p of (await io.list(dir)).files) {
-      const name = p.slice(p.lastIndexOf("/") + 1);
-      if (own.test(name) && !keep.has(name)) await io.remove(p);
-    }
+    const names = (await io.list(dir)).files.map((p) => p.slice(p.lastIndexOf("/") + 1));
+    const doomed = own
+      ? staleIndexFiles(names, keep, own)
+      : names.filter((n) => /^(docs|vectors|meta|orama)(-[a-z0-9]+)?\.(json|f32)(\.tmp)?$/.test(n) && !keep.has(n));
+    for (const name of doomed) await io.remove(`${dir}/${name}`);
+    if (own) for (const name of doomed) own.delete(/^(?:docs|vectors)-([a-z0-9]+)\./.exec(name)?.[1] ?? "");
   }
 
   /** Crash-safe write: stage to `<path>.tmp`, then rename into place so the target
