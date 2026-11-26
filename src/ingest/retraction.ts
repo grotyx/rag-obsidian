@@ -1,5 +1,4 @@
-import { requestUrl } from "obsidian";
-import { normalizeDoi, shortId } from "../graph/openalex";
+import { normalizeDoi, oaGet, shortId } from "../graph/openalex";
 import { CSLItem } from "../types";
 import { rec, str } from "../util/json";
 
@@ -20,7 +19,7 @@ export async function checkRetraction(item: CSLItem, mailto = ""): Promise<Retra
   else if (item.PMID) url = `${OPENALEX}/works/pmid:${item.PMID}`;
   else return null;
   url += "?select=is_retracted,title" + (mailto ? `&mailto=${encodeURIComponent(mailto)}` : "");
-  const res = await requestUrl({ url, throw: false });
+  const res = await oaGet(url);
   if (res.status >= 400 || !res.json) return null;
   const j = rec(res.json);
   // Publishers retitle withdrawn papers "RETRACTED: …" / "Retracted article: …"; a paper *about*

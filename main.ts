@@ -53,7 +53,7 @@ import * as writingCmd from "./src/commands/writing";
 import { buildMeshSynonyms } from "./src/commands/search";
 import * as oaCmd from "./src/commands/openaccess";
 import { backfillSummaries } from "./src/commands/backfill";
-import { cancelBatch } from "./src/ui/progress";
+import { cancelBatch, startBatch } from "./src/ui/progress";
 import { resummarizeActive, resummarizeOutdated } from "./src/commands/summaries";
 import { indexLinkedPdfs, indexLinkedPdfActive, linkPdfsInFolder } from "./src/commands/pdfs";
 import { FolderSuggestModal } from "./src/ui/FolderSuggestModal";
@@ -670,18 +670,28 @@ export default class ScholarRagPlugin extends Plugin {
   /** Build the citation graph over the whole library (one OpenAlex request per paper).
    *  Needed once; afterwards `CitationGraph.enqueue` keeps it current on its own. */
   async buildCitationGraph(): Promise<void> {
-    const notice = new Notice("Building citation graph…", 0);
+    const batch = startBatch(this, "Citation graph", this.library.entries().length);
+    if (!batch) return;
+    let outcome = "Citation graph build failed (see console)";
     try {
-      const n = await this.citationGraph.build((done, total) =>
-        notice.setMessage(`OpenAlex ${done}/${total}…`)
-      );
-      new Notice(`Citation graph: ${n} papers linked`);
+      const n = await this.citationGraph.build((done, _total, failed) => batch.tick(done, failed), batch.signal);
+      const r = this.citationGraph.lastBuild;
+      outcome = `Citation graph: ${n} papers linked`;
+      if (r) {
+        outcome += ` · ${r.resolved} resolved · ${r.failed} failed`;
+        if (r.stopped === "api-refused") {
+          outcome += ` · stopped early: OpenAlex kept refusing requests (rate limit or outage) — previous nodes kept, try again later`;
+        } else if (r.stopped === "cancelled") {
+          outcome += " · cancelled";
+        }
+      }
     } catch (e) {
       console.error("[Refwright] citation graph build failed", e);
-      new Notice(`Graph build failed: ${e instanceof Error ? e.message : String(e)}`);
+      outcome = `Graph build failed: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
-      notice.hide();
+      batch.finish(outcome);
     }
+    new Notice(outcome, 10000);
   }
 
   /** Update the search index (or rebuild it from scratch) with a progress notice (command palette + panes). */

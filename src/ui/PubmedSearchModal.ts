@@ -11,6 +11,7 @@ import {
   searchPubmedPage,
   fetchPubmedRecord,
   fetchPmcFullText,
+  PMC_FAILED_LABEL,
   buildTagsWithMesh,
   PubmedHit,
 } from "../ingest/pubmedSearch";
@@ -285,11 +286,17 @@ export class PubmedSearchModal extends Modal {
             let label = "PubMed abstract (not open access — full text not retrieved)";
             let tag = "pubmed-abstract";
             if (hit.pmc) {
-              const full = await fetchPmcFullText(hit.pmc, apiKey, email);
-              if (full) {
-                src = full;
-                label = `PMC full text (${hit.pmc}) — summarized from the complete article body`;
-                tag = "pmc-fulltext";
+              try {
+                const full = await fetchPmcFullText(hit.pmc, apiKey, email);
+                if (full) {
+                  src = full;
+                  label = `PMC full text (${hit.pmc}) — summarized from the complete article body`;
+                  tag = "pmc-fulltext";
+                }
+              } catch (e) {
+                // NCBI failed us: not the same thing as "not open access".
+                label = PMC_FAILED_LABEL;
+                console.warn("[Refwright] PMC full text failed", hit.pmc, e);
               }
             }
             if (src) {

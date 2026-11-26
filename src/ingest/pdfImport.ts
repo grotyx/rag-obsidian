@@ -25,7 +25,7 @@ export class PdfImporter {
     const id = isNoticeHead(text) ? null : findIdentifier(text);
     if (id) {
       try {
-        item = await fetchMetadata(id, this.settings.pubmedApiKey);
+        item = await fetchMetadata(id, this.settings.pubmedApiKey, this.settings.openalexMailto);
         if (!titleInHead(item.title, text)) {
           // The first DOI may belong to a paper this one only cites.
           console.debug(`PDF import: ${id.value} resolved to "${item.title}", which is not on the PDF's first page — using LLM extraction`);

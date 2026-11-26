@@ -6,7 +6,7 @@ import { resolveWork, relatedWorks } from "../graph/openalex";
 import { detectId, fetchMetadata } from "../ingest/metadata";
 import { mapPool, POOL_WIDTH } from "../util/pool";
 import { startBatch } from "../ui/progress";
-import { str, text, numLike } from "../util/json";
+import { str, text, numLike, tagKey, tagsOf } from "../util/json";
 
 /** Write a Dataview-powered dashboard note (live, sortable). Falls back to a static table. */
 export async function buildDashboard(plugin: ScholarRagPlugin): Promise<void> {
@@ -102,24 +102,34 @@ export async function backfillCitationCounts(plugin: ScholarRagPlugin): Promise<
   const notice = new Notice(`Citation counts 0/${entries.length}…`, 0);
   let done = 0;
   let updated = 0;
+  let unchanged = 0;
+  let failed = 0;
   try {
     for (const { item, file } of entries) {
       // A failed lookup skips this note instead of aborting the whole pass.
       const w = await resolveWork(item, plugin.settings.openalexMailto).catch((err: unknown) => {
+        failed++;
         console.warn("[Refwright] OpenAlex lookup failed for", file.path, err);
         return null;
       });
       if (w) {
-        await plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-          fm.cited_by_count = w.citedByCount;
-          if (!fm.openalex_id) fm.openalex_id = w.openalexId;
-        });
-        updated++;
+        // Rewriting a note whose count did not move is a pointless vault write (and, on a synced
+        // vault, a pointless upload) — across a big library it is most of them.
+        const same = numLike(item.cited_by_count) === w.citedByCount && (!!item.openalex_id || !w.openalexId);
+        if (same) {
+          unchanged++;
+        } else {
+          await plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+            fm.cited_by_count = w.citedByCount;
+            if (!fm.openalex_id) fm.openalex_id = w.openalexId;
+          });
+          updated++;
+        }
       }
       done++;
       notice.setMessage(`Citation counts ${done}/${entries.length}…`);
     }
-    new Notice(`Updated citation counts for ${updated} reference(s).`);
+    new Notice(`Citation counts: ${updated} updated · ${unchanged} unchanged` + (failed ? ` · ${failed} lookups failed (see console)` : ""));
   } catch (e) {
     new Notice(`Citation count backfill failed: ${e instanceof Error ? e.message : e}`);
   } finally {
@@ -171,7 +181,7 @@ export async function enrichMetadata(plugin: ScholarRagPlugin): Promise<void> {
       POOL_WIDTH,
       async (t) => {
         try {
-          const fresh = await fetchMetadata(detectId(t.idStr), plugin.settings.pubmedApiKey);
+          const fresh = await fetchMetadata(detectId(t.idStr), plugin.settings.pubmedApiKey, plugin.settings.openalexMailto);
           writes = writes
             .catch(() => {}) // an earlier note's failed write must not fail this one
             .then(async () => {
@@ -209,20 +219,24 @@ export async function enrichMetadata(plugin: ScholarRagPlugin): Promise<void> {
   new Notice(outcome);
 }
 
-/** Rename (or delete, if newTag is empty) a tag across every reference note. */
+/** Rename (or delete, if newTag is empty) a tag across every reference note. Tags are compared the
+ *  way search and the filters read them (`tagsOf`): a scalar `tags: foo`, a numeric `2024` and a
+ *  `#foo` all count, and a typed `#foo` finds `foo`. */
 export async function renameTag(
   plugin: ScholarRagPlugin,
   oldTag: string,
   newTag: string
 ): Promise<number> {
+  const from = tagKey(oldTag);
+  const to = tagKey(newTag);
+  if (!from) return 0;
   let n = 0;
-  for (const { file } of plugin.library.entries()) {
-    const fm = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-    if (!fm || !Array.isArray(fm.tags) || !fm.tags.includes(oldTag)) continue;
+  for (const { file, item } of plugin.library.entries()) {
+    if (!tagsOf(item.tags).includes(from)) continue;
     await plugin.app.fileManager.processFrontMatter(file, (f: Record<string, unknown>) => {
-      const t = new Set<string>(((f.tags as string[]) || []).filter(Boolean));
-      t.delete(oldTag);
-      if (newTag) t.add(newTag);
+      const t = new Set<string>(tagsOf(f.tags));
+      t.delete(from);
+      if (to) t.add(to);
       f.tags = [...t];
     });
     n++;

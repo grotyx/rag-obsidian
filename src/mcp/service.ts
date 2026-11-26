@@ -617,9 +617,15 @@ export class McpService {
       : { abstract: "", pmc: "" };
     const storedPmc = typeof item.PMCID === "string" || typeof item.PMCID === "number" ? String(item.PMCID) : "";
     const pmc = storedPmc || record.pmc || "";
-    const full = pmc
-      ? await this.deps.fetchPmcFullText(pmc, this.plugin.settings.pubmedApiKey, this.plugin.settings.openalexMailto)
-      : "";
+    let pmcFailed = false;
+    let full = "";
+    if (pmc) {
+      try {
+        full = await this.deps.fetchPmcFullText(pmc, this.plugin.settings.pubmedApiKey, this.plugin.settings.openalexMailto);
+      } catch {
+        pmcFailed = true; // NCBI failed us: say so, instead of passing the abstract off as "full text not available"
+      }
+    }
     const storedAbstract = typeof item.abstract === "string" ? item.abstract : "";
     const sourceText = full || record.abstract || storedAbstract;
     if (!sourceText) throw new Error("NO_SOURCE_TEXT: reference has no PMC full text or abstract");
@@ -629,7 +635,9 @@ export class McpService {
       citekey, path: file.path, metadata: item, hash: note.hash, sourceType,
       sourceLabel: full
         ? `PMC full text (${pmc}) — complete article body`
-        : record.abstract ? "PubMed abstract (full text not retrieved)" : "Stored metadata abstract (full text not retrieved)",
+        : pmcFailed
+          ? `${record.abstract ? "PubMed" : "Stored metadata"} abstract (PMC full text could not be fetched — try again later)`
+          : record.abstract ? "PubMed abstract (full text not retrieved)" : "Stored metadata abstract (full text not retrieved)",
       sourceText: limited,
       sourceTruncated: limited.length < sourceText.length,
     };

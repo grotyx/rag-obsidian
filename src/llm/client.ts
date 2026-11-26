@@ -1,46 +1,18 @@
-import { requestUrl } from "obsidian";
 import { rec, arr, str } from "../util/json";
-
-/** Providers answer 429 when too many requests land at once — and the batch paths deliberately
- *  run 15 papers in parallel. Retry those (and transient 5xx) with exponential backoff, honouring
- *  Retry-After when the provider sends one, so a burst degrades into a wait instead of a row of
- *  "summary failed" notices. */
-const RETRY_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
-const MAX_ATTEMPTS = 4;
-
-async function backoff(wait: number, res?: { headers?: Record<string, unknown> }): Promise<number> {
-  const raw = res?.headers?.["retry-after"] ?? res?.headers?.["Retry-After"];
-  const header = Number(raw);
-  // Jitter matters more than the base delay here: without it the 15 workers that hit the limit
-  // together also wake together and reproduce the burst that caused it.
-  const base = Number.isFinite(header) && header > 0 ? header * 1000 : wait;
-  const delay = base * (0.5 + Math.random());
-  await new Promise((r) => window.setTimeout(r, Math.min(delay, 30000)));
-  return wait * 2;
-}
-
-/** Retried request, with the transport injectable so tests can fake failures. */
-export async function requestWithRetry(
-  opts: Parameters<typeof requestUrl>[0],
-  call: typeof requestUrl = requestUrl
-): Promise<Awaited<ReturnType<typeof requestUrl>>> {
-  let wait = 1000;
-  for (let attempt = 1; ; attempt++) {
-    let res: Awaited<ReturnType<typeof requestUrl>>;
-    try {
-      res = await call(opts);
-    } catch (e) {
-      // Connection reset / timeout / DNS: same degraded-wait treatment as a 429.
-      if (attempt >= MAX_ATTEMPTS) throw e;
-      wait = await backoff(wait);
-      continue;
-    }
-    if (!RETRY_STATUS.has(res.status) || attempt >= MAX_ATTEMPTS) return res;
-    wait = await backoff(wait, res);
-  }
-}
+import { requestWithRetry } from "../util/retry";
 import { ScholarRagSettings, effective, isOpenRouter } from "../types";
 import { runCli } from "./cli";
+
+export { requestWithRetry };
+
+/** An empty completion is a failure, not an answer: a reasoning model that spends its token cap on
+ *  thinking, or a filtered reply, comes back 200 with no text. Same stance as the Anthropic path. */
+function nonEmpty(text: string, who: string): string {
+  if (!text.trim()) {
+    throw new Error(`${who} returned an empty answer (a reasoning model may have used up the token cap — raise it or pick a non-reasoning model)`);
+  }
+  return text;
+}
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -132,10 +104,8 @@ export class LLMClient {
       throw: false,
     });
     if (res.status >= 400) throw new Error(`OpenAI ${res.status}: ${res.text?.slice(0, 200)}`);
-    // Empty-text throw is Anthropic-only by design (reasoning-model token caps); the
-    // OpenAI-compatible and Ollama paths keep the endpoint default here.
     const first = rec(arr(rec(res.json as unknown).choices)[0]);
-    return str(rec(first.message).content);
+    return nonEmpty(str(rec(first.message).content), "OpenAI-compatible endpoint");
   }
 
   private async ollama(messages: ChatMessage[], system: string): Promise<string> {
@@ -151,6 +121,6 @@ export class LLMClient {
       throw: false,
     });
     if (res.status >= 400) throw new Error(`Ollama ${res.status}: ${res.text?.slice(0, 200)}`);
-    return str(rec(rec(res.json as unknown).message).content);
+    return nonEmpty(str(rec(rec(res.json as unknown).message).content), "Ollama");
   }
 }

@@ -138,52 +138,82 @@ export class CitationGraph {
     }
   }
 
-  private async persist(): Promise<void> {
+  private async persist(data: GraphData = this.data): Promise<void> {
     const a = this.app.vault.adapter;
     const dir = this.path.split("/").slice(0, -1).join("/");
     if (!(await a.exists(dir))) await a.mkdir(dir);
-    await a.write(this.path, JSON.stringify(this.data));
+    await a.write(this.path, JSON.stringify(data));
   }
 
-  /** Build the graph over the whole library (1 OpenAlex request per paper). */
-  build(onProgress?: (done: number, total: number) => void): Promise<number> {
-    return this.serialized(() => this.buildNow(onProgress));
+  /** How the last full build went (for the Notice): papers resolved on OpenAlex, lookups that
+   *  failed (rate limit / offline — their previous node is kept), and why it stopped early. */
+  lastBuild: { total: number; resolved: number; failed: number; stopped: "cancelled" | "api-refused" | null } | null = null;
+
+  /** Build the graph over the whole library (1 OpenAlex request per paper). `signal` stops it
+   *  after the current paper; what was resolved so far is kept and saved. */
+  build(onProgress?: (done: number, total: number, failed: number) => void, signal?: AbortSignal): Promise<number> {
+    return this.serialized(() => this.buildNow(onProgress, signal));
   }
 
-  private async buildNow(onProgress?: (done: number, total: number) => void): Promise<number> {
+  /** This many lookups in a row failing means the API is refusing us (daily budget gone, outage):
+   *  carrying on would only burn the rest of the library on futile, slow retries. */
+  private static readonly REFUSED_AFTER = 10;
+  /** Save the graph every this many resolved papers, so a crash or quit does not lose a long run. */
+  private static readonly CHECKPOINT_EVERY = 200;
+
+  private async buildNow(onProgress?: (done: number, total: number, failed: number) => void, signal?: AbortSignal): Promise<number> {
     this.addQueue.clear(); // a full pass covers everything queued
     const entries = this.library.entries(); // one vault pass (list()+getItem() per note was O(n²))
-    const data: GraphData = { byCitekey: {}, idToCitekey: {} };
+    // Start from the previous graph and overwrite per note: a lookup that fails keeps its old node,
+    // a definitive not-found drops it, and a stopped build leaves the rest as it was.
+    const data: GraphData = { byCitekey: { ...this.data.byCitekey }, idToCitekey: { ...this.data.idToCitekey } };
+    const drop = (ck: string) => {
+      const n = data.byCitekey[ck];
+      if (!n) return;
+      if (data.idToCitekey[n.openalexId] === ck) delete data.idToCitekey[n.openalexId];
+      delete data.byCitekey[ck];
+    };
     let done = 0;
     let failed = 0;
+    let resolved = 0;
+    let streak = 0;
+    let stopped: "cancelled" | "api-refused" | null = null;
     for (const e of entries) {
+      if (signal?.aborted) {
+        stopped = "cancelled";
+        break;
+      }
       // One paper's network failure must not abort the whole build: keep going and
       // preserve the previously resolved node (transient 429/offline), like flushAdds.
       let w: Awaited<ReturnType<typeof resolveWork>> = null;
       let threw = false;
       try {
         w = await resolveWork(e.item, this.settings.openalexMailto);
+        streak = 0;
       } catch (err) {
         failed++;
         threw = true;
         console.warn(`[Refwright] OpenAlex lookup failed for "${e.citekey}" — keeping the previous node`, err);
-        w = null;
       }
+      if (!threw) drop(e.citekey); // answered: the old node is replaced, or gone if OpenAlex has nothing
       if (w && w.openalexId) {
         // `backfillId` is about to write openalex_id when the note had none, so that is the source.
         data.byCitekey[e.citekey] = { openalexId: w.openalexId, refs: w.referencedWorks, src: storedSource(graphSource(e.item), w.openalexId) };
         data.idToCitekey[w.openalexId] = e.citekey;
         // Frontmatter-only write: the indexer's content hash keeps this from re-embedding the note.
-        await this.backfillId(e.file, w.openalexId);
-      } else if (threw && this.data.byCitekey[e.citekey]) {
-        // Transient failure (e.g. 429): keep the previously resolved node. A definitive
-        // not-found (404, title mismatch) drops it instead, so stale edges don't outlive the id.
-        const prev = this.data.byCitekey[e.citekey];
-        data.byCitekey[e.citekey] = prev;
-        data.idToCitekey[prev.openalexId] = e.citekey;
+        if (!e.item.openalex_id) await this.backfillId(e.file, w.openalexId);
+        if (++resolved % CitationGraph.CHECKPOINT_EVERY === 0) await this.persist(data);
       }
-      onProgress?.(++done, entries.length);
+      onProgress?.(++done, entries.length, failed);
+      if (threw && ++streak >= CitationGraph.REFUSED_AFTER) {
+        stopped = "api-refused";
+        break;
+      }
     }
+    // Notes that are gone from the library take their nodes with them.
+    const live = new Set(entries.map((e) => e.citekey));
+    for (const ck of Object.keys(data.byCitekey)) if (!live.has(ck)) drop(ck);
+    this.lastBuild = { total: entries.length, resolved, failed, stopped };
     if (failed) console.warn(`[Refwright] citation-graph build: ${failed} lookup(s) failed, previous nodes kept`);
     this.data = data;
     this.missingCache.clear();

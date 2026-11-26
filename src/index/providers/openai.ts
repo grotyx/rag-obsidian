@@ -1,4 +1,4 @@
-import { requestWithRetry } from "../../llm/client";
+import { requestWithRetry } from "../../util/retry";
 import { ScholarRagSettings, effective } from "../../types";
 import { EmbeddingProvider } from "../embedding";
 import { rec, arr, num, isNumberArray } from "../../util/json";

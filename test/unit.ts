@@ -25,22 +25,25 @@ import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
 import { findIdentifier, titleInHead, isPdfMagic, extractPdfHighlights, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, stashedText, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
 import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summarize";
-import { buildTags, MIN_TAGS, fetchPubmedRecord } from "../src/ingest/pubmedSearch";
+import { buildTags, MIN_TAGS, fetchPubmedRecord, fetchPmcFullText, tablesToText } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
 import { CitationGraph } from "../src/graph/citations";
 import { itemMemo } from "../src/cite/itemMemo";
 import { inTextLabel, clusterLabelMap, extractCitekeys, replaceCitations } from "../src/cite/bibliography";
 import { mcpSetupSnippets } from "../src/mcp/http";
-import { parseCitingPage, titlesMatch, resolveWork } from "../src/graph/openalex";
+import { parseCitingPage, titlesMatch, resolveWork, fetchTitles } from "../src/graph/openalex";
 import { rerankHttpReason, mmr, parseRerankResponse, canHostedRerank, hostedRerank } from "../src/index/rerank";
 import { isOpenRouter } from "../src/types";
-import { requestWithRetry } from "../src/llm/client";
+import { requestWithRetry, LLMClient } from "../src/llm/client";
+import { retryAfterMs, retryDelayMs } from "../src/util/retry";
+import { bridgeSource } from "../src/mcp/bridge";
+import { backfillCitationCounts, renameTag } from "../src/commands/library";
 import { mergeDuplicateGroups } from "../src/commands/merge";
-import { replaceHighlights } from "../src/commands/openaccess";
+import { replaceHighlights, findOpenAccessForActive } from "../src/commands/openaccess";
 import { updateBibliography } from "../src/commands/writing";
 import { isStaleSummary, staleModelGroups } from "../src/commands/summaries";
-import { TFile, parseYaml } from "obsidian";
+import { TFile, Notice, parseYaml } from "obsidian";
 import {
   buildCliArgs,
   cliCandidates,
@@ -3663,6 +3666,197 @@ check(
   );
   const px = mcpSetupSnippets("/Users/o'b/My Vault", "/p q/mcp-bridge.cjs", "darwin");
   check(px.claudeCode.endsWith(`--vault '/Users/o'\\''b/My Vault'`), `posix: '\\'' escape unchanged (${px.claudeCode})`);
+}
+
+// ---- network fixes ----
+{
+  const realFetch = globalThis.fetch;
+  const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
+    new Response(JSON.stringify(body), { status, headers });
+  (Notice.prototype as unknown as { setMessage: () => void; hide: () => void }).setMessage = () => undefined;
+  (Notice.prototype as unknown as { hide: () => void }).hide = () => undefined;
+  try {
+    // B16/B4: titles keep their Unicode letters; a token like "L4-5" names no paper
+    check(titlesMatch("요추 협착증", "요추 협착증"), "network: identical Korean titles match");
+    check(titlesMatch("경피적 내시경 요추 추간판 절제술의 결과", "경피적 내시경 요추 추간판 절제술의 결과."), "network: Korean title, trailing punctuation only");
+    check(!titlesMatch("요추 협착증 2020", "경추 골절 2020"), "network: different Korean titles sharing only a year do not match");
+    check(!titlesMatch("L4-5 요추 협착증의 수술 결과", "L4-5 경추 골절의 수술 결과"), "network: different Korean titles sharing L4-5 do not match");
+    check(!titlesMatch("L4-5", "L4-5"), "network: a title that reduces to 'l45' matches nothing");
+
+    // B13: Retry-After is the earliest retry time
+    check(retryAfterMs("120") === 120000, "network: Retry-After seconds");
+    check(retryAfterMs("Wed, 21 Oct 2015 07:29:00 GMT", Date.parse("Wed, 21 Oct 2015 07:27:30 GMT")) === 90000, "network: Retry-After HTTP-date");
+    check(retryAfterMs("soon") === null && retryAfterMs(undefined) === null, "network: unreadable Retry-After -> null");
+    for (let i = 0; i < 20; i++) {
+      const d = retryDelayMs(1000, { "Retry-After": "40" });
+      assert.ok(d >= 40000 && d <= 40500, `Retry-After 40 s is a floor, never jittered down (${d})`);
+    }
+    check(retryDelayMs(1000, { "retry-after": "3600" }) <= 120500, "network: a huge Retry-After is capped at two minutes");
+    check(retryDelayMs(1000, { "retry-after": "120" }) >= 120000, "network: Retry-After 120 s is honoured in full (old cap was 30 s)");
+    const fb = Array.from({ length: 30 }, () => retryDelayMs(2000, {}));
+    check(fb.every((d) => d >= 1000 && d <= 3000), "network: the fallback backoff is jittered around its base");
+
+    // B14: OpenAlex retries on 429 everywhere, not just in resolveWork
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return calls === 1
+        ? json(429, {}, { "retry-after": "0" })
+        : json(200, { results: [{ id: "https://openalex.org/W5", title: "T", cited_by_count: 3 }], is_retracted: true, title: "x" });
+    }) as typeof fetch;
+    const titles = await fetchTitles(["W5"]);
+    check(calls === 2 && titles.get("W5")?.citedByCount === 3, `network: fetchTitles retries a 429 (${calls} calls)`);
+    calls = 0;
+    const ret = await checkRetraction({ type: "article-journal", DOI: "10.1/r" });
+    check(calls === 2 && ret?.retracted === true, `network: checkRetraction retries a 429 (${calls} calls)`);
+
+    // B14: the graph build stops when the API keeps refusing, and says what happened
+    const mkGraph = (n: number, fetchImpl: typeof fetch, writes: { n: number }) => {
+      globalThis.fetch = fetchImpl;
+      const items = Array.from({ length: n }, (_, i) => {
+        const file = new TFile(`References/k${i}.md`);
+        return { citekey: `k${i}`, item: { citekey: `k${i}`, DOI: `10.1/k${i}` } as Record<string, unknown>, file };
+      });
+      const app = {
+        vault: { adapter: { exists: async () => true, read: async () => "{}", write: async () => void writes.n++, mkdir: async () => {} }, getAbstractFileByPath: () => null },
+        metadataCache: { getFileCache: () => null },
+        fileManager: { processFrontMatter: async () => {} },
+      };
+      const lib = { entries: () => items, folder: () => "References", getFile: () => null };
+      return new CitationGraph(app as never, lib as never, { openalexMailto: "" } as never, "_x");
+    };
+    let hits = 0;
+    const w1 = { n: 0 };
+    const refused = mkGraph(14, (async () => (hits++, json(403, {}))) as typeof fetch, w1);
+    await refused.build();
+    check(hits === 10, `network: ten refused lookups in a row stop the build (${hits} requests)`);
+    check(refused.lastBuild?.stopped === "api-refused" && refused.lastBuild.failed === 10 && refused.lastBuild.resolved === 0, `network: the build reports resolved/failed/stopped (${JSON.stringify(refused.lastBuild)})`);
+    check(w1.n === 1, "network: a stopped build still saves once");
+
+    // B9.3: a long build is checkpointed, and cancellation stops it after the current paper
+    const w2 = { n: 0 };
+    const big = mkGraph(450, (async (u: string | URL | Request) => json(200, { id: `https://openalex.org/W${String(u).length}${hits++}`, referenced_works: [] })) as typeof fetch, w2);
+    await big.build();
+    check(w2.n >= 3, `network: a 450-paper build checkpoints every 200 resolved (${w2.n} writes)`);
+    check(big.lastBuild?.resolved === 450 && big.size === 450, "network: all 450 resolved");
+    const ctl = new AbortController();
+    const w3 = { n: 0 };
+    let seen = 0;
+    const cancelled = mkGraph(50, (async () => (++seen === 5 && ctl.abort(), json(200, { id: `https://openalex.org/W${seen}`, referenced_works: [] }))) as typeof fetch, w3);
+    await cancelled.build(undefined, ctl.signal);
+    check(cancelled.lastBuild?.stopped === "cancelled" && seen === 5, `network: cancel stops after the current paper (${seen} requests)`);
+
+    // B9.3: backfillCitationCounts does not rewrite a note whose count did not move
+    {
+      globalThis.fetch = (async () => json(200, { id: "https://openalex.org/W1", cited_by_count: 5, referenced_works: [] })) as typeof fetch;
+      let writes = 0;
+      const mk = (n: string, extra: Record<string, unknown>) => ({ citekey: n, file: new TFile(`References/${n}.md`), item: { citekey: n, DOI: `10.1/${n}`, ...extra } });
+      const plugin = {
+        library: { entries: () => [mk("same", { cited_by_count: 5, openalex_id: "W1" }), mk("moved", { cited_by_count: 2, openalex_id: "W1" }), mk("fresh", {})] },
+        settings: { openalexMailto: "" },
+        app: { fileManager: { processFrontMatter: async () => void writes++ } },
+      };
+      await backfillCitationCounts(plugin as never);
+      check(writes === 2, `network: backfillCitationCounts skips an unchanged note (${writes} writes, want 2)`);
+    }
+
+    // B15: Unpaywall errors are not "no open access"
+    globalThis.fetch = (async () => json(503, {})) as typeof fetch;
+    let uErr = "";
+    await findOpenAccess("10.1/x", "user@uni.edu").catch((e: Error) => (uErr = e.message));
+    check(/503/.test(uErr), `network: an Unpaywall 503 throws instead of returning null (${uErr})`);
+    globalThis.fetch = (async () => json(404, {})) as typeof fetch;
+    check((await findOpenAccess("10.1/x", "user@uni.edu")) === null, "network: an Unpaywall 404 (DOI unknown) is a genuine no-copy null");
+
+    // B18: the open-access command leaves a non-reference note alone
+    {
+      globalThis.fetch = (async () => json(200, { is_oa: true, best_oa_location: { url_for_landing_page: "https://x", url_for_pdf: "https://x.pdf", version: "publishedVersion" }, oa_locations: [] })) as typeof fetch;
+      let wrote = 0;
+      const file = new TFile("Manuscript.md");
+      const plugin = {
+        activeRef: () => null, // a note without a citekey
+        settings: { openalexMailto: "user@uni.edu" },
+        app: {
+          workspace: { getActiveFile: () => file },
+          metadataCache: { getFileCache: () => ({ frontmatter: { DOI: "10.1/ms" } }) },
+          fileManager: { processFrontMatter: async () => void wrote++ },
+        },
+      };
+      await findOpenAccessForActive(plugin as never);
+      check(wrote === 0, "network: findOpenAccessForActive never writes oa_* into a note that is not a reference");
+    }
+
+    // B14.1: Crossref gets the contact e-mail and a 429 is retried
+    const crossrefUrls: string[] = [];
+    globalThis.fetch = (async (u: string | URL | Request) => {
+      crossrefUrls.push(String(u));
+      return crossrefUrls.length === 1
+        ? json(429, {}, { "retry-after": "0" })
+        : json(200, { message: { title: ["A Crossref title"], type: "journal-article", DOI: "10.1/cr" } });
+    }) as typeof fetch;
+    const cr = await fetchMetadata({ kind: "doi", value: "10.1/cr" }, "", "me@uni.edu");
+    check(cr.title === "A Crossref title" && crossrefUrls.length === 2, `network: Crossref 429 is retried (${crossrefUrls.length} calls)`);
+    check(crossrefUrls.every((u) => u.includes("mailto=me%40uni.edu")), "network: Crossref requests carry mailto");
+    globalThis.fetch = (async () => json(404, {})) as typeof fetch;
+    let crErr = "";
+    await fetchMetadata({ kind: "doi", value: "10.1/none" }).catch((e: Error) => (crErr = e.message));
+    check(/not found/i.test(crErr), `network: Crossref 404 reads as not found (${crErr})`);
+
+    // B14.3: an empty completion is an error on the OpenAI-compatible and Ollama paths
+    globalThis.fetch = (async () => json(200, { choices: [{ message: { content: null } }] })) as typeof fetch;
+    const openaiClient = new LLMClient({ ...DEFAULT_SETTINGS, llmProvider: "openai", openaiApiKey: "k", llmModel: "m" });
+    let llmErr = "";
+    await openaiClient.chat([{ role: "user", content: "hi" }], "sys").catch((e: Error) => (llmErr = e.message));
+    check(/empty answer/.test(llmErr) && /token cap/.test(llmErr), `network: openai empty content throws (${llmErr})`);
+    globalThis.fetch = (async () => json(200, { message: { content: "  " } })) as typeof fetch;
+    llmErr = "";
+    await new LLMClient({ ...DEFAULT_SETTINGS, llmProvider: "ollama", llmModel: "m" }).chat([{ role: "user", content: "hi" }], "sys").catch((e: Error) => (llmErr = e.message));
+    check(/empty answer/.test(llmErr), `network: ollama empty content throws (${llmErr})`);
+    globalThis.fetch = (async () => json(200, { choices: [{ message: { content: "ok" } }] })) as typeof fetch;
+    check((await openaiClient.chat([{ role: "user", content: "hi" }], "sys")) === "ok", "network: a real answer still comes back");
+
+    // B5: PMC tables survive in reading order; a failed request is not an empty paper
+    const xml =
+      "<body><p>Intro text.</p><table-wrap id=\"t1\"><label>Table 2</label><caption><title>Adverse events</title></caption>" +
+      "<table><thead><tr><th>Event</th><th>Arm A</th><th>Arm B</th></tr></thead><tbody>" +
+      "<tr><td>Dural tear</td><td>4 (3.1%)</td><td>1 (0.8%)</td></tr><tr><td>p</td><td>&lt;0.05</td><td>&amp; more</td></tr></tbody></table></table-wrap><p>After.</p></body>";
+    const flat = tablesToText(xml);
+    check(!flat.includes("<table") && flat.includes("Table 2 Adverse events"), "network: table label and caption kept");
+    check(flat.includes("Dural tear | 4 (3.1%) | 1 (0.8%)"), "network: table cells joined with ' | '");
+    check(flat.indexOf("Intro text.") < flat.indexOf("Dural tear") && flat.indexOf("Dural tear") < flat.indexOf("After."), "network: table sits in reading order");
+    check(flat.includes("p | &lt;0.05 | &amp; more"), "network: decoded < and & are re-escaped for the XML parse");
+    globalThis.fetch = (async () => json(503, {})) as typeof fetch;
+    let pmcErr = "";
+    await fetchPmcFullText("PMC1", "", "").catch((e: Error) => (pmcErr = e.message));
+    check(/503/.test(pmcErr), `network: a failed PMC request throws instead of returning "" (${pmcErr})`);
+
+    // B15 (Carbon): renameTag handles scalar, '#'-prefixed and numeric tags
+    {
+      const notes: Record<string, Record<string, unknown>> = {
+        a: { tags: "diskectomy" }, // scalar
+        b: { tags: ["2024", "spine"] },
+        c: { tags: [2024, "x"] }, // unquoted numeric YAML
+        d: { tags: ["other"] },
+      };
+      const files = Object.keys(notes).map((k) => Object.assign(new TFile(`References/${k}.md`), { key: k }));
+      const plugin = {
+        library: { entries: () => files.map((file) => ({ file, item: notes[(file as unknown as { key: string }).key] })) },
+        app: {
+          fileManager: {
+            processFrontMatter: async (f: TFile, fn: (m: Record<string, unknown>) => void) => fn(notes[(f as unknown as { key: string }).key]),
+          },
+        },
+      };
+      check((await renameTag(plugin as never, "#diskectomy", "diskectomy-new")) === 1 && JSON.stringify(notes.a.tags) === '["diskectomy-new"]', `network: scalar tag renamed, typed #-prefix tolerated (${JSON.stringify(notes.a.tags)})`);
+      check((await renameTag(plugin as never, "2024", "y2024")) === 2 && (notes.c.tags as string[]).includes("y2024") && !(notes.c.tags as unknown[]).includes(2024), `network: numeric tag renamed (${JSON.stringify(notes.c.tags)})`);
+      check((await renameTag(plugin as never, "x", "")) === 1 && JSON.stringify(notes.c.tags) === '["y2024"]', "network: empty new tag deletes");
+    }
+
+    // B17: the bridge no longer calls a slow answer a closed Obsidian
+    check(bridgeSource().includes("took longer than 120 s") && /timeout: (120_?000|12e4)/.test(bridgeSource()), "network: bridge timeout is 120 s with its own message");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 }
 
 console.log(`unit: all ${passed} assertions passed`);

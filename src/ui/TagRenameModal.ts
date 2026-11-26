@@ -1,6 +1,7 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { renameTag } from "../commands/library";
+import { tagsOf } from "../util/json";
 
 /** Rename (or delete) a topic tag across every reference note. */
 export class TagRenameModal extends Modal {
@@ -21,15 +22,10 @@ export class TagRenameModal extends Modal {
       cls: "setting-item-description",
     });
 
-    // Suggest existing tags (sorted by frequency).
+    // Suggest the tags reference notes carry (sorted by frequency) — not every tag in the vault.
     const counts = new Map<string, number>();
-    for (const file of this.app.vault.getMarkdownFiles()) {
-      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      if (fm && Array.isArray(fm.tags))
-        for (const t of fm.tags as unknown[]) {
-          const tag = String(t);
-          counts.set(tag, (counts.get(tag) || 0) + 1);
-        }
+    for (const e of this.plugin.library.entries()) {
+      for (const tag of tagsOf(e.item.tags)) counts.set(tag, (counts.get(tag) || 0) + 1);
     }
     const top = [...counts.entries()].sort((a, b) => b[1] - a[1]);
 

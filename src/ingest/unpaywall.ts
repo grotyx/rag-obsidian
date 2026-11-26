@@ -1,4 +1,5 @@
 import { requestUrl } from "obsidian";
+import { requestWithRetry } from "../util/retry";
 import { arr, rec, str } from "../util/json";
 
 export interface OAResult {
@@ -20,11 +21,17 @@ export async function findOpenAccess(doi: string, email: string): Promise<OAResu
   if (!mail || /@example\.(com|org|net)$/i.test(mail)) {
     throw new Error('Unpaywall needs your contact e-mail — set "Contact e-mail" in the plugin settings.');
   }
-  const res = await requestUrl({
-    url: `https://api.unpaywall.org/v2/${encodeURIComponent(clean)}?email=${encodeURIComponent(mail)}`,
-    throw: false,
-  });
-  if (res.status >= 400 || !res.json) return null;
+  const res = await requestWithRetry(
+    { url: `https://api.unpaywall.org/v2/${encodeURIComponent(clean)}?email=${encodeURIComponent(mail)}`, throw: false },
+    requestUrl,
+    new Set([429])
+  );
+  // 404 = Unpaywall has no record of this DOI: a real "nothing found". Any other failure (503, a
+  // rate limit that outlasted the retries, a network error thrown above) says nothing about open
+  // access, so it must not read as "no OA copy" — throw and let the caller report a failed lookup.
+  if (res.status === 404) return null;
+  if (res.status >= 400) throw new Error(`Unpaywall returned HTTP ${res.status}`);
+  if (!res.json) throw new Error("Unpaywall returned no data");
   const j = rec(res.json);
   const best = rec(j.best_oa_location);
   // `best_oa_location` often has only a landing page (for PLOS it is just the DOI link) while a

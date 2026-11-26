@@ -1,4 +1,5 @@
 import { requestUrl } from "obsidian";
+import { requestWithRetry } from "../util/retry";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
 import { decodeEntities } from "../cite/bibliography";
@@ -57,7 +58,7 @@ export function detectId(raw: string): SourceId {
 export async function fetchMetadata(id: SourceId, pubmedApiKey = "", mailto = ""): Promise<CSLItem> {
   switch (id.kind) {
     case "doi":
-      return fetchCrossref(id.value);
+      return fetchCrossref(id.value, mailto);
     case "pmid":
       return fetchPubMed(id.value, pubmedApiKey);
     case "arxiv":
@@ -108,11 +109,15 @@ const CROSSREF_TYPE: Record<string, string> = {
   "dataset": "dataset",
 };
 
-async function fetchCrossref(doi: string): Promise<CSLItem> {
-  const res = await requestUrl({
-    url: `https://api.crossref.org/works/${encodeURIComponent(doi)}`,
+async function fetchCrossref(doi: string, mailto = ""): Promise<CSLItem> {
+  // `mailto` puts the request in Crossref's polite pool; without it a batch of 15 parallel lookups
+  // is anonymous and the first 429 would end the paper. 429/5xx are retried with backoff.
+  const res = await requestWithRetry({
+    url: `https://api.crossref.org/works/${encodeURIComponent(doi)}${mailto.trim() ? `?mailto=${encodeURIComponent(mailto.trim())}` : ""}`,
     headers: { Accept: "application/json" },
+    throw: false,
   });
+  if (res.status >= 400) throw new Error(res.status === 404 ? "DOI not found in Crossref" : `Crossref returned ${res.status}`);
   const json: unknown = res.json;
   const msgRaw = rec(json).message;
   if (msgRaw === undefined || msgRaw === null) throw new Error("Crossref returned no data");

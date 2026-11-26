@@ -102,6 +102,9 @@ function bridgeMain(): void {
       }
       return;
     }
+    // A slow answer is not a closed Obsidian: a PMC fetch queued behind a PubMed batch, or a
+    // rate-limit backoff, can legitimately take a minute or more. Say which one this was.
+    let timedOut = false;
     try {
       const body = await new Promise<string>((resolve, reject) => {
         const req = http.request({
@@ -114,7 +117,7 @@ function bridgeMain(): void {
             "content-type": "application/json",
             "content-length": Buffer.byteLength(line),
           },
-          timeout: 30_000,
+          timeout: 120_000,
         }, (res: { statusCode?: number; on: (event: string, fn: (value?: Buffer) => void) => void }) => {
           // Collect raw Buffers and decode once: a multibyte character split across two TCP
           // chunks would otherwise become U+FFFD, and update_note could save that permanently.
@@ -132,7 +135,10 @@ function bridgeMain(): void {
             else reject(new Error(`Obsidian MCP returned HTTP ${res.statusCode ?? 0}`));
           });
         });
-        req.on("timeout", () => req.destroy(new Error("Obsidian MCP request timed out")));
+        req.on("timeout", () => {
+          timedOut = true;
+          req.destroy(new Error("Obsidian MCP took longer than 120 s to answer. Obsidian is running, but this call is slow (a batch or a rate-limited service?) — try again shortly"));
+        });
         req.on("error", reject);
         req.end(line);
       });
@@ -140,7 +146,7 @@ function bridgeMain(): void {
     } catch (error) {
       if (request.id !== undefined) {
         const message = error instanceof Error ? error.message : String(error);
-        process.stdout.write(failure(request.id, `${message}. Confirm Obsidian is open with MCP enabled.`) + "\n");
+        process.stdout.write(failure(request.id, timedOut ? `${message}.` : `${message}. Confirm Obsidian is open with MCP enabled.`) + "\n");
       }
     }
   }

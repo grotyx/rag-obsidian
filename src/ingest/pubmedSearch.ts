@@ -3,6 +3,8 @@ import { keywordsToTags } from "../data/reference";
 import { esummaryToItem } from "./metadata";
 import { CSLItem } from "../types";
 import { ncbiGate } from "./ncbi";
+import { decodeEntities } from "../cite/bibliography";
+import { requestWithRetry } from "../util/retry";
 import { parseMeshList } from "./summarize";
 import { str, rec, arr, numLike } from "../util/json";
 
@@ -220,24 +222,60 @@ async function canonicalizeMeshTerms(
   return out;
 }
 
-/** efetch a PubMed Central full-text body (open-access articles only). */
+/** Row break marker for `tablesToText`: survives the whitespace collapse of the body text, then
+ *  becomes a newline. A private-use character, so it cannot collide with article text. */
+const ROW = "\uE000";
+
+/** Replace each JATS `<table-wrap>` with plain text in reading order: label + caption, then one
+ *  line per row, cells joined with " | ". Tables are where arm-level counts live, so a "complete
+ *  article body" without them can miss the one number a summary needs. Pure; the XML is NCBI's
+ *  efetch output, so a regex over its fixed element names is enough. */
+export function tablesToText(xml: string): string {
+  const plain = (frag: string | undefined): string =>
+    decodeEntities((frag ?? "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+  // The result is parsed as XML again: decoded `<` / `&` ("p<0.05") must go back to entities.
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return xml.replace(/<table-wrap\b[\s\S]*?<\/table-wrap>/g, (block) => {
+    const head = [plain(/<label>([\s\S]*?)<\/label>/.exec(block)?.[1]), plain(/<caption>([\s\S]*?)<\/caption>/.exec(block)?.[1])]
+      .filter(Boolean)
+      .join(" ");
+    const rows = [...block.matchAll(/<tr\b[\s\S]*?<\/tr>/g)]
+      .map((tr) => [...tr[0].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/g)].map((c) => plain(c[1])).join(" | "))
+      .filter((r) => r.replace(/[ |]/g, "") !== "");
+    const parts = [head, ...rows].filter(Boolean);
+    return parts.length ? esc(`${ROW}${parts.join(ROW)}${ROW}`) : "";
+  });
+}
+
+/** efetch a PubMed Central full-text body (open-access articles only). Returns "" only when PMC
+ *  answered with nothing usable (a stub record); a request that FAILED (HTTP error, offline) throws,
+ *  so a caller never reports an open-access paper as "not open access" because NCBI was busy. */
 export async function fetchPmcFullText(pmc: string, apiKey?: string, email?: string): Promise<string> {
   const a = auth(apiKey, email);
   const numeric = String(pmc).replace(/^PMC/i, "");
+  await ncbiGate(!!apiKey);
+  const res = await requestWithRetry(
+    { url: `${EUTILS}/efetch.fcgi?db=pmc&id=${numeric}&retmode=xml${a}`, throw: false },
+    requestUrl,
+    new Set([429])
+  );
+  if (res.status >= 400) throw new Error(`PMC full text request failed (HTTP ${res.status})`);
   try {
-    await ncbiGate(!!apiKey);
-    const res = await requestUrl({
-      url: `${EUTILS}/efetch.fcgi?db=pmc&id=${numeric}&retmode=xml${a}`,
-    });
-    const doc = new DOMParser().parseFromString(res.text, "text/xml");
-    doc.querySelectorAll("ref-list, table-wrap, fig").forEach((n) => n.remove());
+    const doc = new DOMParser().parseFromString(tablesToText(res.text), "text/xml");
+    doc.querySelectorAll("ref-list, fig").forEach((n) => n.remove());
     const body = doc.querySelector("body");
-    const text = (body?.textContent || "").replace(/\s+/g, " ").trim();
+    const text = (body?.textContent || "")
+      .replace(/\s+/g, " ")
+      .replace(new RegExp(` ?${ROW} ?`, "g"), "\n")
+      .trim();
     return text.length > 400 ? text : ""; // PMC sometimes returns only a stub record
   } catch {
-    return "";
+    return ""; // unparseable body: nothing usable, but the request itself worked
   }
 }
+
+/** Source label for a summary that had to fall back to the abstract because the PMC request failed. */
+export const PMC_FAILED_LABEL = "PubMed abstract (PMC full text could not be fetched — abstract only)";
 
 /** A note should carry enough topic tags for the graph view to cluster it. PubMed's own MeSH
  *  is authoritative but thin (or absent) on recent papers, so the summary's MeSH suggestions

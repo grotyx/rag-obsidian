@@ -1,7 +1,7 @@
 import { App, FuzzySuggestModal, Notice, TFile } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { CSLItem } from "../types";
-import { fetchPubmedRecord, fetchPmcFullText } from "../ingest/pubmedSearch";
+import { fetchPubmedRecord, fetchPmcFullText, PMC_FAILED_LABEL } from "../ingest/pubmedSearch";
 import { summarizeSource } from "../ingest/summarize";
 import { summaryBlock } from "../data/reference";
 import { replaceSummaryBlock } from "../cite/bibliography";
@@ -40,11 +40,16 @@ async function rewriteSummary(
     label = "PubMed abstract (not open access — full text not retrieved)";
     tag = "pubmed-abstract";
     if (rec.pmc) {
-      const full = await fetchPmcFullText(rec.pmc, apiKey, email);
-      if (full) {
-        src = full;
-        label = `PMC full text (${rec.pmc}) — summarized from the complete article body`;
-        tag = "pmc-fulltext";
+      try {
+        const full = await fetchPmcFullText(rec.pmc, apiKey, email);
+        if (full) {
+          src = full;
+          label = `PMC full text (${rec.pmc}) — summarized from the complete article body`;
+          tag = "pmc-fulltext";
+        }
+      } catch (err) {
+        label = PMC_FAILED_LABEL; // NCBI failed us: not the same thing as "not open access"
+        console.warn("[Refwright] PMC full text failed", rec.pmc, err);
       }
     }
   }

@@ -1,6 +1,7 @@
 import { requestUrl } from "obsidian";
 import { CSLItem } from "../types";
 import { str, num, rec, arr } from "../util/json";
+import { requestWithRetry } from "../util/retry";
 
 const BASE = "https://api.openalex.org";
 
@@ -32,33 +33,34 @@ function sanitizeFilterValue(value: string): string {
   return value.replace(/[,|]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
 }
 
+/** Same folding as `normTitle` in data/library.ts: Unicode letters and digits only, so a Korean
+ *  or Chinese title keeps its text instead of collapsing to whatever ASCII it happens to contain. */
 function normalizeTitle(title: string): string {
-  return title.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 /** Do two titles name the same paper? Exact after normalizing, or one contains the other and the
- *  shorter is at least 90% of the longer ("X: a trial" must not match "X: a trial protocol"). */
+ *  shorter is at least 90% of the longer ("X: a trial" must not match "X: a trial protocol").
+ *  A title that normalizes to almost nothing ("L4-5" -> "l45") names no paper: refused, because
+ *  two unrelated records would compare equal. Non-ASCII text carries more per character, so it
+ *  needs 4 characters, ASCII 8. */
 export function titlesMatch(a: string, b: string): boolean {
   const x = normalizeTitle(a);
   const y = normalizeTitle(b);
-  if (!x || !y) return false;
+  const meaningful = (t: string) => t.length >= (/[^a-z0-9]/.test(t) ? 4 : 8);
+  if (!meaningful(x) || !meaningful(y)) return false;
   if (x === y) return true;
   const [short, long] = x.length <= y.length ? [x, y] : [y, x];
   return long.includes(short) && short.length >= 0.9 * long.length;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
+/** 429 is the one that matters (OpenAlex's rate limit); 500 is left alone so a real server error
+ *  surfaces at once instead of after three backoffs. */
+const OA_RETRY: ReadonlySet<number> = new Set([408, 429, 502, 503, 504]);
 
-/** requestUrl with a single retry after ~1s on 429 (rate limit). */
-async function requestRetry429(url: string) {
-  let res = await requestUrl({ url, throw: false });
-  if (res.status === 429) {
-    await sleep(1000);
-    res = await requestUrl({ url, throw: false });
-  }
-  return res;
+/** Every OpenAlex GET goes through here: retried with backoff, honouring Retry-After. */
+export async function oaGet(url: string) {
+  return requestWithRetry({ url, throw: false }, requestUrl, OA_RETRY);
 }
 
 function toWork(w: unknown): OAWork {
@@ -82,7 +84,7 @@ export async function resolveWork(item: CSLItem, mailto = ""): Promise<OAWork | 
   else if (item.DOI) url = `${BASE}/works/https://doi.org/${encodeURIComponent(normalizeDoi(String(item.DOI)))}`;
   else if (item.PMID) url = `${BASE}/works/pmid:${item.PMID}`;
   else if (item.title) {
-    const r = await requestRetry429(
+    const r = await oaGet(
       withMailto(
         `${BASE}/works?filter=title.search:${encodeURIComponent(sanitizeFilterValue(String(item.title)))}&per-page=1`,
         mailto
@@ -100,7 +102,7 @@ export async function resolveWork(item: CSLItem, mailto = ""): Promise<OAWork | 
     return null;
   }
 
-  const res = await requestRetry429(withMailto(url, mailto));
+  const res = await oaGet(withMailto(url, mailto));
   const resJson: unknown = res.json;
   if (res.status === 404) return null;
   if (res.status >= 400) throw new Error(`OpenAlex returned ${res.status}`);
@@ -120,7 +122,7 @@ export async function relatedWorks(
   else if (item.PMID) url = `${BASE}/works/pmid:${item.PMID}`;
   else return [];
   url += "?select=related_works";
-  const res = await requestUrl({ url: withMailto(url, mailto), throw: false });
+  const res = await oaGet(withMailto(url, mailto));
   const resJson: unknown = res.json;
   const ids = arr(rec(resJson).related_works).map((v) => shortId(str(v)));
   if (!ids.length) return [];
@@ -136,13 +138,9 @@ export async function fetchTitles(
   const out = new Map<string, { title: string; citedByCount: number }>();
   for (let i = 0; i < ids.length; i += 50) {
     const batch = ids.slice(i, i + 50);
-    const r = await requestUrl({
-      url: withMailto(
-        `${BASE}/works?filter=openalex_id:${batch.join("|")}&select=id,title,cited_by_count&per-page=50`,
-        mailto
-      ),
-      throw: false,
-    });
+    const r = await oaGet(
+      withMailto(`${BASE}/works?filter=openalex_id:${batch.join("|")}&select=id,title,cited_by_count&per-page=50`, mailto)
+    );
     const rJson: unknown = r.json;
     for (const w of arr(rec(rJson).results)) {
       const wRec = rec(w);
@@ -201,7 +199,7 @@ export async function citingWorks(
   if (!work?.openalexId) return null;
   const filter = `cites:${work.openalexId}` + (opts.fromYear ? `,from_publication_date:${opts.fromYear}-01-01` : "");
   const select = "id,ids,title,display_name,publication_year,primary_location,is_retracted,type,cited_by_count";
-  const res = await requestRetry429(
+  const res = await oaGet(
     withMailto(
       `${BASE}/works?filter=${filter}&sort=publication_date:desc&per-page=${opts.limit ?? 25}&select=${select}`,
       opts.mailto ?? ""

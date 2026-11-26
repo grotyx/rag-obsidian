@@ -1,7 +1,7 @@
 import { Notice } from "obsidian";
 import type ScholarRagPlugin from "../../main";
 import { SummarySections } from "../types";
-import { fetchPubmedRecord, fetchPmcFullText, buildTags, MIN_TAGS } from "../ingest/pubmedSearch";
+import { fetchPubmedRecord, fetchPmcFullText, buildTags, MIN_TAGS, PMC_FAILED_LABEL } from "../ingest/pubmedSearch";
 import { summarizeSource, suggestMeshTerms } from "../ingest/summarize";
 import { summaryBlock } from "../data/reference";
 import { replaceSummaryBlock, extractSummaryBlock } from "../cite/bibliography";
@@ -169,11 +169,16 @@ export async function backfillSummaries(
           let label = "PubMed abstract (not open access — full text not retrieved)";
           sourceTag = "pubmed-abstract";
           if (pmc) {
-            const full = await fetchPmcFullText(pmc, apiKey, email);
-            if (full) {
-              src = full;
-              label = `PMC full text (${pmc}) — summarized from the complete article body`;
-              sourceTag = "pmc-fulltext";
+            try {
+              const full = await fetchPmcFullText(pmc, apiKey, email);
+              if (full) {
+                src = full;
+                label = `PMC full text (${pmc}) — summarized from the complete article body`;
+                sourceTag = "pmc-fulltext";
+              }
+            } catch (err) {
+              label = PMC_FAILED_LABEL; // NCBI failed us: not the same thing as "not open access"
+              console.warn("[Refwright] PMC full text failed", pmc, err);
             }
           }
           summary = await summarizeSource(llm, e.item, src, label, plugin.settings.summaryLanguage);

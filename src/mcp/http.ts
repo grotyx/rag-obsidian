@@ -263,7 +263,7 @@ export class McpHttpServer {
     const server = http.createServer((req, res) => {
       void this.handle(req, res, port, authorized);
     });
-    server.requestTimeout = 35_000;
+    server.requestTimeout = 125_000; // just above the bridge's 120 s, so the bridge is the one to give up
     server.headersTimeout = 10_000;
     server.maxHeadersCount = 32;
     await new Promise<void>((resolve, reject) => {

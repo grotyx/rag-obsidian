@@ -9,7 +9,7 @@ import { appendStash, hasStashedText, resolvePdfLink } from "../ingest/pdfStash"
 import { mapPool } from "../util/pool";
 import { startBatch } from "../ui/progress";
 import { findPdfFile } from "./pdfs";
-import { str, rec } from "../util/json";
+import { str } from "../util/json";
 
 /** One row of `Library.entries()` — the shape the batch commands iterate and the single-note
  *  commands adapt `plugin.activeRef()` into, so both feed the same per-note core. */
@@ -23,10 +23,12 @@ const OA_DOWNLOAD_POOL_WIDTH = 4;
 
 /** Look up an open-access PDF for the active reference note (Unpaywall) and store it. */
 export async function findOpenAccessForActive(plugin: ScholarRagPlugin): Promise<void> {
-  const file = plugin.app.workspace.getActiveFile();
-  const fm = file ? rec(plugin.app.metadataCache.getFileCache(file)?.frontmatter) : {};
-  const doi = str(fm.DOI);
-  if (!file || !doi) {
+  // `activeRef` insists on a citekey: a manuscript that merely carries a DOI must not get oa_* fields.
+  const r = plugin.activeRef();
+  if (!r) return;
+  const file = r.file;
+  const doi = str(r.fm.DOI);
+  if (!doi) {
     new Notice("Open a reference note that has a DOI");
     return;
   }
