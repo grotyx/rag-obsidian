@@ -481,6 +481,10 @@ async function serviceChecks(): Promise<void> {
   assert.equal(hashed.references[0]?.citekey, "smith2024", "list_references: '#Spine' matches the Spine tag");
   await service.callTool("search_library", { query: "question", tags: [" #Spine"] });
   assert.deepEqual((searchArgs[1] as { tags?: string[] }).tags, ["Spine"], "search_library: '#' stripped from tag filters");
+  await service.callTool("search_library", { query: "question", included: true, design: ["RCT"], excludeRetracted: true });
+  assert.deepEqual(searchArgs[1], { included: true, design: ["RCT"], excludeRetracted: true }, "search_library: clinical filters reach the index");
+  const schemaProps = (MCP_TOOLS.find((t) => t.name === "search_library")!.inputSchema as { properties: Record<string, unknown> }).properties;
+  assert.ok(["included", "design", "excludeRetracted"].every((k) => k in schemaProps), "search_library schema lists the clinical filters");
   assert.equal(refs.references[0].summarySource, null);
   const ref = await service.callTool("get_reference", { citekey: "smith2024" }) as any;
   assert.equal(ref.fullTextOmitted, true);

@@ -1,5 +1,6 @@
 import type ScholarRagPlugin from "../../main";
 import { SearchFilters } from "../index/store";
+import { DESIGNS } from "../data/screening";
 import { tagKey, tagsOf } from "../util/json";
 
 /** Year range + author + tag chips, shared by the search and chat panes.
@@ -12,6 +13,9 @@ export class FilterRow {
   private authorEl: HTMLInputElement;
   private tagEl: HTMLInputElement;
   private chipsEl: HTMLElement;
+  private designEl: HTMLInputElement;
+  private includedEl: HTMLInputElement;
+  private retractedEl: HTMLInputElement;
 
   constructor(host: HTMLElement, private plugin: ScholarRagPlugin) {
     const row = host.createDiv({ cls: "srag-filters" });
@@ -39,6 +43,21 @@ export class FilterRow {
     tagInput.addEventListener("change", () => this.commitTag()); // a datalist pick with the mouse
  // a datalist pick with the mouse
 
+    this.designEl = field("text", "srag-author", "Design");
+    this.designEl.setAttr("list", `${listId}-design`);
+    const designList = row.createEl("datalist");
+    designList.id = `${listId}-design`;
+    for (const d of DESIGNS) designList.createEl("option", { value: d });
+    const check = (label: string, on: boolean) => {
+      const wrap = row.createEl("label", { cls: "srag-filter-check" });
+      const el = wrap.createEl("input", { type: "checkbox" });
+      el.checked = on;
+      wrap.createSpan({ text: label });
+      return el;
+    };
+    this.includedEl = check("Included only", false);
+    this.retractedEl = check("Exclude retracted", true);
+
     this.chipsEl = host.createDiv({ cls: "srag-chips" });
     this.renderChips();
   }
@@ -58,7 +77,12 @@ export class FilterRow {
     const yearFrom = Number(this.fromEl.value.trim());
     const yearTo = Number(this.toEl.value.trim());
     const author = this.authorEl.value.trim();
+    const design = this.designEl.value.split(",").map((d) => d.trim()).filter(Boolean);
     return {
+      ...(this.includedEl.checked ? { included: true } : {}),
+      ...(design.length ? { design } : {}),
+      // Explicit false (not omitted): chat treats a missing key as "exclude", so unchecking must say so.
+      excludeRetracted: this.retractedEl.checked,
       ...(yearFrom ? { yearFrom } : {}),
       ...(yearTo ? { yearTo } : {}),
       ...(author ? { author } : {}),
@@ -69,6 +93,8 @@ export class FilterRow {
   clear(): void {
     this.tags = [];
     for (const el of this.textInputs) el.value = "";
+    this.includedEl.checked = false;
+    this.retractedEl.checked = true;
     this.renderChips();
   }
 

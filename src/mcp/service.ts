@@ -48,6 +48,9 @@ export const MCP_TOOLS: McpTool[] = [
       year_to: integer("Latest publication year.", 1000, 3000),
       author: string("Author family name, matched case-insensitively."),
       tags: strings("Tags that every result must contain."),
+      included: { type: "boolean", description: "Only references screened include (screening field include = \"include\")." },
+      design: strings("Only references whose screening design equals one of these, case-insensitive."),
+      excludeRetracted: { type: "boolean", description: "Drop references marked retracted: true." },
       rerank: { type: "boolean", description: "Reorder results with the hosted cross-encoder (one extra network call, under a second; it raised nDCG@10 from 0.62 to 0.81 on a 96-question benchmark). Default true; pass false for a faster, retrieval-order search. The reply's `reranked` says whether it ran and `rerankSkipped` why not." },
     }, ["query"]),
     annotations: { ...readOnly, openWorldHint: true },
@@ -411,6 +414,10 @@ export class McpService {
     if (author) filters.author = author;
     const tags = stringArrayArg(args, "tags");
     if (tags) filters.tags = tags.map(tagKey).filter((t) => t !== "");
+    if (args.included === true) filters.included = true;
+    const design = stringArrayArg(args, "design");
+    if (design?.length) filters.design = design;
+    if (args.excludeRetracted === true) filters.excludeRetracted = true;
     return filters;
   }
 

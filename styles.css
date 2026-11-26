@@ -105,6 +105,13 @@
 .srag-tag-input {
   flex: 1 1 7em;
 }
+.srag-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
 .srag-chips {
   display: flex;
   flex-wrap: wrap;

@@ -3441,7 +3441,7 @@ check(
     f = fr.filters();
     check(f.tags?.join() === "Spine,Fusion", `FilterRow: a change event (datalist pick) commits the tag (${JSON.stringify(f.tags)})`);
     fr.clear();
-    check(Object.keys(fr.filters()).length === 0, "FilterRow: clear() empties everything");
+    check(JSON.stringify(fr.filters()) === '{"excludeRetracted":true}', "FilterRow: clear() empties everything (exclude retracted is back on)");
   }
 
   // ---- library fixes: chat note path ----
@@ -4163,8 +4163,46 @@ check(
   await r1.m.dispose();
   await m.dispose();
 }
+// ---- filters fixes ----
+{
+  const { describeFilters, needsReference, referenceAllowed } = await import("../src/index/store");
+  const { RagChat } = await import("../src/chat/rag");
+  const inc = { include: "include", design: "RCT" };
+  const ex = { include: "exclude", design: "Cohort study", retracted: true };
+  assert.equal(referenceAllowed({}, ex), true, "no filter keeps everything");
+  assert.equal(needsReference({ yearFrom: 2020, tags: ["a"] }), false, "index-level filters need no note lookup");
+  assert.equal(needsReference({ included: true }), true);
+  assert.equal(referenceAllowed({ included: true }, inc), true, "included: include passes");
+  assert.equal(referenceAllowed({ included: true }, ex), false, "included: exclude fails");
+  assert.equal(referenceAllowed({ included: true }, {}), false, "included: unscreened fails");
+  assert.equal(referenceAllowed({ included: true }, null), false, "included: unknown note fails");
+  assert.equal(referenceAllowed({ design: ["rct", "case series"] }, inc), true, "design is case-insensitive, any of the list");
+  assert.equal(referenceAllowed({ design: ["case series"] }, inc), false);
+  assert.equal(referenceAllowed({ design: ["rct"] }, {}), false, "design: a note without one fails");
+  assert.equal(referenceAllowed({ excludeRetracted: true }, ex), false, "retracted: true is dropped");
+  assert.equal(referenceAllowed({ excludeRetracted: true }, { retracted: "true" }), false, "retracted: 'true' too");
+  assert.equal(referenceAllowed({ excludeRetracted: true }, { retracted: false }), true);
+  assert.equal(referenceAllowed({ excludeRetracted: false }, ex), true, "off keeps retracted ones");
+  assert.equal(
+    describeFilters({ included: true, design: ["RCT", "Cohort study"], excludeRetracted: true, author: "kim" }),
+    "author: kim · included only · design: RCT / Cohort study",
+    "describeFilters covers the clinical filters");
+  assert.equal(describeFilters({ excludeRetracted: false }), "retracted included", "an unchecked box is the one worth saying");
+  // Chat drops retracted references by default; an explicit false (box cleared) keeps them.
+  const seen: unknown[] = [];
+  const idx = { ready: true, search: async (_q: string, f: unknown) => { seen.push(f); return []; } };
+  const lib = { getItem: () => null };
+  const settings = { topK: 5, llmRerank: false, hostedRerank: false } as never;
+  const chat = new RagChat(idx as never, lib as never, settings);
+  const none = await chat.answer("q");
+  assert.deepEqual(seen[0], { excludeRetracted: true }, "chat excludes retracted by default");
+  assert.doesNotMatch(none.text, /loosening/, "the default is not a user scope");
+  await chat.answer("q", [], { excludeRetracted: false });
+  assert.deepEqual(seen[1], { excludeRetracted: false }, "an explicit false wins");
+  assert.match((await chat.answer("q", [], { included: true })).text, /loosening/);
+  passed += 21;
+}
 
-console.log(`unit: all ${passed} assertions passed`);
   // ---- pubmed fixes ----
   {
     const u0 = esearchUrl("lumbar stenosis", { n: 50 });
@@ -4178,6 +4216,7 @@ console.log(`unit: all ${passed} assertions passed`);
     check(marked.map((h) => h.inLibrary).join() === "true,true,false", "pubmed: in-library rows matched by PMID and by DOI");
   }
 
+console.log(`unit: all ${passed} assertions passed`);
 }
 
 void main();

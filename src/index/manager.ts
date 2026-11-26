@@ -2,7 +2,7 @@ import { App, TFile, normalizePath, debounce, Debouncer, Platform, Notice } from
 import { ScholarRagSettings, effective } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
-import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA, VECTOR_SLICE_BYTES, DOC_PART_CHARS, docPartName } from "./store";
+import { VectorStore, SearchHit, SearchFilters, needsReference, referenceAllowed, StoredMeta, INDEX_SCHEMA, VECTOR_SLICE_BYTES, DOC_PART_CHARS, docPartName } from "./store";
 import { canHostedRerank, capPerReference, hostedRerank, mmr } from "./rerank";
 import { buildExpander, expandedTerm, Expander, Expansion, isForeignQuery, parseVocabulary } from "./expand";
 import { MeshThesaurus, MeshAddOptions } from "./thesaurus";
@@ -792,12 +792,19 @@ export class IndexManager {
     // The translation and embedding awaits above can span a rebuild starting or the store being reset.
     if (this.rebuilding) throw new Error("The search index is being rebuilt — search again when it finishes.");
     if (!this.store.ready) throw new Error("Index not built yet — run “Update search index”.");
-    let hits = await this.store.search(vec, term, want * OVERFETCH, filters);
-    if (opts.eligible) {
+    // included / design / retracted live in each note's frontmatter, not in the index rows, so they are
+    // checked per citekey below; over-fetch more so a strict filter still leaves k references.
+    const byNote = needsReference(filters);
+    let hits = await this.store.search(vec, term, want * OVERFETCH * (byNote ? 4 : 1), filters);
+    if (opts.eligible || byNote) {
       const ok = new Map<string, boolean>();
       const keep: typeof hits = [];
       for (const h of hits) {
-        if (!ok.has(h.citekey)) ok.set(h.citekey, await opts.eligible(h.citekey));
+        if (!ok.has(h.citekey)) {
+          ok.set(h.citekey,
+            (!byNote || referenceAllowed(filters, this.library.getItem(h.citekey))) &&
+            (!opts.eligible || await opts.eligible(h.citekey)));
+        }
         if (ok.get(h.citekey)) keep.push(h);
       }
       hits = keep;

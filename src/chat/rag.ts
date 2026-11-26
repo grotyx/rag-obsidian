@@ -46,8 +46,12 @@ export class RagChat {
   async answer(
     query: string,
     history: ChatTurn[] = [],
-    filters: SearchFilters = {}
+    asked: SearchFilters = {}
   ): Promise<RagAnswer> {
+    // A retracted paper is never a citable source unless the pane's box was explicitly cleared.
+    const filters: SearchFilters = { excludeRetracted: true, ...asked };
+    // The default above must not count as a user scope (coupled candidates, "loosen the filters" hint).
+    const scoped = Object.keys(asked).some((k) => k !== "excludeRetracted");
     if (!this.index.ready) {
       throw new Error("Search index not built — open the search pane and click “Update index”.");
     }
@@ -67,7 +71,7 @@ export class RagChat {
       // filters), so only add them to an otherwise-unfiltered question — anything narrower means
       // the user asked for that scope specifically.
       const candidates =
-        this.citationGraph?.size && Object.keys(filters).length === 0
+        this.citationGraph?.size && !scoped
           ? pool.concat(coupledCandidates(pool, this.citationGraph, this.library))
           : pool;
       hits = (await rerankHits(query, candidates, this.settings)).slice(0, k);
@@ -75,7 +79,7 @@ export class RagChat {
       hits = pool;
     }
     if (hits.length === 0) {
-      const hint = Object.keys(filters).length ? " Try loosening the filters." : "";
+      const hint = scoped ? " Try loosening the filters." : "";
       return {
         text: `No relevant passages found in your library for that question.${hint}`,
         sources: [],

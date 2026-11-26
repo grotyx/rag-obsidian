@@ -105,7 +105,8 @@ export class SearchView extends ItemView {
   private renderHits(hits: SearchHit[]): void {
     this.resultsEl.empty();
     if (hits.length === 0) {
-      const filtered = Object.keys(this.filterRow.filters()).length > 0;
+      const { excludeRetracted: _default, ...scope } = this.filterRow.filters(); // the default-on box is not a scope
+      const filtered = Object.keys(scope).length > 0;
       this.resultsEl.createDiv({
         cls: "srag-count",
         text: filtered ? "No results — try loosening the filters." : "No results.",

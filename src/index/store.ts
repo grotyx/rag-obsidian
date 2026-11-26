@@ -53,6 +53,29 @@ export interface SearchFilters {
   tags?: string[];
   /** Author family name; matched exactly against the lowercased names on the chunk. */
   author?: string;
+  /** Only references screened `include: include`. Decided per reference at search time (frontmatter), not stored per chunk. */
+  included?: boolean;
+  /** Screening `design` must equal one of these (case-insensitive). */
+  design?: string[];
+  /** Drop references whose frontmatter says `retracted: true`. */
+  excludeRetracted?: boolean;
+}
+
+/** True when a filter needs the reference's frontmatter (not the index rows). */
+export function needsReference(f: SearchFilters): boolean {
+  return !!(f.included || f.design?.length || f.excludeRetracted);
+}
+
+/** The reference-level part of a filter set, applied to one note's frontmatter. */
+export function referenceAllowed(f: SearchFilters, fm: Record<string, unknown> | null): boolean {
+  const retracted = fm?.retracted === true || fm?.retracted === "true";
+  if (f.excludeRetracted && retracted) return false;
+  if (f.included && fm?.include !== "include") return false;
+  if (f.design?.length) {
+    const d = typeof fm?.design === "string" ? fm.design.trim().toLowerCase() : "";
+    if (!f.design.some((v) => v.trim().toLowerCase() === d)) return false;
+  }
+  return true;
 }
 
 /** One-line, human-readable summary of a filter set, e.g. "2022–2025 · tag: endoscopy ·
@@ -62,6 +85,9 @@ export function describeFilters(f: SearchFilters): string {
   if (f.yearFrom || f.yearTo) parts.push(`${f.yearFrom ?? ""}–${f.yearTo ?? ""}`);
   if (f.tags?.length) parts.push(`${f.tags.length > 1 ? "tags" : "tag"}: ${f.tags.join(" + ")}`);
   if (f.author) parts.push(`author: ${f.author}`);
+  if (f.included) parts.push("included only");
+  if (f.design?.length) parts.push(`design: ${f.design.join(" / ")}`);
+  if (f.excludeRetracted === false) parts.push("retracted included"); // excluding is the default: not worth a label on every answer
   return parts.join(" · ");
 }
 
