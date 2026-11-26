@@ -32,10 +32,12 @@ const cell = (s: string): string => s.replace(/\|/g, "\\|").replace(/\s*\n\s*/g,
 const byKey = (a: RobRecord, b: RobRecord): number => (a.citekey < b.citekey ? -1 : a.citekey > b.citekey ? 1 : 0);
 
 /** Markdown for "Risk-of-bias summary table": one table per `rob_tool` (records assessed with a
- *  judgement or a tool), a count per judgement, and the included records with no judgement yet.
+ *  judgement), a count per judgement, and the included records with no judgement yet.
  *  `label` names the scope. */
 export function robMarkdown(records: RobRecord[], label: string, date: string): string {
-  const assessed = records.filter((r) => r.rob_tool || r.rob_overall).sort(byKey);
+  // A tool picked without a judgement is a started assessment, not a finished one: it is listed
+  // under "without an assessment" below, not counted here.
+  const assessed = records.filter((r) => r.rob_overall).sort(byKey);
   const missing = records.filter((r) => r.include === "include" && !r.rob_overall).sort(byKey);
 
   const out = [`# Risk of bias (${label})`, "", `Generated ${date}. ${assessed.length} assessed of ${records.length} records in scope.`, ""];
@@ -58,8 +60,6 @@ export function robMarkdown(records: RobRecord[], label: string, date: string): 
     const n = assessed.filter((r) => r.rob_overall === j).length;
     if (n) out.push(`| ${j} | ${n} |`);
   }
-  const unset = assessed.filter((r) => !r.rob_overall).length;
-  if (unset) out.push(`| (not set) | ${unset} |`);
   out.push("", `## Included records without an assessment (${missing.length})`, "");
   for (const r of missing) out.push(`- [@${r.citekey}]${r.rob_tool ? ` (tool: ${r.rob_tool})` : ""}`);
   if (!missing.length) out.push("None.");

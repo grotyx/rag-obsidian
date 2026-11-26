@@ -79,6 +79,17 @@ export async function mergeDuplicateGroups(
       { citekey: keeperCitekey, fm: keeperNote.fm, body: keeperNote.body },
       others
     );
+    // A loser's PDF found only as `PDFs/<its citekey>.pdf` (no `pdf:` field) would be orphaned
+    // once the loser is trashed: link it from the keeper unless the keeper already has a PDF.
+    if (!mergedFm.pdf && !plugin.library.pdfFile(undefined, plan.keeperFile.path, keeperCitekey)) {
+      for (const l of losers) {
+        const pdf = l.citekey ? plugin.library.pdfFile(undefined, l.file.path, l.citekey) : null;
+        if (pdf) {
+          mergedFm.pdf = `[[${pdf.path}]]`;
+          break;
+        }
+      }
+    }
 
     // A loser edited since its text was copied would lose that edit: abandon the group.
     let loserChanged = false;
@@ -167,7 +178,9 @@ export async function mergeDuplicateGroups(
     const linkedFrom = new Map<string, Set<string>>();
     for (const file of plugin.app.vault.getMarkdownFiles()) {
       const dests = new Set<string>();
-      for (const target of linkTargetsInText(await plugin.app.vault.read(file))) {
+      // cachedRead, not read: step (d) already read every note once, and an uncached read of the
+      // whole vault downloads every online-only note on a synced drive.
+      for (const target of linkTargetsInText(await plugin.app.vault.cachedRead(file))) {
         const dest = plugin.app.metadataCache.getFirstLinkpathDest(target, file.path);
         if (dest && loserPaths.has(dest.path) && dest.path !== file.path) dests.add(dest.path);
       }

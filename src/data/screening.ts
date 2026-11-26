@@ -53,6 +53,31 @@ export const kqKey = (v: unknown): string => {
 /** True when the raw frontmatter `kq` list holds `kq` (compared by `kqKey`). */
 export const hasKq = (raw: unknown, kq: unknown): boolean => Array.isArray(raw) && raw.some((k) => kqKey(k) === kqKey(kq));
 
+/** `list` with duplicates by `kqKey` dropped (`["1", "01"]` is one key question); first spelling wins. */
+export function dedupeKq(list: string[]): string[] {
+  const seen = new Set<string>();
+  return list.filter((k) => {
+    const key = kqKey(k);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Flip one key question in a raw `kq` list by `kqKey`, so a chip for "03" finds and removes a
+ *  stored "3" and never adds a second spelling of a key question already there. */
+export function toggleKq(list: string[], id: string): string[] {
+  const k = kqKey(id);
+  return list.some((x) => kqKey(x) === k) ? list.filter((x) => kqKey(x) !== k) : [...list, id];
+}
+
+/** The screening pane's chips: the fixed `KQ_IDS`, then every stored key question outside them
+ *  ("14", "KQ-cervical"), so a value written by `set_reference_fields` is never invisible. */
+export function kqChipIds(list: string[]): string[] {
+  const fixed = new Set(KQ_IDS.map(kqKey));
+  return [...KQ_IDS, ...dedupeKq(list).filter((k) => !fixed.has(kqKey(k)))];
+}
+
 /** One choice per distinct key question across several raw `kq` lists: the first spelling seen, sorted. */
 export function kqChoices(lists: unknown[]): string[] {
   const byKey = new Map<string, string>();
@@ -63,8 +88,9 @@ export function kqChoices(lists: unknown[]): string[] {
 /** Risk-of-bias tools (stored in `rob_tool`). */
 export const ROB_TOOLS = ["RoB 2", "ROBINS-I", "QUADAS-2", "NOS", "AMSTAR 2", "other"] as const;
 
-/** Overall risk-of-bias judgements (stored in `rob_overall`); each tool uses its own subset. */
-export const ROB_OVERALL = ["low", "some concerns", "moderate", "serious", "critical", "high", "unclear"] as const;
+/** Overall risk-of-bias judgements (stored in `rob_overall`); each tool uses its own subset
+ *  (AMSTAR 2's confidence scale is high / moderate / low / critically low). */
+export const ROB_OVERALL = ["low", "some concerns", "moderate", "serious", "critical", "high", "unclear", "critically low"] as const;
 
 export interface ScreeningFields {
   kq?: string[];

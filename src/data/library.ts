@@ -489,10 +489,20 @@ export function prismaDuplicateGroups<
   for (const g of duplicateGroups(entries)) for (const e of g.slice(1)) union(g[0].file.path, e.file.path);
   const byKey = new Map<string, T[]>();
   for (const e of entries) if (e.citekey) (byKey.get(e.citekey) ?? byKey.set(e.citekey, []).get(e.citekey)!).push(e);
+  // Copies of one citekey join only when the WHOLE of both groups is compatible, and a group that
+  // fits two incompatible groups (a sparse copy beside DOI A and DOI B) stays alone — so the
+  // outcome never depends on input order and two different DOIs never end in one group.
   for (const same of byKey.values()) {
-    same.forEach((e, i) => {
-      const mate = same.slice(0, i).find((o) => !idsConflict(o.item, e.item));
-      if (mate) union(mate.file.path, e.file.path);
+    const roots = new Set(same.map((e) => find(e.file.path)));
+    if (roots.size < 2) continue;
+    // Whole groups (they may hold notes of other citekeys, joined by DOI / PMID / title).
+    const cs = [...roots].map((r) => entries.filter((e) => find(e.file.path) === r));
+    const fits = (x: T[], y: T[]): boolean => !x.some((a) => y.some((b) => idsConflict(a.item, b.item)));
+    const mates = cs.map((x, i) => cs.filter((y, j) => j !== i && fits(x, y)));
+    const clean = mates.map((m) => m.every((p, a) => m.every((q, b) => a >= b || fits(p, q))));
+    cs.forEach((x, i) => {
+      if (!clean[i]) return;
+      for (const y of mates[i]) if (clean[cs.indexOf(y)]) union(x[0].file.path, y[0].file.path);
     });
   }
   const groups = new Map<string, string[]>();
@@ -556,7 +566,7 @@ export function normTitle(t: unknown): string {
     .trim();
 }
 
-function formatAuthors(author: unknown): string {
+export function formatAuthors(author: unknown): string {
   if (!Array.isArray(author)) return "";
   const names = author
     .map((a) => {
@@ -573,7 +583,7 @@ function formatAuthors(author: unknown): string {
   return `${names[0]} et al.`;
 }
 
-function extractYear(issued: unknown): string {
+export function extractYear(issued: unknown): string {
   if (issued && typeof issued === "object") {
     const dp = (issued as Record<string, unknown>)["date-parts"];
     if (Array.isArray(dp) && Array.isArray(dp[0]) && dp[0][0]) return String(dp[0][0]);

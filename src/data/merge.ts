@@ -182,9 +182,9 @@ function findingKey(f: Finding): string {
   return [...FINDING_KEYS.map((k) => f[k] ?? ""), f.quote].join("\u0001").replace(/\s+/g, " ").toLowerCase();
 }
 
-function findingLines(f: Finding): string {
+function findingLines(f: Finding, bare = false): string {
   const fields = FINDING_KEYS.filter((k) => f[k]).map((k) => `[${k}:: ${f[k]}]`).join(" ");
-  return `> - ${fields}\n>   "${f.quote}"`;
+  return `> ${bare ? "" : "- "}${fields}\n>   "${f.quote}"`;
 }
 
 /** Carry the others' `## Evidence (extracted)` findings into `prefix` (the keeper body above its
@@ -205,18 +205,23 @@ function mergeEvidence(prefix: string, otherBodies: string[]): string {
     }
   }
   if (!added.length) return prefix;
-  const lines = added.map(findingLines).join("\n");
   const section = evidenceSection(prefix);
   if (!section) {
     const n = added.length;
-    return `${prefix.replace(/\s*$/, "")}\n\n## Evidence (extracted)\n\n> [!quote]- ${n} finding${n === 1 ? "" : "s"}\n${lines}\n`;
+    return `${prefix.replace(/\s*$/, "")}\n\n## Evidence (extracted)\n\n> [!quote]- ${n} finding${n === 1 ? "" : "s"}\n${added.map((f) => findingLines(f)).join("\n")}\n`;
   }
   const at = prefix.indexOf(section);
   const body = section.replace(/\s*$/, "");
   const tail = section.slice(body.length);
   const total = have.length + added.length;
-  const grown = body.replace(/^(> \[!quote\]-? )\d+ findings/m, `$1${total} findings`);
-  return prefix.slice(0, at) + `${grown}\n${lines}${tail || "\n"}` + prefix.slice(at + section.length);
+  const retitled = body.replace(/^(> \[!quote\]-? )\d+ findings?/m, `$1${total} finding${total === 1 ? "" : "s"}`);
+  // A section written inside a ```text fence (bare `[k:: v]` lines) grows inside that fence.
+  const fenceEnd = /\n>[ \t]*```[ \t]*$/.exec(retitled);
+  const grown =
+    fenceEnd && /^>[ \t]*```text/m.test(retitled)
+      ? `${retitled.slice(0, fenceEnd.index)}\n${added.map((f) => findingLines(f, true)).join("\n")}${retitled.slice(fenceEnd.index)}`
+      : `${retitled}\n${added.map((f) => findingLines(f)).join("\n")}`;
+  return prefix.slice(0, at) + `${grown}${tail || "\n"}` + prefix.slice(at + section.length);
 }
 
 /** Frontmatter and body of a whole note. `null` when the YAML block does not parse — the
@@ -246,12 +251,13 @@ export function joinNote(fm: Record<string, unknown>, body: string): string {
  *  and the full-text stash. Sections this note itself received from an earlier merge ride along
  *  unchanged. "" when nothing is left. */
 function mergedFromSection(citekey: string, body: string): string {
-  // The stash runs marker -> EOF, except `## Merged from ...` blocks an earlier merge left after it.
+  // The stash runs marker -> the next `## ` heading (an earlier merge's `## Merged from ...`,
+  // `## Highlights`, or the user's own `## Reviewer notes` written below it), or EOF.
   let content = body;
   const at = body.indexOf(STASH_MARKER);
   if (at >= 0) {
     const after = body.slice(at + STASH_MARKER.length);
-    const m = after.search(/(^|\n)## Merged from /);
+    const m = after.search(/(^|\n)## /);
     content = `${body.slice(0, at)}\n${m >= 0 ? after.slice(m).replace(/^\n/, "") : ""}`;
   }
   const heads = [...content.matchAll(/(^|\n)## ([^\n]*)/g)];
@@ -289,11 +295,12 @@ function mergedFromSection(citekey: string, body: string): string {
   return parts.length ? `${parts.join("\n")}\n` : "";
 }
 
-/** A moved-in stash is `marker → EOF` (cheap: `appendStash` always writes it last) — except an
- *  earlier merge could have left `## Merged from …` sections trailing after it, which are not
- *  full text and must not ride along. */
+/** A moved-in stash is `marker → EOF` (cheap: `appendStash` always writes it last) — except
+ *  sections trailing after it (an earlier merge's `## Merged from …`, `## Highlights`, the user's
+ *  own `## Reviewer notes`) are not full text and must not ride along: `mergedFromSection`
+ *  carries them separately. */
 function stripTrailingMergedBlocks(stash: string): string {
-  const idx = stash.search(/(^|\n)## Merged from /);
+  const idx = stash.search(/(^|\n)## /);
   return idx < 0 ? stash : stash.slice(0, idx).replace(/\s*$/, "");
 }
 

@@ -1,18 +1,21 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile } from "obsidian";
 import type ScholarRagPlugin from "../../main";
-import { BackfillScope, inScope } from "../data/library";
+import { BackfillScope, extractYear, formatAuthors, inScope } from "../data/library";
 import {
   applyScreening,
+  dedupeKq,
   DESIGNS,
   EXCLUDE_REASONS,
   excludeNeedsReason,
   IncludeValue,
-  KQ_IDS,
+  hasKq,
+  kqChipIds,
   Level,
   LEVELS,
   ROB_OVERALL,
   ROB_TOOLS,
   ScreeningFields,
+  toggleKq,
 } from "../data/screening";
 import { extractSummaryBlock } from "../cite/bibliography";
 import { activatable } from "./RelatedView";
@@ -23,6 +26,8 @@ export const VIEW_TYPE_SCREENING = "rag-obsidian-screening";
 type StatusFilter = "unscreened" | "pending" | "included" | "excluded" | "all";
 type Entry = ReturnType<ScholarRagPlugin["library"]["entries"]>[number];
 type QueueItem = { citekey: string; file: TFile };
+/** What the pane shows of one record, built from the note's own metadata, not a library scan. */
+type Shown = Pick<Entry, "file" | "citekey" | "authors" | "year" | "journal" | "item">;
 
 function matchesStatus(e: Entry, status: StatusFilter): boolean {
   switch (status) {
@@ -49,7 +54,7 @@ export class ScreeningView extends ItemView {
   private statusFilter: StatusFilter = "unscreened";
   private queue: QueueItem[] = [];
   private index = 0;
-  private working: { kq: Set<string>; level?: Level; design?: string; note: string } = { kq: new Set(), note: "" };
+  private working: { kq: string[]; level?: Level; design?: string; note: string } = { kq: [], note: "" };
   private loadedMtime: number | null = null;
   private writing = false;
   /** Bumped per `showCurrent`: a render that lost the race must not append its controls, or the
@@ -153,12 +158,23 @@ export class ScreeningView extends ItemView {
     );
   }
 
-  private currentEntry(): Entry | null {
+  /** The queued note's record, read straight from its metadata: a full `entries()` scan on every
+   *  keypress is O(library). */
+  private currentEntry(): Shown | null {
     const item = this.queue[this.index];
     if (!item) return null;
     const file = this.plugin.app.vault.getAbstractFileByPath(item.file.path);
     if (!(file instanceof TFile)) return null;
-    return this.plugin.library.entries().find((e) => e.file.path === item.file.path) ?? null;
+    const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm || !fm.citekey) return null;
+    return {
+      file,
+      citekey: String(fm.citekey),
+      item: fm as unknown as Entry["item"],
+      authors: formatAuthors(fm.author),
+      year: extractYear(fm.issued),
+      journal: fm["container-title"] ? String(fm["container-title"]) : undefined,
+    };
   }
 
   private async showCurrent(): Promise<void> {
@@ -184,7 +200,7 @@ export class ScreeningView extends ItemView {
     const item = entry.item;
     const kq = Array.isArray(item.kq) ? (item.kq as unknown[]).map(String) : [];
     this.working = {
-      kq: new Set(kq),
+      kq: dedupeKq(kq),
       level: LEVELS.includes(String(item.level) as Level) ? (String(item.level) as Level) : undefined,
       design: typeof item.design === "string" ? item.design : undefined,
       note: text(item.screening_note),
@@ -220,7 +236,7 @@ export class ScreeningView extends ItemView {
     this.renderControls(entry);
   }
 
-  private async currentAbstract(entry: Entry): Promise<string> {
+  private async currentAbstract(entry: Shown): Promise<string> {
     if (typeof entry.item.abstract === "string" && entry.item.abstract.trim()) return entry.item.abstract;
     try {
       const content = await this.plugin.app.vault.cachedRead(entry.file);
@@ -230,7 +246,7 @@ export class ScreeningView extends ItemView {
     }
   }
 
-  private renderControls(entry: Entry): void {
+  private renderControls(entry: Shown): void {
     const controls = this.bodyEl.createDiv({ cls: "srag-screening-controls" });
 
     const decisionRow = controls.createDiv({ cls: "srag-header" });
@@ -243,16 +259,16 @@ export class ScreeningView extends ItemView {
 
     controls.createDiv({ text: "Key questions", cls: "srag-count" });
     const kqRow = controls.createDiv({ cls: "srag-quick-chips" });
-    for (const id of KQ_IDS) {
+    for (const id of kqChipIds(this.working.kq)) {
       const chip = kqRow.createEl("button", { text: id, cls: "srag-quick-chip" });
       const sync = () => {
-        chip.toggleClass("is-active", this.working.kq.has(id));
-        chip.setAttribute("aria-pressed", String(this.working.kq.has(id)));
+        const on = hasKq(this.working.kq, id);
+        chip.toggleClass("is-active", on);
+        chip.setAttribute("aria-pressed", String(on));
       };
       sync();
       chip.onclick = () => {
-        if (this.working.kq.has(id)) this.working.kq.delete(id);
-        else this.working.kq.add(id);
+        this.working.kq = toggleKq(this.working.kq, id);
         sync();
       };
     }
@@ -345,7 +361,7 @@ export class ScreeningView extends ItemView {
 
   private buildFields(include: IncludeValue): ScreeningFields {
     return {
-      kq: [...this.working.kq],
+      kq: dedupeKq(this.working.kq),
       include,
       level: this.working.level,
       design: this.working.design,
@@ -402,7 +418,7 @@ export class ScreeningView extends ItemView {
     const item = this.queue[this.index];
     if (!item) return;
     const note = this.working.note.trim();
-    if (include === "include" && this.working.kq.size === 0) {
+    if (include === "include" && this.working.kq.length === 0) {
       this.errorEl.setText("Include requires at least one key question.");
       return;
     }

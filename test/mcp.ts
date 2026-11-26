@@ -292,9 +292,9 @@ async function serviceChecks(): Promise<void> {
   ]);
   const robSchema = (MCP_TOOLS.find((t) => t.name === "set_reference_fields")!.inputSchema as any).properties.fields.properties;
   assert.deepEqual(robSchema.rob_tool.enum, ["RoB 2", "ROBINS-I", "QUADAS-2", "NOS", "AMSTAR 2", "other", ""]);
-  assert.deepEqual(robSchema.rob_overall.enum, ["low", "some concerns", "moderate", "serious", "critical", "high", "unclear", ""]);
+  assert.deepEqual(robSchema.rob_overall.enum, ["low", "some concerns", "moderate", "serious", "critical", "high", "unclear", "critically low", ""]);
   assert.equal(robSchema.rob_note.type, "string");
-  assert.deepEqual((MCP_TOOLS.find((t) => t.name === "list_references")!.inputSchema as any).properties.rob_overall.enum, ["low", "some concerns", "moderate", "serious", "critical", "high", "unclear"]);
+  assert.deepEqual((MCP_TOOLS.find((t) => t.name === "list_references")!.inputSchema as any).properties.rob_overall.enum, ["low", "some concerns", "moderate", "serious", "critical", "high", "unclear", "critically low"]);
   assert.equal(MCP_TOOLS.find((t) => t.name === "search_library")?.annotations?.readOnlyHint, true);
   assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
   const libraryOnly = mcpToolsFor(false).map((t) => t.name);

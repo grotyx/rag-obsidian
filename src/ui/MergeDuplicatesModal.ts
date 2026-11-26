@@ -50,7 +50,7 @@ export class MergeDuplicatesModal extends Modal {
           year: e.year,
           journal: typeof e.item["container-title"] === "string" ? e.item["container-title"] : "",
           hasSummary: !!(e.item as Record<string, unknown>).summary_source,
-          hasPdf: !!(e.item as Record<string, unknown>).pdf,
+          hasPdf: !!e.hasPdf,
           mtime: e.file.stat.mtime,
         }));
         const notes: MergeNote[] = await Promise.all(

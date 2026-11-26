@@ -126,7 +126,7 @@ import {
   localDate,
 } from "../src/data/reference";
 import { DEFAULT_SETTINGS, effective } from "../src/types";
-import { applyScreening, hasKq, kqChoices, kqKey } from "../src/data/screening";
+import { applyScreening, dedupeKq, hasKq, kqChipIds, kqChoices, kqKey, toggleKq } from "../src/data/screening";
 import { robMarkdown, RobRecord, toRobRecord } from "../src/data/rob";
 import { prismaCounts, prismaMarkdown, PrismaRecord, toPrismaRecord } from "../src/data/prisma";
 import { aggregateSnowball, pickSnowballCandidates, snowballMarkdown, SnowballRecord, SnowballWork } from "../src/data/snowball";
@@ -1653,11 +1653,11 @@ check(
     r("f2021", "exclude", null, null),
     r("g2021", "pending", null, "low"),
   ], "included records", "2026-11-03");
-  check(md.indexOf("## RoB 2") < md.indexOf("## ROBINS-I") && md.indexOf("## NOS") < md.indexOf("## RoB 2"), "robMarkdown: one table per tool, sorted");
+  check(md.indexOf("## RoB 2") < md.indexOf("## ROBINS-I") && !md.includes("## NOS"), "robMarkdown: one table per tool, sorted; a tool with no judgement is not a table");
   check(md.indexOf("[@a2021]") < md.indexOf("[@b2021]"), "robMarkdown: rows sorted by citekey");
   check(md.includes("| [@a2021] | Kim et al. 2021 | high | no blinding \\| open label |"), "robMarkdown: row cells, pipe escaped");
   check(md.includes("## Tool not set") && md.includes("[@g2021]"), "robMarkdown: judgement without a tool gets its own table");
-  check(md.includes("| low | 2 |") && md.includes("| high | 1 |") && md.includes("| serious | 1 |") && md.includes("| (not set) | 1 |"), "robMarkdown: count per judgement");
+  check(md.includes("| low | 2 |") && md.includes("| high | 1 |") && md.includes("| serious | 1 |") && !md.includes("(not set)"), "robMarkdown: count per judgement");
   const missing = md.slice(md.indexOf("## Included records without an assessment"));
   check(missing.includes("(2)") && missing.includes("- [@d2021]") && missing.includes("- [@e2021] (tool: NOS)"), "robMarkdown: unassessed included records listed");
   check(!missing.includes("f2021") && !missing.includes("g2021") && !missing.includes("a2021"), "robMarkdown: excluded, pending and assessed records not listed as missing");
@@ -2632,6 +2632,7 @@ check(
       const trashed: string[] = [];
       const fmOf = (f: TFile) => ({ frontmatter: { citekey: f.basename.replace(/^(\D+)(\d+)$/, "$1$2") } });
       const plugin = {
+        library: { pdfFile: (_v: unknown, _p: string, _k: string): TFile | null => null },
         app: {
           vault: {
             getAbstractFileByPath: (p: string) => files.get(p)?.f ?? null,
@@ -2727,6 +2728,7 @@ check(
     };
     const trashed: string[] = [];
     const plugin = {
+      library: { pdfFile: () => null },
       app: {
         vault: {
           getAbstractFileByPath: (p: string) => all.find((f) => f.path === p && texts.has(p)) ?? null,
@@ -2778,6 +2780,7 @@ check(
       const files = new Map<string, TFile>([[keeper.path, keeper], [loser.path, loser], ...Object.keys(extra).map((p) => [p, mkf(p)] as [string, TFile])]);
       const trashed: string[] = [];
       const plugin = {
+        library: { pdfFile: () => null },
         app: {
           vault: {
             getAbstractFileByPath: (p: string) => (texts.has(p) ? files.get(p) ?? null : null),
@@ -2823,6 +2826,7 @@ check(
     const all = [keeper, a, b, man];
     const trashed2: string[] = [];
     const plugin2 = {
+      library: { pdfFile: () => null },
       app: {
         vault: {
           getAbstractFileByPath: (p: string) => all.find((f) => f.path === p && ts.has(p)) ?? null,
@@ -2854,6 +2858,7 @@ check(
       files.set(loser.path, { f: loser, text: loseText });
       let fmCalls = 0;
       const plugin = {
+        library: { pdfFile: () => null },
         app: {
           vault: {
             getAbstractFileByPath: (p: string) => files.get(p)?.f ?? null,
@@ -3336,6 +3341,109 @@ check(
     check(b.state.text === "Text [@a] and [@b].\n", `updateBibliography: keys changed meanwhile -> note left unchanged (${JSON.stringify(b.state.text)})`);
   }
 }
+
+  // ---- review fixes ----
+  {
+    // Astra B1: text the user wrote BELOW a loser's stash survives the merge.
+    const withStash = (extra: string) => `# T\n\n## Notes\n\nn\n\n${STASH_MARKER}\n\nfull text of the paper.\n${extra}`;
+    const m1 = mergeBodies(withStash(""), [{ citekey: "dup", body: withStash("\n## Reviewer notes\n\nFollow-up interval is 6 months, not 12.\n") }]);
+    check(m1.includes("Follow-up interval is 6 months, not 12."), "review B1: a loser's section below its stash is kept when the keeper has a stash too");
+    check(hasStashedText(m1) && (m1.match(/## Full text \(extracted\)/g) ?? []).length === 1, "review B1: the keeper's stash is still there once");
+    check(m1.indexOf("Follow-up interval") < m1.indexOf(STASH_MARKER), "review B1: the kept text lands above the stash");
+    const m2 = mergeBodies("# T\n\n## Notes\n\nn\n", [{ citekey: "dup", body: withStash("\n## Reviewer notes\n\nFollow-up interval is 6 months, not 12.\n") }]);
+    check((m2.match(/Follow-up interval/g) ?? []).length === 1 && !stashedText(m2).includes("Reviewer notes"), "review B1: with a moved-in stash the trailing section is carried once, outside the stash");
+
+    // Astra B2 / Carbon B5: after-dedup box = identified - duplicates = screened + awaiting.
+    const recs = [
+      toPrismaRecord("a", { include: "include" }),
+      toPrismaRecord("b", { include: "exclude", screening_note: "Wrong population" }),
+      toPrismaRecord("c", { include: "pending" }),
+      toPrismaRecord("d", {}),
+    ];
+    const pc = prismaCounts(recs, [], () => true);
+    const pmd = prismaMarkdown(pc, "all references", "2026-11-26");
+    check(pc.recordsIdentified - pc.duplicatesRemoved === pc.recordsScreened + pc.awaitingDecision, "review B2: after dedup = screened + awaiting");
+    check(pmd.includes('B["Records after duplicates removed<br/>n = 4"]') && pmd.includes('C["Records screened<br/>n = 2"]'), "review B2: the diagram's after-dedup box is 4 and the screened box 2");
+    check(pmd.includes("| Records after duplicates removed | 4 |"), "review B2: the table carries the after-dedup count");
+
+    // Astra B3: two DOIs never share a group, whatever the input order.
+    const pe = (path: string, item: Record<string, unknown>) => ({ citekey: "shared2020", file: { path }, item });
+    const trio = [pe("References/s.md", { title: "Short" }), pe("References/a.md", { DOI: "10.1/a" }), pe("References/b.md", { DOI: "10.1/b" })];
+    const perms = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    check(
+      perms.every((o) => prismaDuplicateGroups(o.map((i) => trio[i])).every((g) => !(g.includes("References/a.md") && g.includes("References/b.md")))),
+      "review B3: DOI A and DOI B never end in one group, in any input order"
+    );
+    check(prismaDuplicateGroups([trio[0], trio[1]]).length === 1, "review B3: a sparse copy still joins the one DOI record it fits");
+
+    // Astra B6: a tool without a judgement is not an assessment; AMSTAR 2's lowest confidence is valid.
+    const robMd = robMarkdown([{ citekey: "t2021", authors: "Kim et al.", year: "2021", include: "include", rob_tool: "RoB 2", rob_overall: null, rob_note: null }], "x", "2026-11-26");
+    check(robMd.includes("0 assessed of 1") && robMd.includes("Included records without an assessment (1)"), "review B6: a record with only rob_tool is not counted as assessed");
+    const am: Record<string, unknown> = {};
+    let amOk = true;
+    try {
+      applyScreening(am, { rob_tool: "AMSTAR 2", rob_overall: "critically low" });
+    } catch {
+      amOk = false;
+    }
+    check(amOk && am.rob_overall === "critically low", "review B6: rob_overall accepts AMSTAR 2's critically low");
+
+    // Carbon B10: KQ chips compare by kqKey, never add a second spelling, and show out-of-range values.
+    check(hasKq(["1", "3"], "03") && toggleKq(["1", "3"], "03").join() === "1", "review B10: chip 03 finds a stored 3 and removes it");
+    check(toggleKq(["1"], "02").join() === "1,02" && dedupeKq(["1", "01", "x"]).join() === "1,x", "review B10: no duplicate key question is written");
+    const chips = kqChipIds(["1", "14", "KQ-cervical"]);
+    check(chips.includes("14") && chips.includes("KQ-cervical") && chips.filter((c) => kqKey(c) === "1").length === 1, "review B10: stored KQs outside 01..13 get a chip");
+
+    // Carbon B8: new findings land inside the ```text fence, and "1 finding" is retitled.
+    const evBody = (title: string, row: string) =>
+      `# T\n\n## Notes\n\nn\n\n## Evidence (extracted)\n\n> [!quote]- ${title}\n> \`\`\`text\n${row}\n> \`\`\`\n`;
+    const rowA = '> [kind:: comparative] [outcome:: ODI] [p:: 0.02]\n>   "ODI improved."';
+    const rowB = '> [kind:: comparative] [outcome:: pain] [p:: 0.01]\n>   "Pain fell."';
+    const evMerged = mergeBodies(evBody("1 finding · x", rowA), [{ citekey: "l", body: evBody("1 finding · x", rowB) }]);
+    const fenceClose = evMerged.lastIndexOf("> ```");
+    check(parseFindings(evMerged).length === 2 && evMerged.indexOf('"Pain fell."') < fenceClose, "review B8: a merged finding is inside the closing fence");
+    check(evMerged.includes("> [!quote]- 2 findings") && !evMerged.includes("> - [kind::"), "review B8: the callout title is recounted and the fence keeps bare lines");
+
+    // Carbon B16 + B9.2: a loser's implicit PDFs/<citekey>.pdf moves to the keeper; no note is re-read uncached.
+    {
+      const files = new Map<string, { f: TFile; text: string }>();
+      const add = (path: string, text: string) => {
+        files.set(path, { f: Object.assign(new TFile(path), { stat: { mtime: 1 } }), text });
+        return files.get(path)!.f;
+      };
+      const keeper = add("References/keep2020.md", "---\ncitekey: keep2020\n---\n\n## Notes\n\nk\n");
+      const loser = add("References/lose2020.md", "---\ncitekey: lose2020\n---\n\n## Notes\n\nl\n");
+      const bystander = add("References/other2020.md", "---\ncitekey: other2020\n---\n\nunrelated\n");
+      const pdf = Object.assign(new TFile("PDFs/lose2020.pdf"), { stat: { mtime: 1 } });
+      const reads: string[] = [];
+      const plugin = {
+        library: { pdfFile: (_v: unknown, _p: string, key: string): TFile | null => (key === "lose2020" ? pdf : null) },
+        app: {
+          vault: {
+            getAbstractFileByPath: (p: string) => files.get(p)?.f ?? null,
+            read: async (f: TFile) => {
+              reads.push(f.path);
+              return files.get(f.path)!.text;
+            },
+            cachedRead: async (f: TFile) => files.get(f.path)!.text,
+            process: async (f: TFile, fn: (c: string) => string) => {
+              const e = files.get(f.path)!;
+              e.text = fn(e.text);
+              return e.text;
+            },
+            getMarkdownFiles: () => [...files.values()].map((e) => e.f),
+          },
+          metadataCache: { getFileCache: (f: TFile) => ({ frontmatter: { citekey: f.basename } }), resolvedLinks: {}, getFirstLinkpathDest: () => null },
+          fileManager: { trashFile: async (f: TFile) => void files.delete(f.path) },
+        },
+      };
+      const res = await mergeDuplicateGroups(plugin as never, [
+        { keeperFile: keeper, loserFiles: [loser], expectedMtimes: new Map([[keeper.path, 1], [loser.path, 1]]) },
+      ]);
+      check(res.groupsMerged === 1 && files.get(keeper.path)!.text.includes("[[PDFs/lose2020.pdf]]"), "review B16: the keeper links the PDF only the loser had by citekey");
+      check(!reads.includes(bystander.path), "review B9.2: a note unrelated to the merge is not read uncached");
+    }
+  }
 
 console.log(`unit: all ${passed} assertions passed`);
 }
