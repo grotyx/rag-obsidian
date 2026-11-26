@@ -11,6 +11,7 @@ import { handleProtocol, McpTool } from "../src/mcp/protocol";
 import { bridgeSource } from "../src/mcp/bridge";
 import { contentHash, McpVault, validateMarkdownPath } from "../src/mcp/vault";
 import { McpService, MCP_TOOLS, mcpToolsFor } from "../src/mcp/service";
+import { parseFindings } from "../src/data/findings";
 import { compileMcpManuscript, renderCompiledManuscript } from "../src/write/manuscript";
 import { assertVaultPath, loadDesktopNode, mcpSetupSnippets, McpHttpServer } from "../src/mcp/http";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -286,7 +287,7 @@ async function serviceChecks(): Promise<void> {
   );
   assert.deepEqual(MCP_TOOLS.map((t) => t.name), [
     "library_status", "search_library", "search_findings", "rebuild_search_index", "list_references",
-    "get_reference", "get_reference_source", "save_reference_summary", "list_tags", "search_pubmed", "add_reference", "find_citing_papers", "list_notes",
+    "get_reference", "get_reference_source", "save_reference_summary", "save_reference_findings", "list_tags", "search_pubmed", "add_reference", "find_citing_papers", "list_notes",
     "read_note", "create_note", "update_note", "replace_in_note", "move_note",
     "trash_note", "compile_manuscript", "set_reference_fields",
   ]);
@@ -298,7 +299,7 @@ async function serviceChecks(): Promise<void> {
   assert.equal(MCP_TOOLS.find((t) => t.name === "search_library")?.annotations?.readOnlyHint, true);
   assert.equal(MCP_TOOLS.find((t) => t.name === "trash_note")?.annotations?.destructiveHint, true);
   const libraryOnly = mcpToolsFor(false).map((t) => t.name);
-  assert.equal(libraryOnly.length, 13, "note tools off leaves the 13 library tools");
+  assert.equal(libraryOnly.length, 14, "note tools off leaves the 14 library tools");
   for (const hidden of ["list_notes", "read_note", "create_note", "update_note", "replace_in_note", "move_note", "trash_note", "compile_manuscript"]) {
     assert.ok(!libraryOnly.includes(hidden), `${hidden} hidden when note tools are off`);
   }
@@ -706,6 +707,53 @@ async function serviceChecks(): Promise<void> {
   }) as any;
   assert.equal(pdfSaved.summarySource, "pdf-fulltext");
   assert.match(fake.files.get("References/ref.md")?.content ?? "", /^summary_source: pdf-fulltext$/m);
+
+  // save_reference_findings: verbatim-quote guard, hash guard, round trip, de-duplicating append.
+  {
+    const fSchema = MCP_TOOLS.find((t) => t.name === "save_reference_findings")!.inputSchema as any;
+    assert.deepEqual(fSchema.required, ["citekey", "expected_hash", "findings"]);
+    assert.deepEqual(fSchema.properties.findings.items.required, ["kind", "outcome", "quote"]);
+    assert.equal(fSchema.properties.findings.items.additionalProperties, false);
+    const noteNow = () => fake.files.get("References/ref.md")?.content ?? "";
+    const src = await pdfService.callTool("get_reference_source", { citekey: "smith2024" }) as any;
+    const good = { kind: "comparative", outcome: "fusion rate", intervention: "cage A", comparator: "cage B", effect: "96%", ci: "[0.5, 0.9]", p: "0.01",
+      quote: "extracted  PDF sentence. Extracted PDF sentence." };
+    const base = { citekey: "smith2024", expected_hash: src.hash };
+    const before = noteNow();
+    // fabricated quote: whole call rejected, note untouched
+    await assert.rejects(() => pdfService.callTool("save_reference_findings", { ...base, findings: [good, { kind: "prognostic", outcome: "o", quote: "Never said in the paper." }] }), /QUOTE_NOT_IN_SOURCE.*findings\[1\].*Never said/);
+    assert.equal(noteNow(), before, "fabricated quote writes nothing");
+    // unknown key, bad kind
+    await assert.rejects(() => pdfService.callTool("save_reference_findings", { ...base, findings: [{ ...good, mystery: "x" }] }), /unknown field mystery/);
+    await assert.rejects(() => pdfService.callTool("save_reference_findings", { ...base, findings: [{ ...good, kind: "other" }] }), /kind must be/);
+    // stale hash
+    await assert.rejects(() => pdfService.callTool("save_reference_findings", { ...base, expected_hash: "0".repeat(64), findings: [good] }), /CONTENT_CHANGED/);
+    assert.equal(noteNow(), before, "hash mismatch writes nothing");
+    // good save
+    const r = await pdfService.callTool("save_reference_findings", { ...base, findings: [good] }) as any;
+    assert.deepEqual([r.added, r.skippedDuplicates, r.total, r.sourceType], [1, 0, 1, "pdf-fulltext"]);
+    const saved = noteNow();
+    assert.match(saved, /> \[!quote\]- 1 finding\n/);
+    assert.ok(saved.indexOf("## Evidence (extracted)") < saved.indexOf("## Full text (extracted)"), "section sits above the stash");
+    assert.ok(saved.endsWith(pdfStashText), "stash untouched");
+    const back = parseFindings(saved);
+    assert.equal(back.length, 1);
+    assert.deepEqual([back[0].outcome, back[0].ci, back[0].p], ["fusion rate", "[0.5, 0.9]", "0.01"]);
+    const sf = await pdfService.callTool("search_findings", { query: "fusion cage", papers: ["smith2024"], rerank: false }) as any;
+    assert.equal(sf.results[0]?.outcome, "fusion rate", "search_findings reads the saved finding");
+    // append: the same finding again is skipped, a new one added and the title recounted
+    const src2 = await pdfService.callTool("get_reference_source", { citekey: "smith2024" }) as any;
+    const r2 = await pdfService.callTool("save_reference_findings", { citekey: "smith2024", expected_hash: src2.hash, findings: [good, { kind: "prognostic", outcome: "reoperation", predictor: "age", quote: "Extracted PDF sentence." }] }) as any;
+    assert.deepEqual([r2.added, r2.skippedDuplicates, r2.total], [1, 1, 2]);
+    assert.match(noteNow(), /> \[!quote\]- 2 findings\n/);
+    assert.equal(parseFindings(noteNow()).length, 2);
+    // replace rewrites the section
+    const src3 = await pdfService.callTool("get_reference_source", { citekey: "smith2024" }) as any;
+    const r3 = await pdfService.callTool("save_reference_findings", { citekey: "smith2024", expected_hash: src3.hash, replace: true, findings: [{ kind: "prognostic", outcome: "only", quote: "Extracted PDF sentence." }] }) as any;
+    assert.deepEqual([r3.added, r3.total], [1, 1]);
+    assert.deepEqual(parseFindings(noteNow()).map((f) => f.outcome), ["only"]);
+    assert.equal((noteNow().match(/## Evidence \(extracted\)/g) ?? []).length, 1);
+  }
 
   // A short stash (< 2,000 chars) is not substantial: falls back to the PMC/PubMed path.
   // (updateNote/save above replaced the map entry, so re-fetch it before mutating.)

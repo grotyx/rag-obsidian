@@ -4,7 +4,7 @@
 import { hasStashedText, stashedText, STASH_MARKER } from "../ingest/pdfStash";
 import { extractSummaryBlock, replaceSummaryBlock } from "../cite/bibliography";
 import { parseYaml, stringifyYaml } from "obsidian";
-import { evidenceSection, Finding, parseFindings } from "./findings";
+import { addFindings, parseFindings } from "./findings";
 
 export interface MergeNote {
   citekey: string;
@@ -176,52 +176,13 @@ export function mergeBodies(keeperBody: string, others: OtherBody[], summaryDono
   return hasKeeperStash ? `${prefix.replace(/\s*$/, "")}\n\n${suffix}` : prefix;
 }
 
-const FINDING_KEYS = ["kind", "outcome", "intervention", "comparator", "predictor", "subgroup", "timepoint", "n", "studies", "effect", "ci", "p", "direction", "heterogeneity"] as const;
-
-function findingKey(f: Finding): string {
-  return [...FINDING_KEYS.map((k) => f[k] ?? ""), f.quote].join("\u0001").replace(/\s+/g, " ").toLowerCase();
-}
-
-function findingLines(f: Finding, bare = false): string {
-  const fields = FINDING_KEYS.filter((k) => f[k]).map((k) => `[${k}:: ${f[k]}]`).join(" ");
-  return `> ${bare ? "" : "- "}${fields}\n>   "${f.quote}"`;
-}
-
 /** Carry the others' `## Evidence (extracted)` findings into `prefix` (the keeper body above its
  *  stash): appended to the keeper's own section, or a new section when it has none. A finding
  *  the keeper (or an earlier loser) already has — same fields and quote after whitespace/case
  *  normalisation — is not added twice. Unknown fields on a loser's finding are not carried (the
  *  parser drops them). */
 function mergeEvidence(prefix: string, otherBodies: string[]): string {
-  const have = parseFindings(prefix);
-  const seen = new Set(have.map(findingKey));
-  const added: Finding[] = [];
-  for (const body of otherBodies) {
-    for (const f of parseFindings(body.split(STASH_MARKER)[0])) {
-      const key = findingKey(f);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      added.push(f);
-    }
-  }
-  if (!added.length) return prefix;
-  const section = evidenceSection(prefix);
-  if (!section) {
-    const n = added.length;
-    return `${prefix.replace(/\s*$/, "")}\n\n## Evidence (extracted)\n\n> [!quote]- ${n} finding${n === 1 ? "" : "s"}\n${added.map((f) => findingLines(f)).join("\n")}\n`;
-  }
-  const at = prefix.indexOf(section);
-  const body = section.replace(/\s*$/, "");
-  const tail = section.slice(body.length);
-  const total = have.length + added.length;
-  const retitled = body.replace(/^(> \[!quote\]-? )\d+ findings?/m, `$1${total} finding${total === 1 ? "" : "s"}`);
-  // A section written inside a ```text fence (bare `[k:: v]` lines) grows inside that fence.
-  const fenceEnd = /\n>[ \t]*```[ \t]*$/.exec(retitled);
-  const grown =
-    fenceEnd && /^>[ \t]*```text/m.test(retitled)
-      ? `${retitled.slice(0, fenceEnd.index)}\n${added.map((f) => findingLines(f, true)).join("\n")}${retitled.slice(fenceEnd.index)}`
-      : `${retitled}\n${added.map((f) => findingLines(f)).join("\n")}`;
-  return prefix.slice(0, at) + `${grown}${tail || "\n"}` + prefix.slice(at + section.length);
+  return addFindings(prefix, otherBodies.flatMap((body) => parseFindings(body.split(STASH_MARKER)[0]))).text;
 }
 
 /** Frontmatter and body of a whole note. `null` when the YAML block does not parse — the

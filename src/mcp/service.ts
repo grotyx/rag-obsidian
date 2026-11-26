@@ -13,7 +13,7 @@ import { replaceSummaryBlock } from "../cite/bibliography";
 import { McpTool } from "./protocol";
 import { McpVault } from "./vault";
 import { tagKey, tagsOf, text } from "../util/json";
-import { Finding, findingText, isRestated, parseFindings } from "../data/findings";
+import { Finding, findingText, isRestated, parseFindingInput, parseFindings, quoteInSource, saveFindings } from "../data/findings";
 import { canHostedRerank, hostedRerank } from "../index/rerank";
 import { citingWorks } from "../graph/openalex";
 
@@ -118,6 +118,29 @@ export const MCP_TOOLS: McpTool[] = [
       korean: string("Optional concise Korean summary."),
     }, ["citekey", "expected_hash", "source_type", "background", "methods", "results", "conclusions"]),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  },
+  {
+    name: "save_reference_findings",
+    description: "Save extracted findings (effect, CI, p, ...) into a reference note's `## Evidence (extracted)` section, where search_findings reads them. Every quote must appear verbatim in the note's source text (linked PDF text, else PMC full text, else abstract; see get_reference_source) — otherwise nothing is written and the failing quotes are listed. Appends de-duplicated by default; replace=true rewrites the section. Refuses stale hashes. Never calls an LLM.",
+    inputSchema: objectSchema({
+      citekey: string("Exact citekey returned by get_reference_source."),
+      expected_hash: string("Whole-note SHA-256 returned by get_reference_source."),
+      findings: {
+        type: "array", minItems: 1, description: "Findings to save. Unknown fields are rejected.",
+        items: objectSchema({
+          kind: { type: "string", enum: ["comparative", "prognostic"], description: "comparative (intervention vs comparator) or prognostic (predictor)." },
+          outcome: string("Outcome measured."),
+          intervention: string("Intervention (comparative)."), comparator: string("Comparator (comparative)."),
+          predictor: string("Predictor (prognostic)."), subgroup: string("Subgroup."), timepoint: string("Follow-up time point."),
+          n: string("Sample size."), studies: string("Number of studies (pooled results)."),
+          effect: string("Effect size as reported."), ci: string("Confidence interval as reported."), p: string("P value as reported."),
+          direction: string("Direction of the effect."), heterogeneity: string("Heterogeneity (e.g. I2)."),
+          quote: string("Verbatim sentence from the source that reports this result."),
+        }, ["kind", "outcome", "quote"]),
+      },
+      replace: { type: "boolean", description: "Replace the whole Evidence section instead of appending. Default false." },
+    }, ["citekey", "expected_hash", "findings"]),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   },
   {
     name: "list_tags", description: "List reference-library tags and counts without model or network calls.",
@@ -360,6 +383,7 @@ export class McpService {
       case "get_reference": return this.getReference(stringArg(args, "citekey"));
       case "get_reference_source": return this.getReferenceSource(stringArg(args, "citekey"));
       case "save_reference_summary": return this.saveReferenceSummary(args);
+      case "save_reference_findings": return this.saveReferenceFindings(args);
       case "list_tags": return this.listTags();
       case "search_pubmed": return this.searchPubmed(args);
       case "add_reference": return this.addReference(stringArg(args, "identifier"), boundedStringArrayArg(args, "tags"));
@@ -605,14 +629,16 @@ export class McpService {
     };
   }
 
-  private async getReferenceSource(citekey: string): Promise<Record<string, unknown>> {
+  /** `uncapped` lifts the 120k-character cap on `sourceText` (the quote guard needs all of it). */
+  private async getReferenceSource(citekey: string, uncapped = false): Promise<Record<string, unknown>> {
+    const cap = uncapped ? Infinity : 120_000;
     const file = this.plugin.library.getFile(citekey);
     const item = this.plugin.library.getItem(citekey);
     if (!file || !item) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
     const note = await this.vault.readFullNote(file.path);
     const stash = stashedText(note.content);
     if (stash.length >= PDF_STASH_MIN_CHARS) {
-      const limited = stash.slice(0, 120_000);
+      const limited = stash.slice(0, cap);
       return {
         citekey, path: file.path, metadata: item, hash: note.hash, sourceType: "pdf-fulltext",
         sourceLabel: "Linked PDF text (extracted) — complete article body",
@@ -639,7 +665,7 @@ export class McpService {
     const sourceText = full || record.abstract || storedAbstract;
     if (!sourceText) throw new Error("NO_SOURCE_TEXT: reference has no PMC full text or abstract");
     const sourceType = full ? "pmc-fulltext" : record.abstract ? "pubmed-abstract" : "stored-abstract";
-    const limited = sourceText.slice(0, 120_000);
+    const limited = sourceText.slice(0, cap);
     return {
       citekey, path: file.path, metadata: item, hash: note.hash, sourceType,
       sourceLabel: full
@@ -670,6 +696,29 @@ export class McpService {
     const result = await this.vault.editNote(file.path, expectedHash, (content) =>
       replaceSummaryBlock(summaryMetadata(content, source, model), summaryBlock(sections)));
     return { ...result, citekey, summarySource: source };
+  }
+
+  private async saveReferenceFindings(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (args.replace !== undefined && typeof args.replace !== "boolean") throw new Error("INVALID_ARGUMENT: replace must be a boolean");
+    const citekey = stringArg(args, "citekey");
+    const expectedHash = stringArg(args, "expected_hash");
+    const findings = parseFindingInput(args.findings);
+    const src = await this.getReferenceSource(citekey, true);
+    if (src.hash !== expectedHash) throw new Error(`CONTENT_CHANGED: read ${String(src.path)} again before changing it`);
+    const sourceText = String(src.sourceText);
+    const missing = findings.map((f, i) => ({ i, quote: f.quote })).filter((x) => !quoteInSource(x.quote, sourceText));
+    if (missing.length) {
+      throw new Error(`QUOTE_NOT_IN_SOURCE: ${missing.length} quote${missing.length > 1 ? "s" : ""} not found verbatim in the ${String(src.sourceType)}; nothing was written. ${missing.map((m) => `findings[${m.i}]: "${m.quote.slice(0, 120)}"`).join(" | ")}`);
+    }
+    const file = this.plugin.library.getFile(citekey);
+    if (!file) throw new Error(`NOT_FOUND: reference not found: ${citekey}`);
+    let counts = { added: 0, total: 0 };
+    const result = await this.vault.editNote(file.path, expectedHash, (content) => {
+      const r = saveFindings(content, findings, args.replace === true);
+      counts = r;
+      return r.text;
+    });
+    return { ...result, citekey, sourceType: src.sourceType, added: counts.added, skippedDuplicates: findings.length - counts.added, total: counts.total };
   }
 
   private async listTags(): Promise<Record<string, unknown>> {

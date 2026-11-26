@@ -64,7 +64,7 @@ import { cacheRoot, legacyCacheRoot, NodeFileIO, staleIndexFiles } from "../src/
 import { IndexManager } from "../src/index/manager";
 import { pandocCandidates, pandocPrepare } from "../src/write/pandoc";
 import { stripFrontmatter, chunkReference, yearFromIssued, chunkHash } from "../src/index/chunker";
-import { parseFindings, findingText, isRestated, Finding } from "../src/data/findings";
+import { parseFindings, findingText, isRestated, Finding, normalizeQuote, quoteInSource, saveFindings, parseFindingInput } from "../src/data/findings";
 import { evidenceCsv, collectEvidenceRows } from "../src/commands/evidenceExport";
 import { referenceProblems, refcheckReport, problemSeverity, PROBLEM_UNCHECKED, PROBLEM_THIN, PROBLEM_PREPRINT } from "../src/write/refcheck";
 import { parseStyleIndex } from "../src/cite/styleIndex";
@@ -4215,6 +4215,35 @@ check(
     const marked = markInLibrary([mk("1"), mk("2", "10.1/B"), mk("3")], (it) => matchKeys(it).some((k) => lib.has(k)));
     check(marked.map((h) => h.inLibrary).join() === "true,true,false", "pubmed: in-library rows matched by PMID and by DOI");
   }
+
+// ---- findings fixes ----
+{
+  check(quoteInSource("Fusion  was “96%” – high", 'x. fusion was "96%" - HIGH.\nnext'), "quoteInSource: whitespace, curly quotes, dashes and case are folded");
+  check(!quoteInSource("fusion was 97%", "fusion was 96%") && !quoteInSource("", "abc"), "quoteInSource: a different number or an empty quote fails");
+  check(normalizeQuote(" A −B ") === "a -b", "normalizeQuote: nbsp and minus sign");
+  const f1: Finding = { kind: "comparative", outcome: "ODI", intervention: "A", ci: "[0.5, 0.9]", p: "0.02", quote: "ODI improved (p = 0.02)." };
+  const f2: Finding = { kind: "prognostic", outcome: "reop", predictor: "age", quote: "Older patients had more reoperation." };
+  const NOTE = "---\ncitekey: k\n---\n\n## Summary\n\ns\n\n## Notes\n\nn\n";
+  const STASH = "\n\n## Full text (extracted)\n\nBody text.\n";
+  const a = saveFindings(NOTE + STASH, [f1], false);
+  check(a.added === 1 && a.total === 1 && a.text.endsWith(STASH), "saveFindings: new section, stash untouched at the end");
+  check(a.text.indexOf("## Evidence (extracted)") < a.text.indexOf("## Full text (extracted)") && a.text.includes("> [!quote]- 1 finding\n"), "saveFindings: section sits above the stash, title counted");
+  const pa = parseFindings(a.text);
+  check(pa.length === 1 && pa[0].ci === "[0.5, 0.9]" && pa[0].quote === f1.quote && pa[0].intervention === "A", "saveFindings: round trip through parseFindings");
+  const b = saveFindings(a.text, [{ ...f1, quote: "odi  IMPROVED (p = 0.02)." }, f2], false);
+  check(b.added === 1 && b.total === 2 && b.text.includes("> [!quote]- 2 findings"), "saveFindings: append skips a case/whitespace duplicate and recounts the title");
+  check(saveFindings(b.text, [f1, f2], false).text === b.text, "saveFindings: appending only duplicates changes nothing");
+  const c = saveFindings(b.text, [f2], true);
+  check(parseFindings(c.text).length === 1 && c.text.includes("> [!quote]- 1 finding\n") && (c.text.match(/## Evidence \(extracted\)/g) ?? []).length === 1 && c.text.endsWith(STASH), "saveFindings: replace rewrites the one section");
+  check(saveFindings(NOTE, [f1], false).text.startsWith(NOTE.trimEnd()), "saveFindings: no stash, section appended at the end");
+  const thrown = (raw: unknown) => { try { parseFindingInput(raw); return ""; } catch (e) { return e instanceof Error ? e.message : String(e); } };
+  check(/unknown field mystery/.test(thrown([{ ...f1, mystery: "x" }])), "parseFindingInput: unknown key rejected");
+  check(/kind must be/.test(thrown([{ ...f1, kind: "x" }])) && /outcome is required/.test(thrown([{ kind: "prognostic", quote: "q" }])) && /quote is required/.test(thrown([{ kind: "prognostic", outcome: "o" }])), "parseFindingInput: kind, outcome and quote are required");
+  check(/cannot hold/.test(thrown([{ ...f1, effect: "a] b" }])), "parseFindingInput: a value the parser would misread is rejected");
+  const ok = parseFindingInput([{ ...f1, n: 120, intervention: "  ", quote: "ODI\nimproved." }]);
+  check(ok[0].n === "120" && ok[0].intervention === undefined && ok[0].quote === "ODI improved.", "parseFindingInput: numbers stringified, blanks dropped, whitespace collapsed");
+  check(/non-empty/.test(thrown([])) && /non-empty/.test(thrown("x")), "parseFindingInput: needs a non-empty array");
+}
 
 console.log(`unit: all ${passed} assertions passed`);
 }

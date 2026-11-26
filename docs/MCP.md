@@ -160,6 +160,7 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | `get_reference` | Read metadata and note content by citekey | Read-only |
 | `get_reference_source` | Get a linked PDF's extracted text, else PMC full text, else the abstract, for external summarization | Network possible; read-only |
 | `save_reference_summary` | Save the external model's structured summary under a hash guard | Edits a reference note |
+| `save_reference_findings` | Save extracted findings (kind, outcome, effect, CI, p, ... + a required `quote`) into the note's `## Evidence (extracted)` section under a hash guard; every quote must occur verbatim in the same source `get_reference_source` returns (whitespace, quote marks, dashes and case ignored) or nothing is written; appends de-duplicated, `replace: true` rewrites the section | Network possible; edits a reference note |
 | `list_tags` | List library tags and counts | Read-only |
 | `search_pubmed` | Search PubMed (`limit` up to 150; `totalCount`/`truncated` report if the query matched more than was returned; `log: true` also writes a PRISMA-S search-log note under `Searches/` and returns `logPath`) | Network; creates a note only with `log` |
 | `add_reference` | Add a paper from an explicit identifier, tagged with its PubMed MeSH headings and author keywords, plus optional `tags` (merged onto an existing duplicate too) | Network; creates or edits a note |
@@ -175,7 +176,7 @@ one precise replace_in_note call, then create a cited copy with compile_manuscri
 | `compile_manuscript` | Render `[@citekey]` and bibliography into a copy | Creates/updates output note |
 
 The seven note tools (`list_notes` through `trash_note`) can be hidden: **Settings → External AI
-(MCP) → Allow note editing tools**, off. Clients then see only the 13 library tools, and a direct
+(MCP) → Allow note editing tools**, off. Clients then see only the 14 library tools, and a direct
 call to a hidden tool is refused with `UNKNOWN_TOOL`. Clients read the tool list when a session
 starts, so start a new Claude Code / Codex / OpenCode session after changing it.
 
