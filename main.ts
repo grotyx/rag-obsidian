@@ -28,6 +28,7 @@ import { PrismaScopeModal } from "./src/ui/PrismaScopeModal";
 import { EvidenceScopeModal } from "./src/commands/evidenceExport";
 import { openVerifyFindings } from "./src/ui/VerifyFindingsModal";
 import { SnowballScopeModal } from "./src/commands/snowball";
+import { checkWatches, watchCitingActive } from "./src/commands/watches";
 import { RobScopeModal } from "./src/commands/rob";
 import { CitationGraph } from "./src/graph/citations";
 import { ImportPdfModal } from "./src/ui/ImportPdfModal";
@@ -389,6 +390,16 @@ export default class ScholarRagPlugin extends Plugin {
       id: "backfill-summaries-scoped",
       name: "Summarize and tag references in a folder or tag…",
       callback: () => new BackfillScopeModal(this.app, this).open(),
+    });
+    this.addCommand({
+      id: "check-watches",
+      name: "Check literature watches",
+      callback: () => void checkWatches(this),
+    });
+    this.addCommand({
+      id: "watch-citing-active",
+      name: "Watch new papers citing this reference",
+      callback: () => void watchCitingActive(this),
     });
     this.addCommand({
       id: "cancel-batch",

@@ -193,11 +193,11 @@ export function parseCitingPage(json: unknown): { total: number; works: CitingWo
  *  isn't found on OpenAlex. */
 export async function citingWorks(
   item: CSLItem,
-  opts: { mailto?: string; limit?: number; fromYear?: number } = {}
+  opts: { mailto?: string; limit?: number; fromYear?: number; fromDate?: string } = {}
 ): Promise<{ work: OAWork; total: number; works: CitingWork[] } | null> {
   const work = await resolveWork(item, opts.mailto ?? "");
   if (!work?.openalexId) return null;
-  const filter = `cites:${work.openalexId}` + (opts.fromYear ? `,from_publication_date:${opts.fromYear}-01-01` : "");
+  const filter = `cites:${work.openalexId}` + (opts.fromDate ? `,from_publication_date:${opts.fromDate}` : opts.fromYear ? `,from_publication_date:${opts.fromYear}-01-01` : "");
   const select = "id,ids,title,display_name,publication_year,primary_location,is_retracted,type,cited_by_count";
   const res = await oaGet(
     withMailto(

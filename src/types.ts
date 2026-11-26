@@ -5,6 +5,17 @@ export type EmbeddingProviderId = "ollama" | "openai";
 export type LLMProviderId = "anthropic" | "openai" | "ollama" | "codex" | "opencode";
 export type CiteStyle = "apa" | "vancouver" | "plain";
 
+/** A saved literature watch: a PubMed query, or the papers citing one reference. */
+export interface Watch {
+  id: string;
+  kind: "pubmed" | "cites";
+  label: string;
+  query?: string; // pubmed
+  citekey?: string; // cites
+  openalexId?: string; // cites
+  lastChecked: string; // YYYY-MM-DD, local date
+}
+
 export interface ScholarRagSettings {
   referencesFolder: string;
   citekeyStyle: "authoryeartitle" | "authoryear";
@@ -54,6 +65,7 @@ export interface ScholarRagSettings {
 
   // Phase 4 — citation graph
   openalexMailto: string;
+  watches: Watch[];
 
   // Phase 5 — writing
   renderCitations: boolean;
@@ -111,6 +123,7 @@ export const DEFAULT_SETTINGS: ScholarRagSettings = {
   summaryLanguage: "en+ko",
 
   openalexMailto: "",
+  watches: [],
 
   renderCitations: true,
   pandocPath: "",

@@ -140,10 +140,11 @@ import { sanitizeModelMarkdown, safeFileName, chatNotePath } from "../src/util/s
 import { FilterRow } from "../src/ui/FilterRow";
 import { backfillSummaries, hasSummaryHeading } from "../src/commands/backfill";
 import { MIN_TAGS } from "../src/ingest/pubmedSearch";
-import type { CSLItem } from "../src/types";
+import type { CSLItem, Watch } from "../src/types";
 import { captureId, uniquePath } from "../src/util/capture";
 import { bookmarkletUrl, findPaperId } from "../src/util/bookmarklet";
-import { searchLogNote,suffixedPath, parseSearchLog, searchLogTotals, countedSearchLogs } from "../src/data/searchLog";
+import { newRecords, watchSection, recordFromItem, addLink, digestNote, runWatch, validWatches, WatchDeps, WatchResult } from "../src/data/watches";
+import { searchLogNote, suffixedPath, parseSearchLog, searchLogTotals, countedSearchLogs } from "../src/data/searchLog";
 
 let passed = 0;
 function check(cond: boolean, label: string): void {
@@ -4331,6 +4332,56 @@ check(
   }));
   const pg = await extractPdfPages(new ArrayBuffer(8));
   check(pg.length === 2 && pg[0] === "page 1 text" && pg[1] === "page 2 text", `extractPdfPages: one string per page (${JSON.stringify(pg)})`);
+}
+// ---- watches fixes ----
+{
+  const u = esearchUrl("lumbar fusion", { n: 200, since: "2026-11-01", until: "2026-11-26", sort: "pub_date" });
+  check(u.includes("datetype=edat&mindate=2026/11/01&maxdate=2026/11/26") && u.includes("retmax=200"), "watches: esearch since-date uses the Entrez date");
+  check(!esearchUrl("x", { n: 5 }).includes("edat") && esearchUrl("x", { n: 5, from: "2020" }).includes("datetype=pdat"), "watches: year filter unchanged without since");
+  check(esearchUrl("x", { n: 5, since: "2026-11-01" }).includes("maxdate=3000/01/01"), "watches: open-ended since gets a far maxdate");
+
+  const recs = [
+    { title: "A", pmid: "1", doi: "10.1/A" },
+    { title: "A again", pmid: "1" },
+    { title: "B", doi: "10.1/a" },
+    { title: "Known", pmid: "9" },
+    { title: "Same Title" },
+    { title: "same title" },
+  ];
+  const fresh = newRecords(recs, (r) => r.pmid === "9");
+  check(fresh.map((r) => r.title).join("|") === "A|Same Title", "newRecords: drops library hits, repeated PMID / DOI (case-insensitive) and repeated titles");
+
+  const item: CSLItem = { type: "article-journal", title: "Spine paper", author: [{ family: "Kim", given: "J" }], issued: { "date-parts": [[2026]] }, "container-title": "Spine J", PMID: "42", DOI: "10.1/x(1)" };
+  const sec = watchSection({ watch: { kind: "pubmed", label: "Fusion query", lastChecked: "2026-11-01" }, records: [recordFromItem(item)] });
+  check(sec.includes("**Spine paper** — Kim, 2026, Spine J") && sec.includes("[PMID 42](https://pubmed.ncbi.nlm.nih.gov/42/)"), "watchSection: title, author, year, journal, PMID link");
+  check(sec.includes("(obsidian://refwright-add?id=42)"), "watchSection: Add link uses the PMID");
+  check(addLink({ title: "t", doi: "10.1/x(1)#a b" }) === "obsidian://refwright-add?id=10.1%2Fx%281%29%23a%20b", "addLink: DOI is URI-encoded, parentheses included");
+  check(sec.includes("(https://doi.org/10.1/x%281%29)"), "watchSection: parentheses in a DOI cannot end the Markdown link");
+  check(addLink({ title: "no ids" }) === null, "addLink: none without PMID or DOI");
+  check(watchSection({ watch: { kind: "cites", label: "L", lastChecked: "2026-11-01" }, records: [] }).includes("Nothing new."), "watchSection: empty");
+  check(watchSection({ watch: { kind: "cites", label: "L", lastChecked: "2026-11-01" }, records: [], error: "boom" }).includes("Check failed: boom"), "watchSection: failure listed");
+
+  const r1: WatchResult = { watch: { kind: "pubmed", label: "One", lastChecked: "2026-11-01" }, records: [] };
+  const r2: WatchResult = { watch: { kind: "cites", label: "Two", lastChecked: "2026-11-01" }, records: [], error: "x" };
+  const d1 = digestNote(null, "2026-11-26", [r1]);
+  check(d1.startsWith("---\ntype: watch-digest\ndate: 2026-11-26\n---") && d1.includes("## One"), "digestNote: new note has frontmatter and the section");
+  const d2 = digestNote(d1, "2026-11-26", [r2]);
+  check(d2.startsWith(d1.trimEnd()) && d2.includes("## Two") && (d2.match(/^---$/gm) ?? []).length === 2, "digestNote: same-day check appends a section, no second frontmatter");
+
+  const w = (o: Partial<Watch>): Watch => ({ id: "i", kind: "pubmed", label: "l", query: "q", lastChecked: "2026-11-01", ...o });
+  const calls: string[] = [];
+  const deps: WatchDeps = {
+    pubmed: async (q, s, t) => { calls.push(`pubmed ${q} ${s} ${t}`); if (q === "bad") throw new Error("429"); return [item]; },
+    citing: async (id, s) => { calls.push(`citing ${id} ${s}`); return [{ title: "C" }]; },
+  };
+  const ok = await runWatch(w({}), "2026-11-26", deps);
+  check(calls[0] === "pubmed q 2026-11-01 2026-11-26" && ok.records[0].pmid === "42" && ok.error === undefined, "runWatch: pubmed watch passes lastChecked..today");
+  const bad = await runWatch(w({ query: "bad" }), "2026-11-26", deps);
+  check(bad.error === "429" && bad.records.length === 0, "runWatch: a failed lookup comes back as error, not a throw");
+  const cites = await runWatch(w({ kind: "cites", openalexId: "W1" }), "2026-11-26", deps);
+  check(calls[2] === "citing W1 2026-11-01" && cites.records[0].title === "C", "runWatch: cites watch passes lastChecked");
+  check((await runWatch(w({ kind: "cites" }), "2026-11-26", deps)).error !== undefined, "runWatch: cites watch without an id fails");
+  check(validWatches([w({}), w({ lastChecked: "x&y" }), null, { id: 1 }, w({ kind: "zzz" as Watch["kind"] })]).length === 1 && validWatches(undefined).length === 0, "validWatches: drops malformed entries");
 }
 
 console.log(`unit: all ${passed} assertions passed`);

@@ -6,6 +6,7 @@ import { LLMClient } from "../llm/client";
 import { mapPool, poolWidth } from "../util/pool";
 import { startBatch, cancelBatch, Batch } from "./progress";
 import { summarizeSource } from "../ingest/summarize";
+import { addPubmedWatch } from "../commands/watches";
 import { searchLogNote, suffixedPath, SEARCH_LOG_FOLDER } from "../data/searchLog";
 import {
   searchPubmedPage,
@@ -114,7 +115,15 @@ export class PubmedSearchModal extends Modal {
     new Setting(contentEl).addButton((b) => {
       this.searchBtn = b;
       b.setButtonText("Search").setCta().onClick(() => void this.runSearch());
-    });
+    }).addButton((b) =>
+      b
+        .setButtonText("Save as watch")
+        .setTooltip("Check this query for new records with “Check literature watches”")
+        .onClick(() => {
+          if (!this.query.trim()) new Notice("Enter a search query");
+          else void addPubmedWatch(this.plugin, this.query);
+        })
+    );
 
     this.resultsEl = contentEl.createDiv({ cls: "rag-pubmed-results" });
     this.footerEl = contentEl.createDiv();

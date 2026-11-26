@@ -74,6 +74,15 @@ note with a summary and topic tags.
 > **No duplicates.** A paper that is already in your library is recognized by DOI, PMID or
 > title and is not added again.
 
+**Literature watches.** To hear about new papers without searching again, click **Save as
+watch** in the PubMed dialog (it keeps the query, not the year range or sort), or run
+**Watch new papers citing this reference** on a reference note. Run **Check literature
+watches** whenever you like: it looks for records added to PubMed, or papers published,
+since the last check, leaves out what is already in your library, and writes
+`Watches/Digest <date>.md` with an **Add** link for each paper. A watch that failed is
+listed in the notice and the digest and is tried again next time. Delete watches under
+**Literature watches** in the settings.
+
 ## 3. Add one paper by DOI or PMID
 
 When you know the paper, paste its identifier. Click **+ add** in the library pane, or run

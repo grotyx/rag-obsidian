@@ -21,6 +21,8 @@ export interface PubmedSearchOpts {
   to?: string; // YYYY
   start?: number; // esearch retstart: 0-based offset of the first hit (paging)
   sort?: "relevance" | "pub_date"; // pub_date = newest first
+  since?: string; // YYYY-MM-DD: only records entered into PubMed (Entrez date) from this day on
+  until?: string; // YYYY-MM-DD, with `since`; defaults to the far future
   apiKey?: string;
   email?: string;
 }
@@ -40,7 +42,8 @@ export function esearchUrl(query: string, opts: PubmedSearchOpts & { n: number }
     `&term=${encodeURIComponent(query)}${auth(opts.apiKey, opts.email)}`;
   if (opts.start) url += `&retstart=${opts.start}`;
   // esearch ignores the date filter unless BOTH bounds are present, so an open end gets a sentinel.
-  if (opts.from || opts.to) url += `&mindate=${opts.from || "1000"}&maxdate=${opts.to || "3000"}&datetype=pdat`;
+  if (opts.since) url += `&datetype=edat&mindate=${opts.since.replace(/-/g, "/")}&maxdate=${(opts.until ?? "3000-01-01").replace(/-/g, "/")}`;
+  else if (opts.from || opts.to) url += `&mindate=${opts.from || "1000"}&maxdate=${opts.to || "3000"}&datetype=pdat`;
   return url;
 }
 

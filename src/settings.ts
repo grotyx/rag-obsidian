@@ -13,6 +13,7 @@ import { DEFAULT_SETTINGS, isOpenRouter, EmbeddingProviderId, LLMProviderId, Cit
 import { BUNDLED_STYLES } from "./cite/csl";
 import { LLMClient } from "./llm/client";
 import { bookmarkletUrl } from "./util/bookmarklet";
+import { validWatches } from "./data/watches";
 
 const FIXED_SUMMARY_LANGS = ["en", "ko", "en+ko"];
 
@@ -632,6 +633,27 @@ export class ScholarRagSettingTab extends PluginSettingTab {
           "you@example.com"
         ),
       ],
+    });
+
+    const watches = validWatches(s.watches);
+    groups.push({
+      type: "group",
+      heading: "Literature watches",
+      items: watches.length
+        ? watches.map((w): Row => ({
+            name: w.label,
+            desc: `${w.kind === "pubmed" ? "PubMed query" : "Citing papers"} · last checked ${w.lastChecked}`,
+            render: (setting) => {
+              setting.addButton((b) =>
+                b.setButtonText("Delete").onClick(async () => {
+                  s.watches = validWatches(s.watches).filter((x) => x.id !== w.id);
+                  await plugin.saveSettings();
+                  this.refreshStructure();
+                })
+              );
+            },
+          }))
+        : [info("No watches yet. Save a query with “Save as watch” in Search PubMed, or run “Watch new papers citing this reference”, then run “Check literature watches”.")],
     });
 
     groups.push({
