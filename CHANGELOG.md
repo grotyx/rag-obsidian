@@ -6,6 +6,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.11.6] — 2026-11-26
+
+### Added
+- **Clinical filters** in Search, Chat and the filter row: "Included only" (screening include), "Design" (e.g. RCT, cohort study) and "Exclude retracted". **Chat leaves out retracted references by default**; untick the box to include them. Claude Code / Codex: `search_library` takes `included`, `design` and `excludeRetracted`.
+- **Claude Code / Codex can save extracted findings**: new MCP tool `save_reference_findings` writes the `## Evidence (extracted)` section that `search_findings` and "Export evidence table (CSV)" read. Every quote must appear word for word in the paper's source text (extracted PDF text, else PMC full text, else abstract); if one does not, nothing is written.
+- **Search PubMed**: shows "Showing N of TOTAL results" with a "Load more" button, marks papers already in the library (left unticked), and has a year range and a Relevance / Newest sort. The search log records the true total and every PMID retrieved.
+
+### Fixed
+- Very large search indexes (roughly 375,000+ passages, e.g. with full-text PDFs indexed) could save fine but then fail to load at the next start. The index text is now saved in parts of about 64 MB and read one part at a time. Existing indexes load as before; nothing needs rebuilding.
+- "Summarize and tag (fill gaps)": a note left marked as summarized without summary text (Obsidian closed mid-write, or an older version) is picked up again.
+
 ## [0.11.5] — 2026-11-26
 
 Fixes from two more outside reviews (GPT-6.2 Astra and Gemini 4 Carbon), each checked against the code with a failing test first.
