@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://community.obsidian.md/plugins/academic-paper-citation-manager"><img alt="Obsidian downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&label=downloads&query=%24%5B%22academic-paper-citation-manager%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json"></a>
-  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.6-8b5cf6"></a>
+  <a href="https://github.com/grotyx/rag-obsidian/releases/latest"><img alt="version" src="https://img.shields.io/badge/version-0.11.7-8b5cf6"></a>
   <a href="https://obsidian.md"><img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-1.11.4%2B-a78bfa"></a>
   <a href="https://github.com/grotyx/rag-obsidian/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -118,7 +118,12 @@ A step-by-step guide with screenshots, from adding papers to exporting a Word ma
 - **Finding-level search** for Claude Code / Codex (MCP `search_findings`): individual results —
   effect size, CI, p and the verbatim quote — from a note's `## Evidence (extracted)` section.
   Claude Code / Codex fill that section with `save_reference_findings`, which refuses any quote that
-  is not word for word in the paper's text.
+  is not word for word in the paper's text. **Verify findings in this note** shows the PDF page of
+  each quote and flags any it cannot find.
+- **Literature watches**: save a PubMed query or follow the papers citing a reference; "Check
+  literature watches" writes a digest of what is new, with one-click Add links.
+- **Add from the browser** with a bookmarklet (DOI / PMID / arXiv from the page you are reading), or
+  import a PDF straight from your computer.
 - **Filters in the search *and* chat panes** — narrow by publication **year range**, by **author**
   (family name), and by **tag**: type in the tag box (it autocompletes from the tags already in
   your library) and press Enter to add a chip; add several and a paper must carry them all.

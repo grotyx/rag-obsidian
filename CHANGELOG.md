@@ -6,6 +6,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 
 ## [Unreleased]
 
+## [0.11.7] — 2026-11-26
+
+### Added
+- **Literature watches.** "Save as watch" in Search PubMed keeps a query; "Watch new papers citing this reference" follows a paper through OpenAlex. **"Check literature watches"** collects what is new since the last check, leaves out papers already in the library, and writes `Watches/Digest <date>.md` with an **Add** link per paper. A watch that fails keeps its date and is retried next time. Watches are listed (and deleted) under Settings → Literature watches.
+- **"Verify findings in this note"** checks each quote of the `## Evidence (extracted)` section against the linked PDF and shows the page (**Open at page**), or the extracted text when there is no PDF. A quote that cannot be found is flagged. **Mark verified** records `verified::` and `page::` on that finding.
+- **Add from the browser.** Settings → Library → "Copy bookmarklet" gives a bookmark that finds the DOI / PMID / arXiv id of the page you are reading and opens Refwright's Add reference window filled in (`obsidian://refwright-add?id=…`). Nothing is added until you click; the links in a watch digest use the same window.
+- **Import a PDF from your computer**: the Import PDF window has "Choose a PDF from your computer…" and accepts a PDF dropped on it. The file is copied into `PDFs/` (never over an existing file) and imported as usual.
+
+### Changed
+- "Extract PDF highlights" links each highlight to its page (`[[PDFs/x.pdf#page=4|p. 4]]`), so a click opens the PDF there.
+
 ## [0.11.6] — 2026-11-26
 
 ### Added

@@ -3,7 +3,7 @@
 > Display name: **Refwright** (was "Academic Paper Citation Manager" through 0.8.2) · plugin id:
 > `academic-paper-citation-manager` (`rag-obsidian` through 0.5.2; see the 0.6 migration guide).
 
-**Version**: 0.11.6 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
+**Version**: 0.11.7 · **Status**: Community-ready desktop build + live-vault Claude Code/Codex MCP
 **Docs**: [README](README.md) (user) · [User guide](docs/manual/README.md) (screenshots, en/ko/zh/ja/es; `scripts/manual/capture.py` reshoots them) · [MCP](docs/MCP.md) (Claude Code/Codex) · [PLAN](PLAN.md) (design/roadmap) · [CHANGELOG](CHANGELOG.md)
 
 > This file orchestrates the project for any future session. Read it first when resuming.
@@ -59,6 +59,9 @@ Claude Code / Codex → generated stdio bridge → authenticated 127.0.0.1 MCP s
 | `data/findings.ts` | `parseFindings` / `findingText` / `evidenceSection` / `saveFindings` + `quoteInSource` (the one writer, shared by merge and MCP `save_reference_findings`, which rejects any quote not found verbatim in the source) — the `## Evidence (extracted)` callout (Dataview `[key:: value]` fields + verbatim quote per finding); read by MCP `search_findings`, excluded from chunking by `index/chunker.ts` |
 | `data/screening.ts` | `applyScreening` — the one screening write (kq / include / level / design / note / guideline, stored in fields only — never mirrored into tags; legacy mirrored tags are dropped when their field is set), shared by the MCP `set_reference_fields` tool and the Screening pane; include needs ≥1 KQ |
 | `data/searchLog.ts` | `searchLogNote` / `parseSearchLog` / `searchLogTotals` — one Markdown record per PubMed search run under `Searches/` (`type: search-log`; query, date, filters, total, returned / imported PMIDs), written by the PubMed modal on import and by MCP `search_pubmed` with `log: true`; PRISMA lists them |
+| `data/watches.ts` + `commands/watches.ts` | literature watches (`settings.watches`): PubMed since-date (`datetype=edat`) and OpenAlex citing-since queries, library de-dup, `Watches/Digest <date>.md` with `obsidian://refwright-add` links; `lastChecked` advances only on success |
+| `data/verify.ts` + `ui/VerifyFindingsModal.ts` | "Verify findings in this note": `locateQuote` over per-page PDF text (`extractPdfPages`), open at `#page=N`, `setFindingFields` writes `verified::` / `page::` |
+| `util/capture.ts` + `util/bookmarklet.ts` | `refwright-add` URI handler (`captureId` validates; opens the Add modal, never adds silently), bookmarklet built from `findPaperId` source, `uniquePath` for external PDF import |
 | `data/snowball.ts` | `aggregateSnowball` / `snowballMarkdown` — backward + forward citation candidates of included records, de-duplicated against the library and ranked by links (`commands/snowball.ts` runs the OpenAlex lookups) |
 | `data/rob.ts` | `robMarkdown` — the risk-of-bias summary note (one table per `rob_tool`, counts, included records not yet assessed); `commands/rob.ts` picks the scope |
 | `data/prisma.ts` | `prismaCounts` / `prismaMarkdown` — PRISMA 2020 numbers and the Mermaid + table note (`commands/prisma.ts` gathers the records) |
