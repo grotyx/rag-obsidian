@@ -2,13 +2,13 @@ import { App, TFile, normalizePath, debounce, Debouncer, Platform, Notice } from
 import { ScholarRagSettings, effective } from "../types";
 import { Library } from "../data/library";
 import { createProvider, EmbeddingProvider } from "./embedding";
-import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA, VECTOR_SLICE_BYTES } from "./store";
+import { VectorStore, SearchHit, SearchFilters, StoredMeta, INDEX_SCHEMA, VECTOR_SLICE_BYTES, DOC_PART_CHARS, docPartName } from "./store";
 import { canHostedRerank, capPerReference, hostedRerank, mmr } from "./rerank";
 import { buildExpander, expandedTerm, Expander, Expansion, isForeignQuery, parseVocabulary } from "./expand";
 import { MeshThesaurus, MeshAddOptions } from "./thesaurus";
 import { mapPool } from "../util/pool";
 import { tagsOf, text } from "../util/json";
-import { FileIO, NodeFileIO, localIndexDir, staleIndexFiles } from "./localFiles";
+import { FileIO, INDEX_FILE_RE, NodeFileIO, localIndexDir, staleIndexFiles } from "./localFiles";
 
 import {
   chunkReference,
@@ -86,6 +86,8 @@ export class IndexManager {
   private dirty = false;
   /** Largest packed slice of vectors written at once (a field so tests can force several slices). */
   vectorSliceBytes = VECTOR_SLICE_BYTES;
+  /** Largest document file one persist writes (a field so a test can shrink it). */
+  docPartChars = DOC_PART_CHARS;
   private locationResolved = false;
   private reindexQueue = new Set<string>();
   private flush: Debouncer<[], void>;
@@ -256,7 +258,13 @@ export class IndexManager {
       }
       // meta names the generation it commits; a meta without `gen` is a pre-generation index.
       if (meta.gen !== undefined && !/^[a-z0-9]+$/.test(meta.gen)) throw new Error("index meta has a bad generation id");
-      const docs = await this.io.read(`${this.dir}/${meta.gen ? `docs-${meta.gen}.json` : "docs.json"}`);
+      const nParts = meta.docParts ?? 1;
+      if (!Number.isInteger(nParts) || nParts < 1 || nParts > 100000) throw new Error("index meta has a bad document part count");
+      const dir = this.dir;
+      const io = this.io;
+      const docs = (async function* () {
+        for (let i = 0; i < nParts; i++) yield await io.read(`${dir}/${docPartName(meta.gen, i)}`);
+      })();
       const vectors = await this.io.readBinary(`${this.dir}/${meta.gen ? `vectors-${meta.gen}.f32` : "vectors.f32"}`);
       await this.store.load(docs, vectors, meta);
       if (meta.gen) this.ownGens.add(meta.gen); // the next persist supersedes it
@@ -964,24 +972,24 @@ export class IndexManager {
     await this.persistNow();
   }
 
-  /** Persist as a new generation: `docs-<gen>.json` and `vectors-<gen>.f32` are written whole first,
+  /** Persist as a new generation: `docs-<gen>.json` (+ `docs-<gen>-<n>.json` parts past ~64M chars, `docParts` in meta) and `vectors-<gen>.f32` are written whole first,
    *  then `meta.json` (naming `gen`) is swapped in — that single write is the commit point. A crash
    *  before it leaves the previous generation (meta + its two files) untouched; the half-written
    *  new files are orphans swept by the next persist. */
   private async persistNow(): Promise<void> {
     if (!(await this.io.exists(this.dir))) await this.io.mkdir(this.dir);
     this.store.flush();
-    const { parts, vectorSlices, meta } = await this.store.serializeStream();
+    const { docParts, vectorSlices, meta } = await this.store.serializeStream();
     const gen = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     this.ownGens.add(gen); // from the first byte: a crash mid-write leaves an orphan this process may sweep
-    const docsName = `docs-${gen}.json`;
     const vectorsName = `vectors-${gen}.f32`;
-    let first = true;
-    for (const part of parts) {
-      if (first) await this.io.write(`${this.dir}/${docsName}`, part);
-      else await this.io.append(`${this.dir}/${docsName}`, part);
-      first = false;
+    const docNames: string[] = [];
+    for (const part of docParts(this.docPartChars)) {
+      const name = docPartName(gen, docNames.length);
+      await this.io.write(`${this.dir}/${name}`, part);
+      docNames.push(name);
     }
+    if (docNames.length > 1) meta.docParts = docNames.length;
     const vectorsPath = `${this.dir}/${vectorsName}`;
     if (this.io.appendBinary) {
       // <= 64 MB packed at a time: packing the whole bank (212k x 1536 x 4 B ~ 1.3 GB) per persist
@@ -1005,7 +1013,7 @@ export class IndexManager {
     // files, are dead weight; another computer's generation is not ours to delete. Failing to delete
     // must not fail the persist.
     try {
-      await this.sweep(this.io, this.dir, new Set(["meta.json", docsName, vectorsName]), this.ownGens);
+      await this.sweep(this.io, this.dir, new Set(["meta.json", ...docNames, vectorsName]), this.ownGens);
     } catch (e) {
       console.warn("[Refwright] could not remove old index files", e);
     }
@@ -1020,9 +1028,9 @@ export class IndexManager {
     const names = (await io.list(dir)).files.map((p) => p.slice(p.lastIndexOf("/") + 1));
     const doomed = own
       ? staleIndexFiles(names, keep, own)
-      : names.filter((n) => /^(docs|vectors|meta|orama)(-[a-z0-9]+)?\.(json|f32)(\.tmp)?$/.test(n) && !keep.has(n));
+      : names.filter((n) => INDEX_FILE_RE.test(n) && !keep.has(n));
     for (const name of doomed) await io.remove(`${dir}/${name}`);
-    if (own) for (const name of doomed) own.delete(/^(?:docs|vectors)-([a-z0-9]+)\./.exec(name)?.[1] ?? "");
+    if (own) for (const name of doomed) own.delete(/^(?:docs|vectors)-([a-z0-9]+)(?:-\d+)?\./.exec(name)?.[1] ?? "");
   }
 
   /** Crash-safe write: stage to `<path>.tmp`, then rename into place so the target

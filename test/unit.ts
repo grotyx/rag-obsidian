@@ -13,7 +13,7 @@ import * as path from "node:path";
 import nodeFs from "node:fs";
 import nodeOs from "node:os";
 import nodePath from "node:path";
-import { VectorStore } from "../src/index/store";
+import { VectorStore, docPartName } from "../src/index/store";
 import { TextIndex, tokenize } from "../src/index/textIndex";
 import { create, insertMultiple, search, MODE_HYBRID_SEARCH, AnyOrama, SearchParams } from "@orama/orama";
 
@@ -4058,6 +4058,110 @@ check(
       await m.dispose(); await again.dispose(); await third.dispose();
     }
   }
+}
+
+// ---- shard fixes ----
+{
+  // B2: the docs file is several standalone parts, restored one string at a time; old single-file metas still load
+  const DIM = 4;
+  const mkc = (ck: string, n: number) => Array.from({ length: n }, (_, i) => ({
+    id: `${ck}#${i}`, citekey: ck, title: ck, section: "abstract", year: 2020, tags: [] as string[], authors: [] as string[], text: `word${i} ${ck} ${"filler ".repeat(20)}`, embedText: "",
+  }));
+  const vecs = (n: number) => Array.from({ length: n }, (_, i) => [1, i + 1, 2, 3]);
+  const s0 = new VectorStore();
+  s0.init(DIM, "m");
+  for (const ck of ["a", "b", "c", "d"]) await s0.addChunks(mkc(ck, 5), vecs(5));
+  const whole = await s0.serialize();
+  const st = await s0.serializeStream();
+  const pieces = [...st.docParts(600)];
+  check(pieces.length >= 3, `shard: a tiny part size yields several parts (${pieces.length})`);
+  check(pieces.every((x) => Array.isArray(JSON.parse(x))), "shard: every part is a standalone JSON array");
+  check(pieces.flatMap((x) => JSON.parse(x) as unknown[]).length === 20 && JSON.stringify(pieces.flatMap((x) => JSON.parse(x) as unknown[])) === JSON.stringify(JSON.parse(whole.docs)), "shard: the parts concatenate to the same rows, in order");
+  check([...st.docParts()].length === 1 && [...st.docParts()][0] === whole.docs, "shard: the default part size keeps a small index as one file");
+  async function* gen(xs: string[]) { for (const x of xs) yield x; }
+  const s1 = new VectorStore();
+  await s1.load(gen(pieces), whole.vectors.slice(0), whole.meta);
+  const q = [1, 2, 2, 3];
+  check(s1.count === 20 && (await s1.search(q, "word1 c", 10)).map((h) => h.id).join() === (await s0.search(q, "word1 c", 10)).map((h) => h.id).join(), "shard: restoring from parts matches the original index");
+  let bad = false;
+  try { await new VectorStore().load(gen(pieces.slice(1)), whole.vectors.slice(0), whole.meta); } catch { bad = true; }
+  check(bad, "shard: a missing part is a desync error, not a silent partial index");
+  const s2 = new VectorStore();
+  await s2.load(whole.docs, whole.vectors.slice(0), whole.meta);
+  check(s2.count === 20, "shard: a single JSON string (old single-file index) still loads");
+
+  check(docPartName("abc", 0) === "docs-abc.json" && docPartName("abc", 2) === "docs-abc-2.json" && docPartName(undefined, 0) === "docs.json", "shard: part 0 keeps the old file name");
+  const names = ["meta.json", "docs-new1.json", "docs-new1-1.json", "docs-new1-2.json", "vectors-new1.f32", "docs-mine0.json", "docs-mine0-1.json", "docs-mine0-2.json", "vectors-mine0.f32", "docs-theirs.json", "docs-theirs-1.json", "vectors-theirs.f32", "docs.json"];
+  const keep = new Set(["meta.json", "docs-new1.json", "docs-new1-1.json", "docs-new1-2.json", "vectors-new1.f32"]);
+  const doomed = staleIndexFiles(names, keep, new Set(["new1", "mine0"])).sort();
+  check(doomed.join() === ["docs-mine0-1.json", "docs-mine0-2.json", "docs-mine0.json", "docs.json", "vectors-mine0.f32"].sort().join(), `shard: cleanup removes every part of a superseded own generation (${doomed.join()})`);
+  check(!doomed.some((n) => n.includes("theirs")), "shard: ...and no part of another computer's generation");
+
+  // manager: persist with a tiny part size, restore, old single-file layout, cleanup of the superseded parts
+  const disk = new Map<string, string | ArrayBuffer>();
+  const adapter = {
+    exists: async (p: string) => disk.has(p) || [...disk.keys()].some((k) => k.startsWith(`${p}/`)),
+    mkdir: async () => undefined,
+    read: async (p: string) => disk.get(p) as string,
+    write: async (p: string, d: string) => void disk.set(p, d),
+    append: async (p: string, d: string) => void disk.set(p, ((disk.get(p) as string | undefined) ?? "") + d),
+    readBinary: async (p: string) => (disk.get(p) as ArrayBuffer).slice(0),
+    writeBinary: async (p: string, d: ArrayBuffer) => void disk.set(p, d),
+    list: async (dir: string) => ({ files: [...disk.keys()].filter((k) => k.startsWith(`${dir}/`) && !k.slice(dir.length + 1).includes("/")) }),
+    remove: async (p: string) => void disk.delete(p),
+    rename: async (a: string, b: string) => { disk.set(b, disk.get(a) as string); disk.delete(a); },
+  };
+  const notes = new Map<string, string>();
+  for (const k of ["n1", "n2", "n3", "n4", "n5", "n6"]) notes.set(`References/${k}.md`, `${k} abstract about discs and nerves ${"padding ".repeat(30)}`);
+  const file = (p: string) => Object.assign(new TFile(p), { stat: { mtime: 100 } });
+  const app = {
+    vault: {
+      adapter,
+      getMarkdownFiles: () => [...notes.keys()].map(file),
+      read: async () => "---\nx: 1\n---\n",
+      getAbstractFileByPath: (p: string) => (notes.has(p) ? file(p) : null),
+    },
+    metadataCache: { getFileCache: (f: TFile) => ({ frontmatter: { citekey: f.path.slice(11, -3), title: f.path, abstract: notes.get(f.path) } }) },
+  };
+  const provider = { id: "fake:m", embed: async (texts: string[]) => texts.map((t) => [1, (t.length % 7) + 1, t.charCodeAt(t.length - 1) % 5, 2]) };
+  const sets = { ...DEFAULT_SETTINGS, embeddingProvider: "openai" as const, embeddingModel: "m", openaiApiKey: "k", queryExpansion: false, indexLocal: false };
+  const mk = () => {
+    const m = new IndexManager(app as never, { folder: () => "References", getItem: () => undefined } as never, sets, "plugin");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const priv = m as any;
+    priv.getProvider = () => provider;
+    priv.flush.cancel();
+    return { m, priv };
+  };
+  const { m, priv } = mk();
+  priv.docPartChars = 200;
+  await m.rebuild();
+  const dir = priv.dir as string;
+  const idxFiles = () => [...disk.keys()].filter((k) => k.startsWith(`${dir}/`)).map((k) => k.slice(dir.length + 1)).sort();
+  const meta1 = JSON.parse(disk.get(`${dir}/meta.json`) as string) as { gen: string; docParts?: number };
+  check((meta1.docParts ?? 1) >= 3 && idxFiles().filter((n) => n.startsWith("docs-")).length === meta1.docParts, `shard: the persist wrote ${meta1.docParts} document parts, listed in meta`);
+  check(idxFiles().every((n) => n === "meta.json" || n.includes(meta1.gen)), `shard: only this generation is on disk (${idxFiles().join(", ")})`);
+  const r1 = mk();
+  await r1.m.restore();
+  r1.priv.flush.cancel();
+  check(r1.m.ready && r1.m.count === m.count && (await r1.m.search("nerves", {}, 5, { translate: false })).length > 0, `shard: the manager restores the multi-part index (${r1.m.count} chunks)`);
+  const before = idxFiles();
+  // a second persist supersedes the first generation: all its parts go
+  await priv.persist();
+  const meta2 = JSON.parse(disk.get(`${dir}/meta.json`) as string) as { gen: string };
+  check(meta2.gen !== meta1.gen && idxFiles().every((n) => n === "meta.json" || n.includes(meta2.gen)), `shard: the superseded generation's parts are deleted (${before.length} -> ${idxFiles().length} files)`);
+  // old layout: one docs-<gen>.json, no docParts
+  priv.docPartChars = 64_000_000;
+  await priv.persist();
+  const meta3 = JSON.parse(disk.get(`${dir}/meta.json`) as string) as { gen: string; docParts?: number };
+  check(meta3.docParts === undefined && idxFiles().includes(`docs-${meta3.gen}.json`) && idxFiles().length === 3, `shard: a small index is still one docs-<gen>.json with no docParts (${idxFiles().join(", ")})`);
+  const r3 = mk();
+  await r3.m.restore();
+  r3.priv.flush.cancel();
+  check(r3.m.ready && r3.m.count === priv.store.count, "shard: an old-style single-file meta restores");
+  await r3.m.dispose();
+  await r1.m.dispose();
+  await m.dispose();
 }
 
 console.log(`unit: all ${passed} assertions passed`);

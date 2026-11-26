@@ -23,6 +23,9 @@ export interface StoredMeta {
   /** Generation id of the `docs-<gen>.json` / `vectors-<gen>.f32` pair this meta commits (absent =
    *  legacy plain `docs.json` / `vectors.f32`). The meta write is the single commit point of a persist. */
   gen?: string;
+  /** Number of document files of this generation (absent = 1). File 0 is `docs-<gen>.json`, file n is
+   *  `docs-<gen>-<n>.json`; each is a standalone JSON array, so restore never holds one giant string. */
+  docParts?: number;
   /** Endpoint fingerprint (origin + model, never a key) the vectors came from; absent in older metas. */
   endpoint?: string;
   /** note path → file mtime (ms) when its chunks were embedded; a newer file on disk is stale (absent in older metas). */
@@ -67,6 +70,16 @@ const TEXT_LIMIT = 2000;
 
 /** Size (chars) of one piece of the streamed docs.json. */
 const PART_CHARS = 4_000_000;
+
+/** File name of document part `i` of a generation: `docs-<gen>.json`, then `docs-<gen>-<i>.json`
+ *  (no `gen` = the pre-generation `docs.json`). */
+export function docPartName(gen: string | undefined, i: number): string {
+  return gen ? `docs-${gen}${i ? `-${i}` : ""}.json` : "docs.json";
+}
+
+/** Largest document file (chars) a persist writes; V8 caps one string near 512 MiB, so the whole
+ *  `docs` array must never be one string at ~375k chunks. */
+export const DOC_PART_CHARS = 64_000_000;
 
 /** Bank size (bytes) above which it grows by 5% steps instead of ×1.5. */
 const BIG_BANK_BYTES = 64 * 1024 * 1024;
@@ -430,6 +443,8 @@ export class VectorStore {
    *  never exists. Both read live store state: consume them inside the manager's serialized job. */
   async serializeStream(): Promise<{
     parts: Generator<string>;
+    /** The same rows as `parts`, cut into standalone JSON arrays of ≤ ~`maxChars` each (≥1, `[]` when empty). */
+    docParts: (maxChars?: number) => Generator<string>;
     vectorSlices: (maxBytes?: number) => Generator<ArrayBuffer>;
     meta: StoredMeta;
   }> {
@@ -484,6 +499,32 @@ export class VectorStore {
       }
       yield out + "]";
     }
+    function* docParts(maxChars = DOC_PART_CHARS): Generator<string> {
+      let rowsJson: string[] = [];
+      let size = 0;
+      for (const row of rows) {
+        const doc = index.doc(row);
+        if (!doc) throw new Error("index/meta desync — rebuild required");
+        const j = JSON.stringify({
+          id: doc.id,
+          citekey: doc.citekey,
+          title: doc.title,
+          section: doc.section,
+          year: doc.year,
+          tags: doc.tags,
+          author: doc.author,
+          text: doc.text,
+        });
+        rowsJson.push(j);
+        size += j.length + 1;
+        if (size >= maxChars) {
+          yield "[" + rowsJson.join(",") + "]";
+          rowsJson = [];
+          size = 0;
+        }
+      }
+      if (rowsJson.length || rows.length === 0) yield "[" + rowsJson.join(",") + "]";
+    }
     const meta: StoredMeta = {
       modelId: this.modelId,
       dim: this.dim,
@@ -496,13 +537,18 @@ export class VectorStore {
       schema: INDEX_SCHEMA,
       endpoint: this.endpoint,
     };
-    return { parts: parts(), vectorSlices, meta };
+    return { parts: parts(), docParts, vectorSlices, meta };
   }
 
-  async load(docsJson: string, vectors: ArrayBuffer, meta: StoredMeta): Promise<void> {
+  /** `docsJson` is one JSON array, or the standalone JSON arrays of a multi-file index in order (one is
+   *  parsed at a time, so the peak string is one part). */
+  async load(docsJson: string | AsyncIterable<string>, vectors: ArrayBuffer, meta: StoredMeta): Promise<void> {
     // docs/vectors/meta written separately — a crash between writes can desync them; treat as absent.
     const tracked = Object.values(meta.chunkIds || {}).reduce((a, b) => a + b.length, 0);
-    const docs = JSON.parse(docsJson) as Array<TextDoc | undefined>;
+    const docs: Array<TextDoc | undefined> = [];
+    for await (const part of typeof docsJson === "string" ? [docsJson] : docsJson) {
+      for (const d of JSON.parse(part) as TextDoc[]) docs.push(d);
+    }
     if (docs.length !== tracked) {
       throw new Error(`index/meta desync (${docs.length} docs vs ${tracked} tracked) — rebuild required`);
     }

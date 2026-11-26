@@ -21,15 +21,17 @@ export interface FileIO {
   rename(from: string, to: string): Promise<void>;
 }
 
+/** Every index file name: `<kind>[-<gen>[-<part>]].<ext>[.tmp]` — groups: 1 kind, 3 generation, 4 doc part. */
+export const INDEX_FILE_RE = /^(docs|vectors|meta|orama)(-([a-z0-9]+))?(?:-(\d+))?\.(json|f32)(\.tmp)?$/;
+
 /** Which index files a persist may delete once its own generation is committed. The folder can be
  *  shared by two synced computers, each writing its own generations: a generation is removed only when
  *  this process wrote or loaded it (`own`, already superseded by the committed one), plus files from
  *  before generations existed (`docs.json`, `vectors.f32`, `orama.json`, their `.tmp` stages). A
  *  generation nobody here knows is another computer's live index, so it is left alone. */
 export function staleIndexFiles(names: string[], keep: Set<string>, own: Set<string>): string[] {
-  const re = /^(docs|vectors|meta|orama)(-([a-z0-9]+))?\.(json|f32)(\.tmp)?$/;
   return names.filter((name) => {
-    const m = re.exec(name);
+    const m = INDEX_FILE_RE.exec(name);
     if (!m || keep.has(name)) return false;
     // meta.json.tmp may be another computer's commit in flight, and a restore promotes a leftover one.
     if (name === "meta.json.tmp") return false;
