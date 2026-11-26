@@ -84,6 +84,8 @@ function parseBibtex(text: string): CSLItem[] {
     if (fields.number || fields.issue) it.issue = stripBraces(fields.number || fields.issue);
     if (fields.pages) it.page = stripBraces(fields.pages).replace(/--/g, "-");
     if (fields.doi) it.DOI = bareDoi(stripBraces(fields.doi));
+    if (fields.pmid) it.PMID = stripBraces(fields.pmid).replace(/^pmid:?\s*/i, "");
+    if (fields.pmcid || fields.pmc) it.PMCID = stripBraces(fields.pmcid || fields.pmc);
     if (fields.url) it.URL = stripBraces(fields.url);
     if (fields.publisher) it.publisher = prose(fields.publisher);
     if (fields.abstract) it.abstract = prose(fields.abstract);
@@ -113,8 +115,14 @@ function parseBibFields(body: string): Record<string, string> {
       }
       value = body.slice(start, i);
     } else if (body[i] === '"') {
-      const end = body.indexOf('"', i + 1);
-      i = end < 0 ? body.length : end + 1;
+      // quote-delimited: the closing quote is the first one at brace depth 0 (`{\"u}` holds one inside braces)
+      let depth = 0;
+      for (i++; i < body.length; i++) {
+        if (body[i] === "{") depth++;
+        else if (body[i] === "}") depth--;
+        else if (body[i] === '"' && depth <= 0) break;
+      }
+      i = Math.min(i + 1, body.length);
       value = body.slice(re.lastIndex, i);
     } else {
       while (i < body.length && body[i] !== "," && body[i] !== "\n") i++;
@@ -305,6 +313,14 @@ function risToItem(r: Record<string, string[]>): CSLItem {
   if (sp) it.page = ep ? `${sp}-${ep}` : sp;
   if (first("DO")) it.DOI = bareDoi(first("DO"));
   if (first("UR")) it.URL = first("UR");
+  // PMID / PMCID: only where the tag clearly carries one. AN (accession number) is also an Embase /
+  // Web of Science id, so it counts only as a bare 1-9 digit number (PubMed's own export); C2 only as
+  // PMC<digits>; N1/M1/N2 notes only as an explicit "PMID: 123" / "PMCID: PMC123" line.
+  const marked = [...(r.N1 || []), ...(r.M1 || [])].join("\n");
+  const pmid = first("AN").match(/^\d{1,9}$/)?.[0] || marked.match(/\bPMID:\s*(\d{1,9})\b/i)?.[1];
+  if (pmid) it.PMID = pmid;
+  const pmc = [...(r.C2 || []), ...(r.AN || [])].map((v) => v.trim()).find((v) => /^PMC\d+$/i.test(v)) || marked.match(/\bPMCID:\s*(PMC\d+)\b/i)?.[1];
+  if (pmc) it.PMCID = pmc.toUpperCase();
   if (first("AB") || first("N2")) it.abstract = first("AB") || first("N2");
   const kw = r.KW || [];
   if (kw.length) it.keyword = kw;

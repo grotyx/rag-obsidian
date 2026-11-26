@@ -1,4 +1,5 @@
 import { CSLItem, CSLName } from "../types";
+import { text } from "../util/json";
 import { cslFields } from "./csl";
 
 export type ExportFormat = "bibtex" | "ris" | "csl-json";
@@ -66,6 +67,8 @@ function bibtexOf(ref: ExportRef): string {
   if (it.issue) braced("number", it.issue);
   if (it.page) braced("pages", String(it.page).replace(/-/g, "--")); // YAML `page: 155` is a number
   if (it.DOI) braced("doi", it.DOI, true);
+  if (it.PMID) braced("pmid", it.PMID, true);
+  if (it.PMCID) braced("pmcid", it.PMCID, true);
   if (it.URL) braced("url", it.URL, true);
   if (it.publisher) braced("publisher", it.publisher);
   if (it.abstract) braced("abstract", it.abstract);
@@ -99,6 +102,8 @@ function risOf(ref: ExportRef): string {
     if (ep) lines.push(`EP  - ${ep.trim()}`);
   }
   if (it.DOI) lines.push(`DO  - ${it.DOI}`);
+  if (it.PMID) lines.push(`AN  - ${it.PMID}`); // PubMed's own RIS puts the PMID in AN
+  if (it.PMCID) lines.push(`C2  - ${text(it.PMCID)}`); // EndNote keeps the PMCID in C2
   if (it.URL) lines.push(`UR  - ${it.URL}`);
   if (it.abstract) lines.push(`AB  - ${it.abstract}`);
   for (const k of keywordsOf(it)) lines.push(`KW  - ${k}`);

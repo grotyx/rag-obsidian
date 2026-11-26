@@ -20,7 +20,8 @@ export function keysInCite(body: string): string[] {
   return keys;
 }
 
-/** Document offsets `[from, to)` of fenced blocks and inline code. A fence is ``` or ~~~ (any
+/** Document offsets `[from, to)` of fenced blocks, inline code and comments (Obsidian `%% … %%`,
+ *  HTML `<!-- … -->`; an unclosed one is not a comment). A fence is ``` or ~~~ (any
  *  length >= 3) and closes on the same character at least as long, so a four-backtick block may
  *  hold ``` lines. The one scanner every citation path uses (reading view, compile, rename, the
  *  editor), so they agree on what is code. An unclosed fence runs to the end of the text.
@@ -46,12 +47,25 @@ export function codeRanges(text: string): [number, number][] {
     pos += line.length + 1;
   }
   if (fence !== null) code.push([fenceStart, text.length]);
+  // Comments: an opener inside code is text, so only code found above can veto one.
+  const opener = /%%|<!--/g;
+  let c: RegExpExecArray | null;
+  const codeOnly = code.slice();
+  while ((c = opener.exec(text)) !== null) {
+    const at = c.index;
+    if (codeOnly.some(([a, b]) => at >= a && at < b)) continue;
+    const close = c[0] === "%%" ? "%%" : "-->";
+    const end = text.indexOf(close, at + c[0].length);
+    if (end < 0) break;
+    code.push([at, end + close.length]);
+    opener.lastIndex = end + close.length;
+  }
   return code;
 }
 
 /** Replace every `re` match that does not touch code; `fn` returns the replacement, or null to
  *  keep the match as written. */
-function replaceOutsideCode(text: string, re: RegExp, fn: (m: RegExpExecArray) => string | null): string {
+export function replaceOutsideCode(text: string, re: RegExp, fn: (m: RegExpExecArray) => string | null): string {
   const code = codeRanges(text);
   let out = "";
   let last = 0;
@@ -146,6 +160,35 @@ export function parseCiteItems(body: string): CiteItem[] {
     if (suffix) item.suffix = suffix;
     out.push(item);
   }
+  return out;
+}
+
+/** In-text label per bracket for the preview (reading view, Live Preview), keyed by the bracket's
+ *  source text (`[see @a, p. 23; @b]`; a citekey never starts with `[`, so keys cannot collide).
+ *  Every bracket whose keys all exist is one citeproc cluster, like the compiled manuscript, so
+ *  `[@a; @b; @c]` is "¹⁻³" and locators / prefixes / `-@` survive. `render` gets those clusters in
+ *  document order and returns their HTML (or nothing: the preview then falls back per key). */
+export async function clusterLabelMap(
+  content: string,
+  known: (citekey: string) => boolean,
+  render: (clusters: CiteItem[][]) => Promise<string[] | undefined>
+): Promise<Record<string, string>> {
+  const raws: string[] = [];
+  const clusters: CiteItem[][] = [];
+  replaceCitations(content, (keys, raw) => {
+    const items = parseCiteItems(raw.slice(1, -1));
+    if (items.length && keys.every(known)) {
+      raws.push(raw);
+      clusters.push(items);
+    }
+    return null;
+  });
+  const out: Record<string, string> = {};
+  if (!clusters.length) return out;
+  const texts = (await render(clusters)) ?? [];
+  raws.forEach((raw, i) => {
+    if (texts[i] && !(raw in out)) out[raw] = texts[i];
+  });
   return out;
 }
 

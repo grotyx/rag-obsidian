@@ -122,11 +122,15 @@ export function citationEditorExtension(host: CiteHost): Extension {
           if (!vis.some((r) => c.from <= r.to && c.to >= r.from)) continue;
           if (text.slice(c.from, c.to).includes("\n")) continue; // plugins may not replace line breaks
           if (sel.some((r) => r.from <= c.to && r.to >= c.from)) continue; // editing it: show the source
-          const parts = c.keys.map((k) => {
-            const item = this.items.get(k);
-            const label = this.map?.[k] || (item ? inTextLabel(item) : null);
-            return label ? { key: k, label } : null;
-          });
+          // The map holds one label per whole bracket (a citeproc cluster, keyed by its source text);
+          // a bracket typed since the last refresh has none yet and falls back to a label per key.
+          const whole = this.map[text.slice(c.from, c.to)];
+          const parts = whole
+            ? [{ key: c.keys[0], label: whole }]
+            : c.keys.map((k) => {
+                const item = this.items.get(k);
+                return item ? { key: k, label: inTextLabel(item) } : null;
+              });
           if (parts.some((p) => !p)) continue; // unknown key stays raw
           // A superscript citation sits on the word, so hide the space typed before it too.
           const sup = /^\s*<sup>/i.test(parts[0]?.label ?? "");

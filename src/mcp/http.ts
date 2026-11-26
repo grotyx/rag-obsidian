@@ -64,16 +64,25 @@ export function loadDesktopNode(): {
   };
 }
 
-function shellQuote(value: string): string {
+/** POSIX: '…' with ' written as '\''. Windows: the copied command is pasted into PowerShell, where a
+ *  single-quoted string is literal and an embedded quote (straight or curly: PowerShell treats all of
+ *  them as quotes) is doubled. */
+function shellQuote(value: string, platform: string): string {
+  if (platform === "win32") return `'${value.replace(/['‘’‚‛]/g, (q) => q + q)}'`;
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-export function mcpSetupSnippets(vaultPath: string, bridgePath: string): { claudeCode: string; codex: string; opencode: string; agy: string } {
+export function mcpSetupSnippets(
+  vaultPath: string,
+  bridgePath: string,
+  platform: string = process.platform
+): { claudeCode: string; codex: string; opencode: string; agy: string } {
+  const q = (v: string) => shellQuote(v, platform);
   return {
-    claudeCode: `claude mcp add --transport stdio rag-obsidian -- node ${shellQuote(bridgePath)} --vault ${shellQuote(vaultPath)}`,
+    claudeCode: `claude mcp add --transport stdio rag-obsidian -- node ${q(bridgePath)} --vault ${q(vaultPath)}`,
     codex: `[mcp_servers.rag-obsidian]\ncommand = "node"\nargs = [${JSON.stringify(bridgePath)}, "--vault", ${JSON.stringify(vaultPath)}]`,
     opencode: JSON.stringify({ "rag-obsidian": { type: "local", command: ["node", bridgePath, "--vault", vaultPath], enabled: true } }, null, 2),
-    agy: `agy mcp add rag-obsidian node ${shellQuote(bridgePath)} --vault ${shellQuote(vaultPath)}`,
+    agy: `agy mcp add rag-obsidian node ${q(bridgePath)} --vault ${q(vaultPath)}`,
   };
 }
 

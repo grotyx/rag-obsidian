@@ -33,6 +33,7 @@ import { ImportPdfModal } from "./src/ui/ImportPdfModal";
 import { CitationSuggest } from "./src/cite/suggest";
 import {
   extractCitekeys,
+  clusterLabelMap,
   inTextLabel,
   citePattern,
   keysInCite,
@@ -766,9 +767,16 @@ export default class ScholarRagPlugin extends Plugin {
     if (!(file instanceof TFile)) return {};
     const styleId = this.styleForNote(file);
     if (!styleId) return {};
-    const keys = extractCitekeys(await this.app.vault.cachedRead(file));
+    const content = await this.app.vault.cachedRead(file);
+    const keys = extractCitekeys(content);
     if (!keys.length) return {};
-    return (await this.citeEngine.renderNote(styleId, keys, (k) => this.library.getItem(k))).inText;
+    const getItem = (k: string) => this.library.getItem(k);
+    // Keyed by each bracket's source text: the preview renders whole clusters, as compile does.
+    return clusterLabelMap(
+      content,
+      (k) => !!getItem(k),
+      async (clusters) => (await this.citeEngine.renderNote(styleId, keys, getItem, clusters)).clusterText
+    );
   }
 
   /** Replace [@citekey] text nodes with clickable, styled in-text labels in reading view. */
@@ -795,25 +803,27 @@ export default class ScholarRagPlugin extends Plugin {
       let m: RegExpExecArray | null;
       while ((m = re.exec(value)) !== null) {
         const keys = keysInCite(m[1]);
+        // The whole bracket's label (one citeproc cluster: "¹⁻³", "(A, 2020; B, 2021)", locators kept).
+        const whole = (cslMap && cslMap[m[0]]) || null;
         const resolved = resolveCluster(keys, (k) => {
           const item = items.get(k);
-          const label = (cslMap && cslMap[k]) || null;
-          return item || label ? { key: k, item, label } : null;
+          return item || whole ? { key: k, item, label: null as string | null } : null;
         });
         if (!resolved) continue; // unknown key, or not a citation (an e-mail in brackets)
         // A superscript citation sits on the word ("text¹"), so drop the space typed before it.
-        const sup = /^\s*<sup>/i.test((cslMap && cslMap[resolved[0].key]) || "");
+        const sup = /^\s*<sup>/i.test(whole ?? "");
         const before = value.slice(last, m.index);
         if (before) frag.appendChild(document.createTextNode(sup ? before.replace(/[ \t]+$/, "") : before));
-        resolved.forEach(({ key: k, item, label }, i) => {
+        const shown = whole
+          ? [{ ...resolved[0], label: whole, tip: resolved.map((r) => (r.item ? citeTooltip(r.item) : "")).filter(Boolean).join("\n") }]
+          : resolved.map((r) => ({ ...r, tip: r.item ? citeTooltip(r.item) : "" }));
+        shown.forEach(({ key: k, item, label, tip }, i) => {
           if (i) frag.appendChild(document.createTextNode("; "));
           const span = createSpan({ cls: "srag-cite" });
           if (label) setCiteLabel(span, label);
           else span.textContent = item ? inTextLabel(item) : `[@${k}]`;
-          if (item) {
-            span.onclick = () => void this.openCitekey(k);
-            setTooltip(span, citeTooltip(item));
-          }
+          if (item) span.onclick = () => void this.openCitekey(k);
+          if (tip) setTooltip(span, tip);
           frag.appendChild(span);
         });
         last = m.index + m[0].length;

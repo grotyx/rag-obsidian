@@ -41,15 +41,53 @@ function pandocBin() {
   process.exit(1);
 }
 
+/** Same preparation the plugin does (src/write/pandoc.ts `pandocPrepare` + `stripFrontmatter`), outside
+ *  code: `<sup>` -> `^...^`, `![[fig.png]]` -> `![](fig.png)`, `[[Note|label]]` -> label. */
+function prepare(md) {
+  md = md.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, "");
+  const IMG = /\.(?:png|jpe?g|gif|svg|webp|bmp|tiff?)$/i;
+  const re = /<sup>([^<^]*)<\/sup>|!\[\[([^\]|\n]+?)(?:\|[^\]\n]*)?\]\]|\[\[([^\]|\n]+?)(?:\|([^\]\n]*))?\]\]/gi;
+  const fix = (s) =>
+    s.replace(re, (m, sup, img, link, alias) => {
+      if (sup !== undefined) return `^${sup.replace(/ /g, "\\ ")}^`;
+      if (img !== undefined) return IMG.test(img.trim()) ? `![](${img.trim().replace(/ /g, "%20")})` : m;
+      const t = link.trim();
+      return (alias && alias.trim()) || t.split(/[#^]/)[0].trim() || t;
+    });
+  let fence = null;
+  return md
+    .split("\n")
+    .map((line) => {
+      const f = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+      if (fence) {
+        if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
+        return line;
+      }
+      if (f) {
+        fence = f[1];
+        return line;
+      }
+      return line.split(/(`[^`]*`)/).map((p, i) => (i % 2 ? p : fix(p))).join("");
+    })
+    .join("\n");
+}
+
 const pandoc = pandocBin();
-const args = [input, "-o", output];
+const inDir = path.dirname(path.resolve(input));
+const tmp = fs.mkdtempSync(path.join(require("os").tmpdir(), "to-docx-"));
+const prepared = path.join(tmp, "in.md");
+fs.writeFileSync(prepared, prepare(fs.readFileSync(input, "utf8")), "utf8");
+// markdown-subscript: "L4~5 and L5~S1" must not become subscript (clinical ranges)
+const args = [prepared, "-f", "markdown-subscript", "-t", "docx", "--resource-path", inDir, "-o", path.resolve(output)];
 if (fs.existsSync(REF)) args.push(`--reference-doc=${REF}`);
 else console.warn(`[warn] template missing (${REF}); using Pandoc default styling`);
 
 try {
-  execFileSync(pandoc, args, { stdio: "inherit" });
+  execFileSync(pandoc, args, { stdio: "inherit", cwd: inDir });
   console.log(`[done] ${output}`);
 } catch (e) {
   console.error(`Pandoc failed: ${e.message}`);
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  fs.rmSync(tmp, { recursive: true, force: true });
 }

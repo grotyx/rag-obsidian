@@ -2,7 +2,7 @@
 import { Platform } from "obsidian";
 import { assertExecutableAllowed, buildCliEnv } from "../llm/cli";
 import template from "../../styles/manuscript-reference.docx";
-import { pandocCandidates, pandocSuperscripts } from "./pandoc";
+import { pandocCandidates, pandocPrepare } from "./pandoc";
 import {
   nodeRequire,
   type ChildProcessModuleLike,
@@ -76,13 +76,13 @@ export async function exportDocx(
   try {
     const inPath = pathApi.join(tmp, "in.md");
     const templatePath = pathApi.join(tmp, "reference.docx");
-    await fs.writeFile(inPath, pandocSuperscripts(markdown), "utf8");
+    await fs.writeFile(inPath, pandocPrepare(markdown), "utf8");
     await fs.writeFile(templatePath, template);
     await new Promise<void>((resolve, reject) => {
       cp.execFile(
         bin,
         [
-          inPath, "-f", "markdown", "-t", "docx", "--reference-doc", templatePath, "-o", outAbsPath,
+          inPath, "-f", "markdown-subscript", "-t", "docx", "--reference-doc", templatePath, "-o", outAbsPath,
           ...(resourceDir ? ["--resource-path", resourceDir] : []),
         ],
         { timeout: 2 * 60 * 1000, env: buildCliEnv(process.env, hostPath), ...(resourceDir ? { cwd: resourceDir } : {}) },

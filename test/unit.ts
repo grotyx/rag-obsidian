@@ -30,7 +30,8 @@ import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
 import { CitationGraph } from "../src/graph/citations";
 import { itemMemo } from "../src/cite/itemMemo";
-import { inTextLabel } from "../src/cite/bibliography";
+import { inTextLabel, clusterLabelMap, extractCitekeys, replaceCitations } from "../src/cite/bibliography";
+import { mcpSetupSnippets } from "../src/mcp/http";
 import { parseCitingPage, titlesMatch, resolveWork } from "../src/graph/openalex";
 import { rerankHttpReason, mmr, parseRerankResponse, canHostedRerank, hostedRerank } from "../src/index/rerank";
 import { isOpenRouter } from "../src/types";
@@ -57,7 +58,7 @@ import {
 } from "../src/llm/cli";
 import { windowsCliShimChecks } from "./windows";
 import { cacheRoot, legacyCacheRoot, NodeFileIO } from "../src/index/localFiles";
-import { pandocCandidates, pandocSuperscripts } from "../src/write/pandoc";
+import { pandocCandidates, pandocPrepare } from "../src/write/pandoc";
 import { stripFrontmatter, chunkReference, yearFromIssued } from "../src/index/chunker";
 import { parseFindings, findingText, isRestated, Finding } from "../src/data/findings";
 import { evidenceCsv, collectEvidenceRows } from "../src/commands/evidenceExport";
@@ -1219,10 +1220,10 @@ let at = 0;
   );
 }
 
-// ---------- write/pandoc.ts: pandocSuperscripts ----------
+// ---------- write/pandoc.ts: pandocPrepare ----------
 check(
-  pandocSuperscripts("text<sup>1</sup> and <SUP>2, 3</SUP>.") === "text^1^ and ^2,\\ 3^.",
-  "pandocSuperscripts: <sup> becomes Pandoc ^…^ with spaces escaped"
+  pandocPrepare("text<sup>1</sup> and <SUP>2, 3</SUP>.") === "text^1^ and ^2,\\ 3^.",
+  "pandocPrepare: <sup> becomes Pandoc ^…^ with spaces escaped"
 );
 
 // ---------- write/pandoc.ts: pandocCandidates ----------
@@ -1237,11 +1238,11 @@ check(
 
   const win = pandocCandidates("C:\\Users\\x", "win32");
   check(win[0] === "C:\\Program Files\\Pandoc\\pandoc.exe", "pandocCandidates: Program Files first on win32");
-  check(win.length === 1, "pandocCandidates: no %LOCALAPPDATA% entry when unset");
+  check(!win.some((c) => c.includes("WinGet") || c.includes("AppData")), "pandocCandidates: no %LOCALAPPDATA% entry when unset");
 
   const winLocal = pandocCandidates("C:\\Users\\x", "win32", "C:\\Users\\x\\AppData\\Local");
   check(
-    winLocal[1] === "C:\\Users\\x\\AppData\\Local\\Pandoc\\pandoc.exe",
+    winLocal.includes("C:\\Users\\x\\AppData\\Local\\Pandoc\\pandoc.exe"),
     "pandocCandidates: %LOCALAPPDATA%\\Pandoc appended on win32 when set"
   );
 }
@@ -3444,6 +3445,75 @@ check(
       check(!reads.includes(bystander.path), "review B9.2: a note unrelated to the merge is not read uncached");
     }
   }
+// ---- cite fixes ----
+{
+  // B7.1 preview renders whole brackets as citeproc clusters, keyed by the bracket's source text
+  const eng = new CiteEngine(
+    { vault: { adapter: { read: async (p: string) => readFileSync(p, "utf8"), write: async () => undefined } } } as never,
+    "."
+  );
+  const mk = (id: string, family: string, year: number) => ({
+    id, type: "article-journal", title: `${family} paper`, author: [{ family, given: "A" }], issued: { "date-parts": [[year]] },
+    "container-title": "J Test", volume: "1", page: "1-9", citekey: id,
+  });
+  const lib: Record<string, ReturnType<typeof mk>> = { a: mk("a", "Zed", 2020), b: mk("b", "Abe", 2021), c: mk("c", "Kim", 2019) };
+  const getItem = (k: string) => (lib[k] ?? null) as never;
+  const labels = (content: string, style: string) =>
+    clusterLabelMap(content, (k) => !!lib[k], async (cl) => (await eng.renderNote(style, ["a", "b", "c"], getItem, cl)).clusterText);
+
+  const ama = await labels("One [@a; @b; @c] two [@c].\n", "american-medical-association");
+  check(/^<sup>1[-–]3<\/sup>$/.test(ama["[@a; @b; @c]"]), `preview AMA: [@a; @b; @c] is one range label (${ama["[@a; @b; @c]"]})`);
+  check(/^<sup>3<\/sup>$/.test(ama["[@c]"]), `preview AMA: later bracket keeps its number (${ama["[@c]"]})`);
+  const apa = await labels("X [@a; @b] and [see @a, p. 23] and [-@a] and [@a; @nope].\n", "apa");
+  check(/^\(Abe, 2021; Zed, 2020\)$/.test(apa["[@a; @b]"]), `preview APA: one parenthesis for the cluster (${apa["[@a; @b]"]})`);
+  check(/see/.test(apa["[see @a, p. 23]"]) && /23/.test(apa["[see @a, p. 23]"]), `preview APA: prefix and locator kept (${apa["[see @a, p. 23]"]})`);
+  check(/^\(2020\)$/.test(apa["[-@a]"]), `preview APA: -@ suppresses the author (${apa["[-@a]"]})`);
+  check(!("[@a; @nope]" in apa), "preview: a bracket with an unknown key gets no label (stays raw)");
+  check(Object.keys(await labels("No citations here.\n", "apa")).length === 0, "preview: no brackets -> empty map");
+
+  // B7.3 comments are not citations
+  const note = "Real [@a].\n\n%% hidden [@b] %%\n\n<!--\n multi-line [@c]\n-->\n\n`%%` then [@c] and `<!--` end.\n";
+  check(JSON.stringify(extractCitekeys(note)) === JSON.stringify(["a", "c"]), `extractCitekeys: %% and <!-- --> comments skipped (${JSON.stringify(extractCitekeys(note))})`);
+  check(citeClusters("A %% [@x] %% B [@y]").map((c) => c.keys[0]).join() === "y", "citeClusters: commented bracket is not a cluster");
+  check(extractCitekeys("Unclosed %% [@z]").join() === "z", "extractCitekeys: an unclosed %% is not a comment");
+  check(replaceCitations("<!-- [@a] --> [@a]", (k) => `<${k}>`) === "<!-- [@a] --> <a>", "replaceCitations: HTML comment left as written");
+
+  // B13 Word export: embeds and wikilinks, never inside code
+  check(pandocPrepare("![[fig 1.png|300]] and ![[x.JPG]]") === "![](fig%201.png) and ![](x.JPG)", "pandocPrepare: image embeds become Markdown images");
+  check(pandocPrepare("See [[Note|the note]], [[Other#Head]] and [[Plain]].") === "See the note, Other and Plain.", "pandocPrepare: wikilinks become their label");
+  check(pandocPrepare("![[Some note]]") === "![[Some note]]", "pandocPrepare: a note embed is left alone");
+  check(pandocPrepare("`[[a]] <sup>1</sup>`\n\n```\n![[f.png]] <sup>2</sup>\n```\nz<sup>3</sup>") === "`[[a]] <sup>1</sup>`\n\n```\n![[f.png]] <sup>2</sup>\n```\nz^3^", "pandocPrepare: code is untouched");
+  check(/"-f", "markdown-subscript"/.test(readFileSync("src/write/docx.ts", "utf8")), "exportDocx reads Markdown without the subscript extension (L4~5)");
+  const winC = pandocCandidates("C:\\Users\\x", "win32", "C:\\Users\\x\\AppData\\Local");
+  for (const want of ["C:\\Program Files (x86)\\Pandoc\\pandoc.exe", "C:\\Users\\x\\AppData\\Local\\Microsoft\\WinGet\\Links\\pandoc.exe", "C:\\Users\\x\\scoop\\shims\\pandoc.exe", "C:\\ProgramData\\chocolatey\\bin\\pandoc.exe"])
+    check(winC.includes(want), `pandocCandidates win32 has ${want}`);
+
+  // B12 BibTeX quoted values, PMID / PMCID
+  const bib = parseLibrary('@article{k1,\n  author = "M{\\"u}ller, Hans and Smith, Jo",\n  title = "A {\\"o}ver \\"quoted\\" thing",\n  year = "2020",\n  journal = {J Test},\n  pmid = {12345678},\n  pmcid = {PMC999},\n}');
+  check(bib.length === 1 && bib[0].author?.length === 2 && bib[0].author[0].family === "Müller" && bib[0].author[1].family === "Smith", `bibtex: "M{\\"u}ller" quoted author keeps both names (${JSON.stringify(bib[0]?.author)})`);
+  check(bib[0].issued?.["date-parts"]?.[0][0] === 2020 && bib[0]["container-title"] === "J Test", "bibtex: fields after a quoted value with an inner quote still parse");
+  check(bib[0].PMID === "12345678" && bib[0].PMCID === "PMC999", `bibtex: pmid / pmcid read (${bib[0].PMID} ${bib[0].PMCID})`);
+  const ris = parseLibrary("TY  - JOUR\nTI  - T\nAU  - Doe, J\nPY  - 2020\nAN  - 4455667\nC2  - PMC123456\nER  - \n\nTY  - JOUR\nTI  - U\nAN  - WOS:000123\nN1  - PMID: 777\nER  - \n\nTY  - JOUR\nTI  - V\nAN  - 2020-0123abc\nER  - \n");
+  check(ris[0].PMID === "4455667" && ris[0].PMCID === "PMC123456", `ris: AN digits -> PMID, C2 PMC -> PMCID (${ris[0].PMID} ${ris[0].PMCID})`);
+  check(ris[1].PMID === "777" && ris[1].PMCID === undefined, `ris: a WOS accession number is not a PMID, "PMID: 777" note is (${ris[1].PMID})`);
+  check(ris[2].PMID === undefined, "ris: a non-numeric AN is not a PMID");
+  const out = { item: { type: "article-journal", title: "T", PMID: "42", PMCID: "PMC7" } as never, citekey: "k" };
+  const bibOut = exportRefs([out], "bibtex");
+  check(/pmid = \{42\}/.test(bibOut) && /pmcid = \{PMC7\}/.test(bibOut), "export bibtex: PMID and PMCID written");
+  const risOut = exportRefs([out], "ris");
+  check(/AN {2}- 42/.test(risOut) && /C2 {2}- PMC7/.test(risOut), "export ris: PMID in AN, PMCID in C2");
+  const round = parseLibrary(risOut)[0];
+  check(round.PMID === "42" && round.PMCID === "PMC7", "ris export -> import round-trips PMID and PMCID");
+
+  // Astra B18 Windows setup command is PowerShell-safe
+  const w = mcpSetupSnippets("C:\\Users\\O'Brien\\My Vault", "C:\\Program Files\\Plug in\\mcp-bridge.cjs", "win32");
+  check(
+    w.claudeCode === "claude mcp add --transport stdio rag-obsidian -- node 'C:\\Program Files\\Plug in\\mcp-bridge.cjs' --vault 'C:\\Users\\O''Brien\\My Vault'",
+    `win32: PowerShell single quotes, ' doubled (${w.claudeCode})`
+  );
+  const px = mcpSetupSnippets("/Users/o'b/My Vault", "/p q/mcp-bridge.cjs", "darwin");
+  check(px.claudeCode.endsWith(`--vault '/Users/o'\\''b/My Vault'`), `posix: '\\'' escape unchanged (${px.claudeCode})`);
+}
 
 console.log(`unit: all ${passed} assertions passed`);
 }
