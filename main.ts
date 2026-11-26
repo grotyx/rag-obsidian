@@ -30,6 +30,7 @@ import { SnowballScopeModal } from "./src/commands/snowball";
 import { RobScopeModal } from "./src/commands/rob";
 import { CitationGraph } from "./src/graph/citations";
 import { ImportPdfModal } from "./src/ui/ImportPdfModal";
+import { captureId } from "./src/util/capture";
 import { CitationSuggest } from "./src/cite/suggest";
 import {
   extractCitekeys,
@@ -129,6 +130,17 @@ export default class ScholarRagPlugin extends Plugin {
     });
     this.addRibbonIcon("search", "Search PubMed", () => {
       new PubmedSearchModal(this.app, this).open();
+    });
+
+    // obsidian://refwright-add?id=<DOI|PMID|arXiv|URL> — any web page can fire this, so it only opens
+    // the Add dialog prefilled; the user still clicks "Fetch & add". (`tag` is ignored: the dialog has none.)
+    this.registerObsidianProtocolHandler("refwright-add", (params) => {
+      const id = captureId(params.id);
+      if (!id) {
+        new Notice("Refwright: that link has no valid DOI, PMID or arXiv ID.");
+        return;
+      }
+      new AddReferenceModal(this.app, this, id).open();
     });
 
     this.addCommand({

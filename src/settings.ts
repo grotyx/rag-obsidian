@@ -12,6 +12,7 @@ import type ScholarRagPlugin from "../main";
 import { DEFAULT_SETTINGS, isOpenRouter, EmbeddingProviderId, LLMProviderId, CiteStyle } from "./types";
 import { BUNDLED_STYLES } from "./cite/csl";
 import { LLMClient } from "./llm/client";
+import { bookmarkletUrl } from "./util/bookmarklet";
 
 const FIXED_SUMMARY_LANGS = ["en", "ko", "en+ko"];
 
@@ -375,6 +376,19 @@ export class ScholarRagSettingTab extends PluginSettingTab {
               t.setValue(s.pubmedApiKey).onChange((v) => void this.setControlValue("pubmedApiKey", v));
               t.inputEl.type = "password";
             });
+          },
+        },
+        {
+          name: "Browser bookmarklet",
+          desc: "One-click capture: copy this, then paste it as the URL of a new bookmark. Clicking it on a paper page opens Add reference in Obsidian with the DOI or PMID filled in.",
+          aliases: ["capture", "obsidian://refwright-add"],
+          render: (setting) => {
+            setting.addButton((b) =>
+              b.setButtonText("Copy bookmarklet").onClick(async () => {
+                await navigator.clipboard.writeText(bookmarkletUrl());
+                new Notice("Bookmarklet copied. Paste it as the URL of a new bookmark.");
+              })
+            );
           },
         },
       ],

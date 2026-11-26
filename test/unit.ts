@@ -140,7 +140,9 @@ import { FilterRow } from "../src/ui/FilterRow";
 import { backfillSummaries, hasSummaryHeading } from "../src/commands/backfill";
 import { MIN_TAGS } from "../src/ingest/pubmedSearch";
 import type { CSLItem } from "../src/types";
-import { searchLogNote, suffixedPath, parseSearchLog, searchLogTotals, countedSearchLogs } from "../src/data/searchLog";
+import { captureId, uniquePath } from "../src/util/capture";
+import { bookmarkletUrl, findPaperId } from "../src/util/bookmarklet";
+import { searchLogNote,suffixedPath, parseSearchLog, searchLogTotals, countedSearchLogs } from "../src/data/searchLog";
 
 let passed = 0;
 function check(cond: boolean, label: string): void {
@@ -4255,6 +4257,40 @@ check(
   const ok = parseFindingInput([{ ...f1, n: 120, intervention: "  ", quote: "ODI\nimproved." }]);
   check(ok[0].n === "120" && ok[0].intervention === undefined && ok[0].quote === "ODI improved.", "parseFindingInput: numbers stringified, blanks dropped, whitespace collapsed");
   check(/non-empty/.test(thrown([])) && /non-empty/.test(thrown("x")), "parseFindingInput: needs a non-empty array");
+}
+
+// ---- capture fixes ----
+{
+  check(captureId("10.1038/nature14539") === "10.1038/nature14539", "captureId: bare DOI");
+  check(captureId("https://doi.org/10.1038/nature14539") === "10.1038/nature14539", "captureId: DOI URL reduced to the DOI");
+  check(captureId(" PMID:26017442 ") === "pmid:26017442" && captureId("https://pubmed.ncbi.nlm.nih.gov/26017442/") === "pmid:26017442", "captureId: PMID forms");
+  check(captureId("https://arxiv.org/abs/2005.11401v2") === "arxiv:2005.11401", "captureId: arXiv URL");
+  check(captureId("https://example.com/page") === null && captureId("") === null && captureId(undefined) === null, "captureId: unknown / missing is rejected");
+  check(captureId("10.1038/x" + "a".repeat(400)) === null, "captureId: over-long value is rejected");
+  check(captureId("10.1038/ab\u0000c\n") === "10.1038/abc", "captureId: control characters are stripped");
+  const taken = new Set(["PDFs/a.pdf", "PDFs/a 1.pdf"]);
+  check(uniquePath("PDFs", "a", "pdf", (p) => taken.has(p)) === "PDFs/a 2.pdf" && uniquePath("PDFs", "b", "pdf", (p) => taken.has(p)) === "PDFs/b.pdf", "uniquePath: first free name, existing files untouched");
+  const meta = (m: Record<string, string>) => ({ querySelector: (sel: string) => { const n = /name="([^"]+)"/.exec(sel)?.[1]; return n && m[n] ? { content: m[n] } : null; } });
+  const bm = bookmarkletUrl();
+  const run = new Function("document", "location", "alert", `return ${bm.replace(/^javascript:/, "")}`);
+  const via = (m: Record<string, string>, href: string) => {
+    const loc = { href };
+    let alerted = "";
+    run(meta(m), loc, (t: string) => { alerted = t; });
+    return { alerted, href: loc.href };
+  };
+  check(findPaperId(meta({ citation_doi: "10.1000/abc" }), { href: "https://x.org/" }) === "10.1000/abc", "findPaperId: citation_doi first");
+  check(findPaperId(meta({ "dc.identifier": "doi:10.2000/xyz", citation_pmid: "5" }), { href: "https://x.org/" }) === "10.2000/xyz", "findPaperId: dc.identifier DOI beats pmid meta");
+  check(findPaperId(meta({ "dc.identifier": "ISSN 1234" }), { href: "https://x.org/" }) === null, "findPaperId: non-DOI dc.identifier ignored");
+  check(findPaperId(meta({ citation_pmid: "123" }), { href: "https://x.org/" }) === "pmid:123", "findPaperId: citation_pmid");
+  check(findPaperId(meta({}), { href: "https://pubmed.ncbi.nlm.nih.gov/38021704/?foo" }) === "pmid:38021704", "findPaperId: PubMed URL");
+  check(findPaperId(meta({}), { href: "https://arxiv.org/abs/2005.11401v3" }) === "arxiv:2005.11401", "findPaperId: arXiv URL");
+  check(findPaperId(meta({}), { href: "https://doi.org/10.7759/cureus.46944" }) === "10.7759/cureus.46944", "findPaperId: doi.org URL");
+  check(findPaperId(meta({}), { href: "https://x.org/" }) === null, "findPaperId: nothing found");
+  check(bm.startsWith("javascript:") && !bm.includes("\n") && !bm.includes("%") && bm.includes("obsidian://refwright-add?id="), "bookmarklet: one line, no % escapes, targets the handler");
+  check(new Function("return " + bm.slice(bm.indexOf("var f=") + 6, bm.indexOf(";var id")))()(meta({ citation_doi: "10.1000/q" }), { href: "" }) === "10.1000/q", "bookmarklet: serialized extractor runs standalone");
+  check(via({ citation_doi: "10.1000/a b" }, "https://x.org/").href === "obsidian://refwright-add?id=10.1000%2Fa", "bookmarklet: end to end sets the encoded obsidian:// URL");
+  check(via({}, "https://x.org/").alerted === "No DOI/PMID found on this page", "bookmarklet: end to end alerts when nothing is found");
 }
 
 console.log(`unit: all ${passed} assertions passed`);

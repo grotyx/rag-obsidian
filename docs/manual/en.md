@@ -86,7 +86,20 @@ When you know the paper, paste its identifier. Click **+ add** in the library pa
 2. Click **Fetch & add**. Metadata comes from Crossref and PubMed.
 
 > **Have a PDF?** Use **📎 PDF** in the library pane to add a paper from its PDF. The DOI
-> inside the PDF is used to fill in the metadata.
+> inside the PDF is used to fill in the metadata. The PDF can also come from outside the vault:
+> click **Choose a PDF from your computer…** in that dialog, or drop the file onto it. It is
+> copied into `PDFs/` (an existing file is never overwritten) and imported like any other PDF.
+
+### Add from the browser (bookmarklet)
+
+1. In **Settings → Refwright → Library**, click **Copy bookmarklet**.
+2. Create a new bookmark in your browser (show the bookmarks bar, then right-click it → add
+   page) and paste the copied text as its **URL**. Name it "Add to Refwright".
+3. On any paper page (PubMed, a journal, arXiv, a doi.org link), click the bookmark. Obsidian
+   opens **Add reference** with the DOI or PMID filled in; click **Fetch & add**.
+
+Nothing is added until you click, so a link from another page can never add papers silently. The
+same link works by hand: `obsidian://refwright-add?id=10.7759/cureus.46944`.
 
 ## 4. Reference notes
 
