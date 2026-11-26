@@ -137,7 +137,7 @@ import { prismaCounts, prismaMarkdown, PrismaRecord, toPrismaRecord } from "../s
 import { aggregateSnowball, pickSnowballCandidates, snowballMarkdown, SnowballRecord, SnowballWork } from "../src/data/snowball";
 import { sanitizeModelMarkdown, safeFileName, chatNotePath } from "../src/util/sanitize";
 import { FilterRow } from "../src/ui/FilterRow";
-import { backfillSummaries } from "../src/commands/backfill";
+import { backfillSummaries, hasSummaryHeading } from "../src/commands/backfill";
 import { MIN_TAGS } from "../src/ingest/pubmedSearch";
 import type { CSLItem } from "../src/types";
 import { searchLogNote, suffixedPath, parseSearchLog, searchLogTotals, countedSearchLogs } from "../src/data/searchLog";
@@ -3455,12 +3455,12 @@ check(
 
   // ---- library fixes: backfill guards a summary saved meanwhile ----
   {
-    const run = async (meddle: (s: { content: string; fm: Record<string, unknown> }) => void) => {
+    const run = async (meddle: (s: { content: string; fm: Record<string, unknown> }) => void, init: { fm?: Record<string, unknown>; body?: string } = {}) => {
       const file = new TFile("References/a.md");
       const fm: Record<string, unknown> = {
-        citekey: "a2024", title: "T", abstract: "An abstract.", tags: Array.from({ length: MIN_TAGS }, (_, i) => `t${i}`),
+        citekey: "a2024", title: "T", abstract: "An abstract.", tags: Array.from({ length: MIN_TAGS }, (_, i) => `t${i}`), ...init.fm,
       };
-      const s = { content: "---\ncitekey: a2024\n---\n\n# T\n", fm };
+      const s = { content: "---\ncitekey: a2024\n---\n\n# T\n" + (init.body ?? ""), fm };
       const origFetch = globalThis.fetch;
       let release!: (r: Response) => void;
       let called = false;
@@ -3472,6 +3472,9 @@ check(
         addStatusBarItem: () => mkSpan(),
         library: { entries: () => [{ citekey: "a2024", item: { ...fm }, file, year: "", authors: "", title: "T" }] },
         app: {
+          metadataCache: {
+            getFileCache: () => ({ headings: [...s.content.matchAll(/^(#+)[ \t]+(.*)$/gm)].map((m) => ({ level: m[1].length, heading: m[2] })) }),
+          },
           vault: {
             cachedRead: async () => s.content,
             process: async (_f: TFile, fn: (c: string) => string) => { s.content = fn(s.content); },
@@ -3482,7 +3485,7 @@ check(
       const done = backfillSummaries(plugin as never);
       for (let i = 0; i < 50 && !called; i++) await new Promise((r) => setTimeout(r, 5));
       meddle(s);
-      release(new Response(JSON.stringify({ choices: [{ message: { content: "=== BACKGROUND ===\nmodel text\n=== RESULTS ===\nmodel results\n=== KR ===\nkr" } }] }), { status: 200 }));
+      release?.(new Response(JSON.stringify({ choices: [{ message: { content: "=== BACKGROUND ===\nmodel text\n=== RESULTS ===\nmodel results\n=== KR ===\nkr" } }] }), { status: 200 }));
       await done;
       globalThis.fetch = origFetch;
       return s;
@@ -3494,6 +3497,15 @@ check(
     check(b.content.includes("surgeon reviewed") && !b.content.includes("model text") && b.fm.summary_source === "manual", "backfill: provenance saved meanwhile -> the saved summary stays");
     const c = await run((s) => { s.content += userBlock; });
     check(c.content.includes("surgeon reviewed") && !c.content.includes("model text") && c.fm.summary_source === undefined, `backfill: summary text saved meanwhile -> kept, no provenance stamped (${JSON.stringify(c.fm)})`);
+    // Astra B4: summary_source written, text never landed (interrupted between the two writes) -> picked up again
+    const broken = { summary_source: "pubmed-abstract", summary_model: "old-model" };
+    const d = await run(() => undefined, { fm: broken });
+    check(d.content.includes("model text") && d.fm.summary_source === "pubmed-abstract" && d.fm.summary_model !== "old-model", `backfill: summary_source but no summary block -> summarized again (${JSON.stringify(d.fm)})`);
+    const e = await run(() => undefined, { fm: broken, body: "\n## Summary\n\n**Results**\nalready here\n" });
+    check(e.content.includes("already here") && !e.content.includes("model text") && e.fm.summary_model === "old-model", "backfill: summary_source and a summary block -> left alone");
+    const f = await run((x) => { x.content += userBlock; }, { fm: broken });
+    check(f.content.includes("surgeon reviewed") && !f.content.includes("model text") && f.fm.summary_source === "pubmed-abstract" && f.fm.summary_model === "old-model", `backfill: text saved meanwhile on a note being healed -> kept, old provenance restored (${JSON.stringify(f.fm)})`);
+    check(hasSummaryHeading([{ level: 2, heading: "Summary (EN)" }]) && hasSummaryHeading([{ level: 2, heading: "요약 (KR)" }]) && !hasSummaryHeading([{ level: 2, heading: "Notes" }, { level: 1, heading: "Summary" }]) && hasSummaryHeading(undefined), "hasSummaryHeading: level-2 Summary forms only; unknown cache counts as present");
   }
 }
 

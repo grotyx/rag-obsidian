@@ -1,6 +1,6 @@
-import { Notice } from "obsidian";
+import { Notice, TFile } from "obsidian";
 import type ScholarRagPlugin from "../../main";
-import { SummarySections } from "../types";
+import { CSLItem, SummarySections } from "../types";
 import { fetchPubmedRecord, fetchPmcFullText, buildTags, MIN_TAGS, PMC_FAILED_LABEL } from "../ingest/pubmedSearch";
 import { summarizeSource, suggestMeshTerms } from "../ingest/summarize";
 import { summaryBlock } from "../data/reference";
@@ -10,6 +10,13 @@ import { LLMClient } from "../llm/client";
 import { mapPool, poolWidth } from "../util/pool";
 import { startBatch } from "../ui/progress";
 
+/** Does the note have a summary heading (`## Summary`, legacy `## Summary (EN)` / `## 요약 (KR)`)?
+ *  Read from the metadata cache, so no file is opened. `undefined` (cache not ready) counts as yes:
+ *  a note is never re-summarized on a guess. */
+export function hasSummaryHeading(headings: { heading: string; level: number }[] | undefined): boolean {
+  return !headings || headings.some((h) => h.level === 2 && /^(Summary(\s*\([^)]*\))?|요약 \(KR\))$/.test(h.heading.trim()));
+}
+
 /** Write the AI summary and MeSH tags into references that were added without them —
  *  the LLM key missing at the time, the paper not yet MeSH-indexed, or the summary toggle off.
  *  Notes that already have both are skipped, so it is safe to re-run. Scoped to the whole
@@ -18,6 +25,10 @@ export async function backfillSummaries(
   plugin: ScholarRagPlugin,
   scope: BackfillScope = { kind: "all" }
 ): Promise<void> {
+  // summary_source is written before the summary text (see writeOne), so a crash in between leaves
+  // a note marked summarized with no summary: a missing heading counts as a missing summary.
+  const needsSummary = (e: { file: TFile; item: CSLItem }) =>
+    !e.item.summary_source || !hasSummaryHeading(plugin.app.metadataCache.getFileCache(e.file)?.headings);
   const todo = plugin.library
     .entries()
     .filter((e) => inScope(e, scope))
@@ -27,7 +38,7 @@ export async function backfillSummaries(
       // these would re-run the same lookups on every invocation and change nothing.
       const source = !!e.item.PMID || typeof e.item.abstract === "string";
       if (!source) return false;
-      if (!e.item.summary_source) return true;
+      if (needsSummary(e)) return true;
       const n = Array.isArray(e.item.tags) ? e.item.tags.length : e.item.tags ? 1 : 0;
       // Short on tags, but only if the LLM has already been asked and came up short.
       return n < MIN_TAGS && !e.item.mesh_backfilled;
@@ -60,6 +71,9 @@ export async function backfillSummaries(
     /** The note's summary block when the work began; a different one at write time means the user
      *  (or MCP) saved a summary meanwhile, and the model's must not replace it. */
     summaryBefore: string | null;
+    /** summary_source was already set but the text is missing (interrupted write): the provenance
+     *  is no sign of a summary saved meanwhile, the text is. */
+    healing: boolean;
     error: unknown;
   }
   let chain: Promise<void> = Promise.resolve();
@@ -75,12 +89,16 @@ export async function backfillSummaries(
     if (!r.summary && !r.tags.length && !r.meshTried) return;
     let wroteProvenance = false;
     let skipSummary = false;
+    let prev: { source: unknown; model: unknown } = { source: undefined, model: undefined };
     const takeBackProvenance = () =>
-      // summary_source says "summarized": take it back so the next run retries this note.
+      // summary_source says "summarized": put back what it was (nothing, or the old tag of a note
+      // whose text was missing) so the next run retries this note.
       wroteProvenance
         ? plugin.app.fileManager.processFrontMatter(r.entry.file, (fm: Record<string, unknown>) => {
-            delete fm.summary_source;
-            delete fm.summary_model;
+            if (prev.source === undefined) delete fm.summary_source;
+            else fm.summary_source = prev.source;
+            if (prev.model === undefined) delete fm.summary_model;
+            else fm.summary_model = prev.model;
           }).catch(() => undefined)
         : Promise.resolve();
     try {
@@ -90,8 +108,9 @@ export async function backfillSummaries(
         if (r.summary && r.sourceTag) {
           // Checked against the note as it is now, in this same write: a summary saved while the
           // model worked has set summary_source already.
-          if (fm.summary_source) skipSummary = true;
+          if (fm.summary_source && !r.healing) skipSummary = true;
           else {
+            prev = { source: fm.summary_source, model: fm.summary_model };
             fm.summary_source = r.sourceTag;
             fm.summary_model = plugin.settings.llmModel;
             wroteProvenance = true;
@@ -153,7 +172,7 @@ export async function backfillSummaries(
           !!pmid &&
           (!noteAbstract ||
             (nTags < MIN_TAGS && !noteMesh.length) ||
-            (!e.item.summary_source && !e.item.PMCID));
+            (needsSummary(e) && !e.item.PMCID));
         const rec = needRecord
           ? await fetchPubmedRecord(pmid, apiKey, email)
           : { abstract: "", descriptors: [], keywords: [], pmc: "" };
@@ -163,7 +182,8 @@ export async function backfillSummaries(
         let summary: SummarySections | null = null;
         let sourceTag = "";
         let summaryBefore: string | null = null;
-        if (!e.item.summary_source && abstract) {
+        const healing = !!e.item.summary_source;
+        if (needsSummary(e) && abstract) {
           summaryBefore = extractSummaryBlock(await plugin.app.vault.cachedRead(e.file));
           let src = abstract;
           let label = "PubMed abstract (not open access — full text not retrieved)";
@@ -216,10 +236,10 @@ export async function backfillSummaries(
           }
           if (merged.length > existing.length) tags = merged;
         }
-        return enqueue({ entry: e, summary, sourceTag, tags, meshTried, summaryBefore, error: null });
+        return enqueue({ entry: e, summary, sourceTag, tags, meshTried, summaryBefore, healing, error: null });
       } catch (err) {
         failed++;
-        return enqueue({ entry: e, summary: null, sourceTag: "", tags: [], meshTried: false, summaryBefore: null, error: err });
+        return enqueue({ entry: e, summary: null, sourceTag: "", tags: [], meshTried: false, summaryBefore: null, healing: false, error: err });
       } finally {
         batch.tick(++fetched, failed);
       }
