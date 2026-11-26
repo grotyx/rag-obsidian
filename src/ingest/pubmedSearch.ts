@@ -19,6 +19,8 @@ export interface PubmedSearchOpts {
   n?: number;
   from?: string; // YYYY
   to?: string; // YYYY
+  start?: number; // esearch retstart: 0-based offset of the first hit (paging)
+  sort?: "relevance" | "pub_date"; // pub_date = newest first
   apiKey?: string;
   email?: string;
 }
@@ -32,16 +34,35 @@ function auth(apiKey?: string, email?: string): string {
   return p.length ? "&" + p.join("&") : "";
 }
 
+/** The esearch URL: page (`n` hits from `start`), sort and the publication-year filter. */
+export function esearchUrl(query: string, opts: PubmedSearchOpts & { n: number }): string {
+  let url = `${EUTILS}/esearch.fcgi?db=pubmed&retmode=json&sort=${opts.sort ?? "relevance"}&retmax=${opts.n}` +
+    `&term=${encodeURIComponent(query)}${auth(opts.apiKey, opts.email)}`;
+  if (opts.start) url += `&retstart=${opts.start}`;
+  // esearch ignores the date filter unless BOTH bounds are present, so an open end gets a sentinel.
+  if (opts.from || opts.to) url += `&mindate=${opts.from || "1000"}&maxdate=${opts.to || "3000"}&datetype=pdat`;
+  return url;
+}
+
+/** Tag each hit with whether the library already has that work (`isKnown` is the library's
+ *  cached duplicate lookup — DOI / PMID / title — so this never scans the vault itself). */
+export function markInLibrary(hits: PubmedHit[], isKnown: (item: CSLItem) => boolean): (PubmedHit & { inLibrary: boolean })[] {
+  return hits.map((h) => ({ ...h, inLibrary: isKnown(h.item) }));
+}
+
+/** Parse a year box: a 4-digit year or nothing (anything else is ignored, not sent to NCBI). */
+export function parseYear(v: string): string | undefined {
+  const t = v.trim();
+  return /^\d{4}$/.test(t) ? t : undefined;
+}
+
 /** esearch -> PMIDs -> esummary -> parsed CSL metadata (+ PMC id when present), alongside
  *  esearch's total match count so a caller can tell a capped page from the whole result set. */
 export async function searchPubmedPage(query: string, opts: PubmedSearchOpts = {}): Promise<{ hits: PubmedHit[]; total: number }> {
   const n = opts.n ?? 8;
   const a = auth(opts.apiKey, opts.email);
 
-  let url = `${EUTILS}/esearch.fcgi?db=pubmed&retmode=json&sort=relevance&retmax=${n}` +
-    `&term=${encodeURIComponent(query)}${a}`;
-  // esearch ignores the date filter unless BOTH bounds are present, so an open end gets a sentinel.
-  if (opts.from || opts.to) url += `&mindate=${opts.from || "1000"}&maxdate=${opts.to || "3000"}&datetype=pdat`;
+  const url = esearchUrl(query, { ...opts, n });
 
   await ncbiGate(!!opts.apiKey);
   const sr = await requestUrl({ url });

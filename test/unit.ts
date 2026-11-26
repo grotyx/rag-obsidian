@@ -25,7 +25,7 @@ import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
 import { findIdentifier, titleInHead, isPdfMagic, extractPdfHighlights, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, stashedText, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
 import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summarize";
-import { buildTags, MIN_TAGS, fetchPubmedRecord, fetchPmcFullText, tablesToText } from "../src/ingest/pubmedSearch";
+import { buildTags, MIN_TAGS, fetchPubmedRecord, fetchPmcFullText, tablesToText, esearchUrl, markInLibrary, parseYear } from "../src/ingest/pubmedSearch";
 import { findOpenAccess } from "../src/ingest/unpaywall";
 import { checkRetraction } from "../src/ingest/retraction";
 import { CitationGraph } from "../src/graph/citations";
@@ -4061,6 +4061,19 @@ check(
 }
 
 console.log(`unit: all ${passed} assertions passed`);
+  // ---- pubmed fixes ----
+  {
+    const u0 = esearchUrl("lumbar stenosis", { n: 50 });
+    check(u0.includes("sort=relevance") && u0.includes("retmax=50") && !u0.includes("retstart") && !u0.includes("mindate"), "pubmed: first page has no retstart or date filter");
+    const u1 = esearchUrl("lumbar stenosis", { n: 50, start: 100, sort: "pub_date", from: "2020" });
+    check(u1.includes("retstart=100") && u1.includes("sort=pub_date") && u1.includes("mindate=2020&maxdate=3000&datetype=pdat"), "pubmed: paging, newest sort and a one-sided year bound reach esearch");
+    check(parseYear(" 2021 ") === "2021" && parseYear("21") === undefined && parseYear("") === undefined, "pubmed: year box accepts four digits only");
+    const mk = (pmid: string, doi?: string) => ({ pmid, pmc: "", item: { PMID: pmid, DOI: doi, title: `t${pmid}` } as CSLItem });
+    const lib = new Set(["pmid:1", "doi:10.1/b"]);
+    const marked = markInLibrary([mk("1"), mk("2", "10.1/B"), mk("3")], (it) => matchKeys(it).some((k) => lib.has(k)));
+    check(marked.map((h) => h.inLibrary).join() === "true,true,false", "pubmed: in-library rows matched by PMID and by DOI");
+  }
+
 }
 
 void main();

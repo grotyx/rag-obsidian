@@ -397,6 +397,11 @@
   font-weight: 600;
 }
 
+.rag-pubmed-lib-badge {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 /* Inline "Build index" button in the chat's not-ready notice. */
 .rag-obsidian-chat .srag-system button {
   display: block;

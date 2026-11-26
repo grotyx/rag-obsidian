@@ -9,6 +9,8 @@ import { summarizeSource } from "../ingest/summarize";
 import { searchLogNote, suffixedPath, SEARCH_LOG_FOLDER } from "../data/searchLog";
 import {
   searchPubmedPage,
+  markInLibrary,
+  parseYear,
   fetchPubmedRecord,
   fetchPmcFullText,
   PMC_FAILED_LABEL,
@@ -26,6 +28,9 @@ interface SearchRun {
   total: number;
   pmids: string[];
   date: string; // ISO timestamp
+  from?: string; // the year filter and sort this run used — "Load more" repeats them
+  to?: string;
+  sort: "relevance" | "pub_date";
 }
 
 export class PubmedSearchModal extends Modal {
@@ -33,6 +38,11 @@ export class PubmedSearchModal extends Modal {
   private query = "";
   private maxResults = 20;
   private summarize = true;
+  private yearFrom = "";
+  private yearTo = "";
+  private sort: "relevance" | "pub_date" = "relevance";
+  private countEl: HTMLElement | null = null;
+  private moreBtn: ButtonComponent | null = null;
   private rows: { hit: PubmedHit; checkbox: HTMLInputElement }[] = [];
   private resultsEl!: HTMLDivElement;
   private footerEl!: HTMLDivElement;
@@ -75,6 +85,26 @@ export class PubmedSearchModal extends Modal {
       t.inputEl.type = "number";
       t.inputEl.addClass("srag-input-narrow");
     });
+
+    new Setting(contentEl)
+      .setName("Publication year")
+      .setDesc("Optional range, four digits each.")
+      .addText((t) => {
+        t.setPlaceholder("From").onChange((v) => (this.yearFrom = v));
+        t.inputEl.addClass("srag-input-narrow");
+      })
+      .addText((t) => {
+        t.setPlaceholder("To").onChange((v) => (this.yearTo = v));
+        t.inputEl.addClass("srag-input-narrow");
+      });
+
+    new Setting(contentEl).setName("Sort by").addDropdown((d) =>
+      d
+        .addOption("relevance", "Relevance")
+        .addOption("pub_date", "Newest")
+        .setValue(this.sort)
+        .onChange((v) => (this.sort = v === "pub_date" ? "pub_date" : "relevance"))
+    );
 
     new Setting(contentEl)
       .setName("Summarize with LLM")
@@ -122,15 +152,22 @@ export class PubmedSearchModal extends Modal {
     this.footerEl.empty();
     this.rows = [];
     this.searched = null;
+    this.countEl = null;
+    this.moreBtn = null;
     const loading = this.resultsEl.createEl("p", { text: `Searching PubMed for "${q}"…` });
+    const run: SearchRun = {
+      query: q,
+      total: 0,
+      pmids: [],
+      date: new Date().toISOString(),
+      from: parseYear(this.yearFrom),
+      to: parseYear(this.yearTo),
+      sort: this.sort,
+    };
     try {
-      const { hits, total } = await searchPubmedPage(q, {
-        n: this.maxResults,
-        apiKey: this.plugin.settings.pubmedApiKey,
-        email: this.plugin.settings.openalexMailto,
-      });
+      const hits = await this.fetchPage(run);
       loading.remove();
-      this.searched = { query: q, total, pmids: hits.map((h) => h.pmid), date: new Date().toISOString() };
+      this.searched = run;
       if (!hits.length) {
         this.resultsEl.createEl("p", { text: "No results." });
         return;
@@ -145,13 +182,60 @@ export class PubmedSearchModal extends Modal {
     }
   }
 
-  private renderResults(hits: PubmedHit[]): void {
-    for (const hit of hits) {
+  /** The next page of `run` (retstart = hits already shown); records the total and the PMIDs on it. */
+  private async fetchPage(run: SearchRun): Promise<PubmedHit[]> {
+    const { hits, total } = await searchPubmedPage(run.query, {
+      n: this.maxResults,
+      start: run.pmids.length,
+      from: run.from,
+      to: run.to,
+      sort: run.sort,
+      apiKey: this.plugin.settings.pubmedApiKey,
+      email: this.plugin.settings.openalexMailto,
+    });
+    const seen = new Set(run.pmids);
+    const fresh = hits.filter((h) => !seen.has(h.pmid)); // a shifting result set can repeat a hit
+    run.total = total;
+    run.pmids.push(...fresh.map((h) => h.pmid));
+    return fresh;
+  }
+
+  private async loadMore(): Promise<void> {
+    const run = this.searched;
+    if (!run || this.busy()) return;
+    this.searching = true;
+    this.syncSearchBtn();
+    this.moreBtn?.setDisabled(true);
+    try {
+      const hits = await this.fetchPage(run);
+      this.renderRows(hits);
+      // An empty page means the result set shifted or ended: stop offering more.
+      if (!hits.length) run.total = run.pmids.length;
+    } catch (e) {
+      console.error("[Refwright] PubMed load more failed", e);
+      new Notice(`Load more failed: ${errMsg(e)}`);
+    } finally {
+      this.searching = false;
+      this.syncSearchBtn();
+      this.syncMore();
+    }
+  }
+
+  private syncMore(): void {
+    const run = this.searched;
+    if (!run) return;
+    this.countEl?.setText(`Showing ${this.rows.length} of ${run.total} results`);
+    this.moreBtn?.buttonEl.toggle(run.pmids.length < run.total);
+    this.moreBtn?.setDisabled(false);
+  }
+
+  private renderRows(hits: PubmedHit[]): void {
+    for (const hit of markInLibrary(hits, (it) => !!this.plugin.library.findDuplicate(it))) {
       const { item } = hit;
       const row = this.resultsEl.createDiv({ cls: "rag-pubmed-row" });
 
       const cb = row.createEl("input", { type: "checkbox" });
-      cb.checked = true;
+      cb.checked = !hit.inLibrary;
       this.rows.push({ hit, checkbox: cb });
 
       const meta = row.createDiv();
@@ -163,7 +247,21 @@ export class PubmedSearchModal extends Modal {
       if (hit.pmc) {
         sub.createSpan({ text: "  Open Access", cls: "rag-pubmed-oa-badge" });
       }
+      if (hit.inLibrary) {
+        sub.createSpan({ text: "  In library", cls: "rag-pubmed-lib-badge" });
+      }
     }
+  }
+
+  private renderResults(hits: PubmedHit[]): void {
+    this.renderRows(hits);
+
+    this.countEl = this.footerEl.createDiv({ cls: "setting-item-description" });
+    new Setting(this.footerEl).addButton((b) => {
+      this.moreBtn = b;
+      b.setButtonText("Load more").onClick(() => void this.loadMore());
+    });
+    this.syncMore();
 
     const sel = this.footerEl.createDiv();
     new Setting(sel)
@@ -211,6 +309,8 @@ export class PubmedSearchModal extends Modal {
         query: s.query,
         date: s.date,
         total: s.total,
+        year_from: s.from ? Number(s.from) : undefined,
+        year_to: s.to ? Number(s.to) : undefined,
         returnedPmids: s.pmids,
         importedPmids: imported,
       });
