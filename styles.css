@@ -466,3 +466,24 @@
   display: block;
   cursor: pointer;
 }
+
+.srag-verify-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.srag-verify-head {
+  font-weight: 600;
+}
+.srag-verify-row blockquote {
+  margin: 4px 0;
+  color: var(--text-muted);
+}
+.srag-verify-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.srag-verify-missing {
+  color: var(--text-error);
+  font-weight: 600;
+}

@@ -110,6 +110,18 @@ async function readText(doc: PdfDocument): Promise<{ text: string; pages: number
   return { text: trimmed, pages };
 }
 
+/** Per-page text (same joining as `extractPdfText`, no size cap) — for locating a quote's page. */
+export function extractPdfPages(data: ArrayBuffer, opts: PdfOpts = {}): Promise<string[]> {
+  return withPdf(data, opts, async (doc) => {
+    const out: string[] = [];
+    for (let i = 1; i <= (num(doc.numPages) ?? 0); i++) {
+      const content = await (await doc.getPage(i)).getTextContent();
+      out.push(content.items.map((it) => str(rec(it).str)).join(" "));
+    }
+    return out;
+  });
+}
+
 export interface PdfHighlight {
   page: number;
   type: "highlight" | "note";

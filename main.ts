@@ -26,6 +26,7 @@ import { RelatedView, VIEW_TYPE_RELATED } from "./src/ui/RelatedView";
 import { ScreeningView, VIEW_TYPE_SCREENING } from "./src/ui/ScreeningView";
 import { PrismaScopeModal } from "./src/ui/PrismaScopeModal";
 import { EvidenceScopeModal } from "./src/commands/evidenceExport";
+import { openVerifyFindings } from "./src/ui/VerifyFindingsModal";
 import { SnowballScopeModal } from "./src/commands/snowball";
 import { RobScopeModal } from "./src/commands/rob";
 import { CitationGraph } from "./src/graph/citations";
@@ -425,6 +426,11 @@ export default class ScholarRagPlugin extends Plugin {
       id: "export-evidence-table",
       name: "Export evidence table (CSV)",
       checkCallback: (checking) => this.reviewCommand(checking, () => { new EvidenceScopeModal(this.app, this).open(); }),
+    });
+    this.addCommand({
+      id: "verify-findings",
+      name: "Verify findings in this note",
+      callback: () => openVerifyFindings(this),
     });
     this.addCommand({
       id: "snowball-included",

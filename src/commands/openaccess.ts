@@ -4,7 +4,8 @@ import { safePdfName, type Library } from "../data/library";
 import type { CSLItem } from "../types";
 import { findOpenAccess } from "../ingest/unpaywall";
 import { checkRetraction } from "../ingest/retraction";
-import { extractPdfHighlights, extractPdfText, isPdfMagic } from "../ingest/pdf";
+import { extractPdfHighlights, extractPdfText, isPdfMagic, type PdfHighlight } from "../ingest/pdf";
+import { pageLink } from "../data/verify";
 import { appendStash, hasStashedText, resolvePdfLink } from "../ingest/pdfStash";
 import { mapPool } from "../util/pool";
 import { startBatch } from "../ui/progress";
@@ -433,6 +434,11 @@ export function replaceHighlights(content: string, block: string): string {
   );
 }
 
+/** The `## Highlights` list: one line per annotation, its page a link that opens the PDF there. */
+export function highlightBlock(highlights: PdfHighlight[], pdfPath: string): string {
+  return highlights.map((h) => `- ${h.text}${h.type === "note" ? " _(note)_" : ""} ${pageLink(pdfPath, h.page)}`).join("\n");
+}
+
 /** Read this reference's PDF annotations and write them into its ## Highlights section. */
 export async function extractHighlights(plugin: ScholarRagPlugin): Promise<void> {
   const r = plugin.activeRef();
@@ -457,9 +463,7 @@ export async function extractHighlights(plugin: ScholarRagPlugin): Promise<void>
     new Notice("No highlights/notes found in the PDF");
     return;
   }
-  const block = highlights
-    .map((h) => `- ${h.text}${h.type === "note" ? " _(note)_" : ""} _(p.${h.page})_`)
-    .join("\n");
+  const block = highlightBlock(highlights, pdf.path);
   await plugin.app.vault.process(r.file, (c) => replaceHighlights(c, block));
   new Notice(`Extracted ${highlights.length} highlight(s)/note(s)`);
 }

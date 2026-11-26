@@ -16,6 +16,9 @@ export interface Finding {
   p?: string;
   direction?: string;
   heterogeneity?: string;
+  /** PDF page the quote was located on / local date it was checked ("Verify findings in this note"). */
+  page?: string;
+  verified?: string;
   quote: string;
 }
 
@@ -30,12 +33,20 @@ export function evidenceSection(markdown: string): string | null {
   return markdown.slice(m.index, m.index + m[0].length + (next ? next.index : rest.length));
 }
 
-const OPTIONAL = ["intervention", "comparator", "predictor", "subgroup", "timepoint", "n", "studies", "effect", "ci", "p", "direction", "heterogeneity"] as const;
+const OPTIONAL = ["intervention", "comparator", "predictor", "subgroup", "timepoint", "n", "studies", "effect", "ci", "p", "direction", "heterogeneity", "page", "verified"] as const;
 
 export function parseFindings(markdown: string): Finding[] {
+  return scanFindings(markdown).map((s) => s.finding);
+}
+
+/** Findings with the 0-based line (in `markdown.split("\n")`) of each one's `[k:: v]` field line. */
+function scanFindings(markdown: string): { finding: Finding; line: number }[] {
   const section = evidenceSection(markdown);
-  if (!section) return [];
-  const out: Finding[] = [];
+  const head = EVIDENCE_HEADING.exec(markdown);
+  if (!section || !head) return [];
+  const startLine = markdown.slice(0, head.index).split("\n").length - 1;
+  const out: { finding: Finding; line: number }[] = [];
+  let fieldsLine = 0;
   let fields: Map<string, string> | null = null;
   const flush = (quote: string) => {
     const kind = fields?.get("kind");
@@ -43,16 +54,17 @@ export function parseFindings(markdown: string): Finding[] {
     if (fields && quote && outcome && (kind === "comparative" || kind === "prognostic")) {
       const f: Finding = { kind, outcome, quote };
       for (const k of OPTIONAL) { const v = fields.get(k); if (v) f[k] = v; }
-      out.push(f);
+      out.push({ finding: f, line: fieldsLine });
     }
     fields = null;
   };
-  for (const raw of section.split(/\r?\n/)) {
+  for (const [i, raw] of section.split(/\r?\n/).entries()) {
     const line = raw.replace(/^>\s?/, "");
     // `- [k:: v]` list lines (first format) or bare `[k:: v]` lines inside a ```text fence (current:
     // Obsidian keeps metadata for every list item, ~0.8 GB of heap across 140k findings).
     if (/^(- )?\[[A-Za-z_]+::/.test(line)) {
       fields = new Map();
+      fieldsLine = startLine + i;
       // A value may hold balanced `[..]` spans (a CI "[0.1, 0.5]"); failing that, a lone `[` ("Score on
       // [0, 1)") — then the field ends at the `]` that is followed by the next field or the line end.
       for (const m of line.matchAll(/\[([A-Za-z_]+)::\s*(?:((?:[^[\]]|\[[^\]]*\])*)\]|(.*?)\](?=\s*(?:\[[A-Za-z_]+::|$)))/g)) {
@@ -84,17 +96,34 @@ export function findingText(f: Finding): string {
   return [f.outcome, who, f.timepoint, f.effect, f.p ? `p ${f.p}` : "", f.quote].filter(Boolean).join("; ");
 }
 
-export const FINDING_KEYS = ["kind", "outcome", "intervention", "comparator", "predictor", "subgroup", "timepoint", "n", "studies", "effect", "ci", "p", "direction", "heterogeneity"] as const;
+export const FINDING_KEYS = ["kind", "outcome", "intervention", "comparator", "predictor", "subgroup", "timepoint", "n", "studies", "effect", "ci", "p", "direction", "heterogeneity", "page", "verified"] as const;
 
 /** Identity of a finding for de-duplication: all fields + quote, whitespace- and case-insensitive. */
 export function findingKey(f: Finding): string {
-  return [...FINDING_KEYS.map((k) => f[k] ?? ""), f.quote].join("\u0001").replace(/\s+/g, " ").toLowerCase();
+  // page / verified describe the check, not the finding: a verified copy is still the same finding.
+  return [...FINDING_KEYS.filter((k) => k !== "page" && k !== "verified").map((k) => f[k] ?? ""), f.quote].join("\u0001").replace(/\s+/g, " ").toLowerCase();
 }
 
 /** One finding as callout lines: `> - [k:: v] ...` then the quote (`bare`: inside a ```text fence). */
 export function findingLines(f: Finding, bare = false): string {
   const fields = FINDING_KEYS.filter((k) => f[k]).map((k) => `[${k}:: ${f[k]}]`).join(" ");
   return `> ${bare ? "" : "- "}${fields}\n>   "${f.quote}"`;
+}
+
+/** Set (or add) `[k:: v]` fields on `target`'s field line, leaving every other byte of the note
+ *  alone. `target` is found by `findingKey`; null when the note no longer holds it. Values must not contain `]`. */
+export function setFindingFields(note: string, target: Finding, fields: Record<string, string>): string | null {
+  const key = findingKey(target);
+  const hit = scanFindings(note).find((s) => findingKey(s.finding) === key);
+  if (!hit) return null;
+  const lines = note.split("\n");
+  let l = lines[hit.line];
+  for (const [k, v] of Object.entries(fields)) {
+    const re = new RegExp(`\\[${k}::[^\\]]*\\]`);
+    l = re.test(l) ? l.replace(re, () => `[${k}:: ${v}]`) : l.replace(/\s*$/, (tail) => ` [${k}:: ${v}]${tail}`);
+  }
+  lines[hit.line] = l;
+  return lines.join("\n");
 }
 
 /** Add `incoming` findings to the Evidence section of `prefix` (the note above its stash): appended

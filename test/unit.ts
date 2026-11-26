@@ -22,7 +22,7 @@ import { parseCollections, parseCslPage } from "../src/ingest/zotero";
 import "./dom-shim"; // globalThis.DOMParser for fetchPubmedRecord's XML path
 import { cleanDoi, detectId, splitName, parsePubDate, esummaryToItem, extractAbstractXml, fetchMetadata } from "../src/ingest/metadata";
 import { ncbiGapMs, ncbiGate, resetNcbiGate } from "../src/ingest/ncbi";
-import { findIdentifier, titleInHead, isPdfMagic, extractPdfHighlights, extractPdfText, setPdfjsLoader } from "../src/ingest/pdf";
+import { findIdentifier, titleInHead, isPdfMagic, extractPdfHighlights, extractPdfText, extractPdfPages, setPdfjsLoader } from "../src/ingest/pdf";
 import { hasStashedText, appendStash, resolvePdfLink, stashedText, STASH_MARKER, STASH_MAX_CHARS } from "../src/ingest/pdfStash";
 import { buildSysPrompt, parseSections, parseMeshList } from "../src/ingest/summarize";
 import { buildTags, MIN_TAGS, fetchPubmedRecord, fetchPmcFullText, tablesToText, esearchUrl, markInLibrary, parseYear } from "../src/ingest/pubmedSearch";
@@ -40,7 +40,7 @@ import { retryAfterMs, retryDelayMs } from "../src/util/retry";
 import { bridgeSource } from "../src/mcp/bridge";
 import { backfillCitationCounts, renameTag } from "../src/commands/library";
 import { mergeDuplicateGroups } from "../src/commands/merge";
-import { replaceHighlights, findOpenAccessForActive } from "../src/commands/openaccess";
+import { replaceHighlights, highlightBlock, findOpenAccessForActive } from "../src/commands/openaccess";
 import { updateBibliography } from "../src/commands/writing";
 import { isStaleSummary, staleModelGroups } from "../src/commands/summaries";
 import { TFile, Notice, parseYaml } from "obsidian";
@@ -64,7 +64,8 @@ import { cacheRoot, legacyCacheRoot, NodeFileIO, staleIndexFiles } from "../src/
 import { IndexManager } from "../src/index/manager";
 import { pandocCandidates, pandocPrepare } from "../src/write/pandoc";
 import { stripFrontmatter, chunkReference, yearFromIssued, chunkHash } from "../src/index/chunker";
-import { parseFindings, findingText, isRestated, Finding, normalizeQuote, quoteInSource, saveFindings, parseFindingInput } from "../src/data/findings";
+import { parseFindings, findingText, isRestated, Finding, normalizeQuote, quoteInSource, saveFindings, parseFindingInput, setFindingFields } from "../src/data/findings";
+import { locateQuote, normalizePages, pageLink } from "../src/data/verify";
 import { evidenceCsv, collectEvidenceRows } from "../src/commands/evidenceExport";
 import { referenceProblems, refcheckReport, problemSeverity, PROBLEM_UNCHECKED, PROBLEM_THIN, PROBLEM_PREPRINT } from "../src/write/refcheck";
 import { parseStyleIndex } from "../src/cite/styleIndex";
@@ -4291,6 +4292,45 @@ check(
   check(new Function("return " + bm.slice(bm.indexOf("var f=") + 6, bm.indexOf(";var id")))()(meta({ citation_doi: "10.1000/q" }), { href: "" }) === "10.1000/q", "bookmarklet: serialized extractor runs standalone");
   check(via({ citation_doi: "10.1000/a b" }, "https://x.org/").href === "obsidian://refwright-add?id=10.1000%2Fa", "bookmarklet: end to end sets the encoded obsidian:// URL");
   check(via({}, "https://x.org/").alerted === "No DOI/PMID found on this page", "bookmarklet: end to end alerts when nothing is found");
+}
+// ---- verify fixes ----
+{
+  const pages = normalizePages(["Intro text. ODI improved from 40 to 20", "(p = 0.02) in the fusion group.", "Other page: reoperation was “higher”."]);
+  check(locateQuote("ODI improved from 40 to 20", pages) === 1, "locateQuote: quote on one page");
+  check(locateQuote("Reoperation was \"higher\".", pages) === 3, "locateQuote: curly quotes and case folded, 1-based page");
+  check(locateQuote("ODI improved from 40 to 20 (p = 0.02) in the fusion group.", pages) === 1, "locateQuote: a quote over a page break is reported on its first page");
+  check(locateQuote("(p = 0.02) in the fusion group.", pages) === 2, "locateQuote: a quote wholly on page 2 is page 2, not page 1");
+  check(locateQuote("never printed", pages) === null && locateQuote("  ", pages) === null, "locateQuote: absent or empty quote is null");
+  check(pageLink("PDFs/a b.pdf", 4) === "[[PDFs/a b.pdf#page=4|p. 4]]", "pageLink: #page subpath with a p. N label");
+  check(highlightBlock([{ page: 4, type: "highlight", text: "hit" }, { page: 2, type: "note", text: "n" }], "PDFs/k.pdf") === "- hit [[PDFs/k.pdf#page=4|p. 4]]\n- n _(note)_ [[PDFs/k.pdf#page=2|p. 2]]", "highlightBlock: page is a deep link to the PDF");
+
+  const f: Finding = { kind: "comparative", outcome: "ODI", intervention: "A", p: "0.02", quote: "ODI improved (p = 0.02)." };
+  const g: Finding = { kind: "prognostic", outcome: "reop", predictor: "age", quote: "Older patients had more reoperation." };
+  const note = saveFindings("# T\n\n## Notes\n\nn\n", [f, g], false).text;
+  const marked = setFindingFields(note, g, { verified: "2026-11-26", page: "7" });
+  const back = marked ? parseFindings(marked) : [];
+  check(back.length === 2 && back[1].verified === "2026-11-26" && back[1].page === "7" && !back[0].verified && back[0].quote === f.quote, "setFindingFields: verified / page land on the one finding and round-trip");
+  check(marked !== null && marked.replace(/ \[verified:: 2026-11-26\] \[page:: 7\]/, "") === note, "setFindingFields: nothing else in the note changes");
+  const again = marked ? setFindingFields(marked, g, { verified: "2026-12-01" }) : null;
+  check(again !== null && parseFindings(again)[1].verified === "2026-12-01" && (again.match(/verified::/g) ?? []).length === 1, "setFindingFields: an existing field is replaced, not duplicated");
+  check(setFindingFields(note, { ...g, quote: "gone" }, { verified: "x" }) === null, "setFindingFields: a finding no longer in the note is null");
+  check(saveFindings(marked ?? "", [g], false).added === 0, "saveFindings: a verified finding still de-duplicates");
+  check(parseFindingInput([{ ...f, page: "3" }])[0].page === "3", "parseFindingInput: page is accepted");
+
+  setPdfjsLoader(async () => ({
+    GlobalWorkerOptions: { workerSrc: "" },
+    getDocument: () => ({
+      promise: Promise.resolve({
+        numPages: 2,
+        getPage: async (n: number) => ({
+          getTextContent: async () => ({ items: [{ str: `page ${n}` }, { str: "text" }] }),
+          getAnnotations: async () => [],
+        }),
+      }),
+    }),
+  }));
+  const pg = await extractPdfPages(new ArrayBuffer(8));
+  check(pg.length === 2 && pg[0] === "page 1 text" && pg[1] === "page 2 text", `extractPdfPages: one string per page (${JSON.stringify(pg)})`);
 }
 
 console.log(`unit: all ${passed} assertions passed`);

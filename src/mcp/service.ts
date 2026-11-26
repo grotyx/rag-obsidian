@@ -135,6 +135,7 @@ export const MCP_TOOLS: McpTool[] = [
           n: string("Sample size."), studies: string("Number of studies (pooled results)."),
           effect: string("Effect size as reported."), ci: string("Confidence interval as reported."), p: string("P value as reported."),
           direction: string("Direction of the effect."), heterogeneity: string("Heterogeneity (e.g. I2)."),
+          page: string("PDF page the quote is on, when known (a link to it opens the PDF there)."),
           quote: string("Verbatim sentence from the source that reports this result."),
         }, ["kind", "outcome", "quote"]),
       },
